@@ -129,6 +129,81 @@ class KnowledgeChunk(Base):
     )
 
 
+class ChatSession(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
+    __tablename__ = "chat_sessions"
+
+    course_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+    mode: Mapped[str] = mapped_column(String(30), nullable=False)
+    chapter_object_id: Mapped[str | None] = mapped_column(String(26))
+    question_version_id: Mapped[str | None] = mapped_column(String(26))
+    title: Mapped[str | None] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="active", server_default="active"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "mode IN ('course_qa','tutor','question_coach','review')",
+            name="ck_chat_sessions_mode",
+        ),
+        CheckConstraint("status IN ('active','closed')", name="ck_chat_sessions_status"),
+    )
+
+
+class ChatTurn(Base, ULIDPrimaryKeyMixin):
+    __tablename__ = "chat_turns"
+
+    session_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("chat_sessions.id"), nullable=False, index=True
+    )
+    client_turn_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    citations: Mapped[list | None] = mapped_column(JSON)
+    verification: Mapped[dict | None] = mapped_column(JSON)
+    refusal: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    finish_reason: Mapped[str | None] = mapped_column(String(30))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("session_id", "client_turn_id", name="uq_chat_turns_client_id"),
+        CheckConstraint("role IN ('student','tutor')", name="ck_chat_turns_role"),
+    )
+
+
+class LearningSession(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
+    """服务端驱动的学习状态机：状态与提示层级只能由服务端转移。"""
+
+    __tablename__ = "learning_sessions"
+
+    user_id: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+    course_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    material_version_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    chapter_object_id: Mapped[str | None] = mapped_column(String(26))
+    state: Mapped[str] = mapped_column(String(30), nullable=False, default="diagnose")
+    hint_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    tutor_message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="active", server_default="active"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('diagnose','teach','check','hint','practice','summary','completed')",
+            name="ck_learning_sessions_state",
+        ),
+        CheckConstraint(
+            "status IN ('active','paused','closed')",
+            name="ck_learning_sessions_status",
+        ),
+    )
+
+
 class Organization(Base, ULIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "organizations"
 

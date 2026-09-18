@@ -1,4 +1,5 @@
 import asyncio
+import re
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, text
@@ -22,6 +23,16 @@ EMBED_BATCH = 32
 RRF_K = 60
 RETRIEVAL_VERSION = "hybrid-v1"
 VECTOR_NONEXIST = "对象尚未完成嵌入或嵌入版本不匹配"
+
+TSQ_TOKEN_RE = re.compile(r"[\u4e00-\u9fff]+|[a-zA-Z0-9]+")
+
+
+def _or_tsquery(query: str) -> str:
+    """把查询词转为 OR 连接的tsquery字面量，避免AND语义导致整句不匹配。"""
+    tokens = [t for t in TSQ_TOKEN_RE.findall(query.lower()) if t]
+    if not tokens:
+        tokens = [query.strip().lower() or "x"]
+    return " | ".join(t.replace("&", "").replace("|", "").replace("!", "") for t in tokens)
 
 
 # ---- 分块构建 ----
@@ -249,16 +260,17 @@ async def hybrid_search(
     vector_literal = "[" + ",".join(f"{v:.6f}" for v in query_vector) + "]"
     version_list = ", ".join(f"'{v}'" for v in version_ids)
 
+    tsq = _or_tsquery(query)
     bm25_rows = (
         await db.execute(
             text(
-                "SELECT id, ts_rank(text_tsv, plainto_tsquery('simple', :q)) AS rank "
+                "SELECT id, ts_rank(text_tsv, to_tsquery('simple', :tsq)) AS rank "
                 "FROM knowledge_chunks "
                 f"WHERE material_version_id IN ({version_list}) "
-                "AND text_tsv @@ plainto_tsquery('simple', :q) "
+                "AND text_tsv @@ to_tsquery('simple', :tsq) "
                 "ORDER BY rank DESC LIMIT 50"
             ),
-            {"q": query},
+            {"tsq": tsq},
         )
     ).all()
     bm25_hits = [(row[0], float(row[1])) for row in bm25_rows]

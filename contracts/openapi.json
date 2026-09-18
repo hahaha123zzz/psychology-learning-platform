@@ -1043,6 +1043,281 @@
           }
         }
       }
+    },
+    "/api/v1/chat/sessions": {
+      "get": {
+        "tags": [
+          "tutor"
+        ],
+        "summary": "List Chat Sessions",
+        "operationId": "list_chat_sessions_api_v1_chat_sessions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "tutor"
+        ],
+        "summary": "Create Chat Session",
+        "operationId": "create_chat_session_api_v1_chat_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatSessionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "tutor"
+        ],
+        "summary": "Get Chat Session",
+        "operationId": "get_chat_session_api_v1_chat_sessions__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/sessions/{session_id}/turns": {
+      "post": {
+        "tags": [
+          "tutor"
+        ],
+        "summary": "Create Turn",
+        "operationId": "create_turn_api_v1_chat_sessions__session_id__turns_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TurnCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/learning-sessions": {
+      "post": {
+        "tags": [
+          "tutor"
+        ],
+        "summary": "Create Learning Session",
+        "operationId": "create_learning_session_api_v1_learning_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearningSessionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/learning-sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "tutor"
+        ],
+        "summary": "Get Learning Session",
+        "operationId": "get_learning_session_api_v1_learning_sessions__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/learning-sessions/{session_id}/responses": {
+      "post": {
+        "tags": [
+          "tutor"
+        ],
+        "summary": "Respond Learning Session",
+        "operationId": "respond_learning_session_api_v1_learning_sessions__session_id__responses_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearningResponse"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1079,6 +1354,65 @@
           "file"
         ],
         "title": "Body_upload_material_api_v1_courses__course_id__materials_post"
+      },
+      "ChatSessionCreate": {
+        "properties": {
+          "course_id": {
+            "type": "string",
+            "maxLength": 26,
+            "minLength": 26,
+            "title": "Course Id"
+          },
+          "mode": {
+            "type": "string",
+            "pattern": "^(course_qa|tutor|question_coach|review)$",
+            "title": "Mode",
+            "default": "course_qa"
+          },
+          "chapter_object_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 26,
+                "minLength": 26
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chapter Object Id"
+          },
+          "question_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 26,
+                "minLength": 26
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Version Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "course_id"
+        ],
+        "title": "ChatSessionCreate"
       },
       "CourseCreate": {
         "properties": {
@@ -1320,6 +1654,62 @@
         ],
         "title": "KnowledgeObjectCorrection"
       },
+      "LearningResponse": {
+        "properties": {
+          "state_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "State Version"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state_version",
+          "content"
+        ],
+        "title": "LearningResponse"
+      },
+      "LearningSessionCreate": {
+        "properties": {
+          "course_id": {
+            "type": "string",
+            "maxLength": 26,
+            "minLength": 26,
+            "title": "Course Id"
+          },
+          "material_version_id": {
+            "type": "string",
+            "maxLength": 26,
+            "minLength": 26,
+            "title": "Material Version Id"
+          },
+          "chapter_object_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 26,
+                "minLength": 26
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chapter Object Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "course_id",
+          "material_version_id"
+        ],
+        "title": "LearningSessionCreate"
+      },
       "LoginRequest": {
         "properties": {
           "email": {
@@ -1463,6 +1853,42 @@
           "query"
         ],
         "title": "SearchRequest"
+      },
+      "TurnCreate": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Content"
+          },
+          "client_turn_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 8,
+            "title": "Client Turn Id"
+          },
+          "selected_evidence_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Evidence Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content",
+          "client_turn_id"
+        ],
+        "title": "TurnCreate"
       },
       "ValidationError": {
         "properties": {
