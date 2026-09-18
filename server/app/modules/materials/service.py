@@ -264,12 +264,16 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
             job.finished_at = datetime.now(UTC)
             await session.commit()
         except Exception as exc:  # noqa: BLE001
-            version.status = "failed"
-            job.status = "failed"
-            job.error = str(exc)[:500]
-            job.retryable = True
-            job.finished_at = datetime.now(UTC)
-            await session.commit()
+            await session.rollback()
+            job = await session.get(Job, job_id)
+            version = await session.get(MaterialVersion, version_id)
+            if job is not None and version is not None:
+                version.status = "failed"
+                job.status = "failed"
+                job.error = str(exc)[:500]
+                job.retryable = True
+                job.finished_at = datetime.now(UTC)
+                await session.commit()
 
 
 def _pages_with_objects(objects) -> int:

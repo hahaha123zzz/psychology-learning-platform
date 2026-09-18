@@ -5,6 +5,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
+    Computed,
     DateTime,
     ForeignKey,
     Index,
@@ -14,7 +15,9 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import UserDefinedType
 
 from app.db.base import (
     Base,
@@ -22,6 +25,15 @@ from app.db.base import (
     TimestampMixin,
     ULIDPrimaryKeyMixin,
 )
+
+
+class PgVector(UserDefinedType):
+    """pgvector列类型，仅用于元数据声明与比较。"""
+
+    cache_ok = True
+
+    def get_col_spec(self, **kw: object) -> str:
+        return "vector(384)"
 
 
 class Job(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
@@ -51,6 +63,69 @@ class Job(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
             name="ck_jobs_status",
         ),
         UniqueConstraint("kind", "idempotency_key", name="uq_jobs_kind_idempotency"),
+    )
+
+
+class EvidenceTicket(Base, ULIDPrimaryKeyMixin):
+    """短期证据票据：检索结果的可点击凭证，读取时重新校验权限。"""
+
+    __tablename__ = "evidence_tickets"
+
+    chunk_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    course_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    material_version_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class KnowledgeChunk(Base):
+    """检索分块（含pgvector列与生成列），由迁移0005管理，跳过自动生成。"""
+
+    __tablename__ = "knowledge_chunks"
+    __table_args__ = (
+        Index(
+            "ix_knowledge_chunks_tsv",
+            "text_tsv",
+            postgresql_using="gin",
+        ),
+        Index(
+            "ix_knowledge_chunks_embedding",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+        Index(
+            "ix_knowledge_chunks_version_order",
+            "material_version_id",
+            "reading_order",
+        ),
+        {"info": {"skip_autogenerate": True}},
+    )
+
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    material_version_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("material_versions.id"), nullable=False
+    )
+    course_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    chapter_object_id: Mapped[str | None] = mapped_column(String(26))
+    chapter_path: Mapped[str] = mapped_column(
+        String(100), nullable=False, server_default=""
+    )
+    physical_page: Mapped[int] = mapped_column(Integer, nullable=False)
+    reading_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding_version: Mapped[str | None] = mapped_column(String(50))
+    embedding: Mapped[object | None] = mapped_column(PgVector())
+    text_tsv: Mapped[object | None] = mapped_column(
+        postgresql.TSVECTOR,
+        Computed("to_tsvector('simple', text)", persisted=True),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 
