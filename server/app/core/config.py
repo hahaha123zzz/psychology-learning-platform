@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"] = "development"
     app_name: str = "Psychology Learning Platform"
     log_level: str = "INFO"
+    default_organization_id: str = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
     database_url: str = Field(
         default="postgresql+asyncpg://psychology:change-me@127.0.0.1:5432/psychology_learning"
     )
@@ -24,6 +25,13 @@ class Settings(BaseSettings):
     minio_secret_key: str = "change-me"
     minio_secure: bool = False
     minio_bucket: str = "course-materials"
+
+    jwt_secret: str = "dev-only-change-me"
+    jwt_algorithm: str = "HS256"
+    access_token_minutes: int = 30
+    refresh_token_days: int = 14
+    login_fail_limit: int = 5
+    login_fail_window_seconds: int = 900
 
 
 @lru_cache

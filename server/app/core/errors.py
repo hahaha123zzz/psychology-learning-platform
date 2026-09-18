@@ -5,6 +5,26 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 
+class ApiError(Exception):
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        *,
+        details: Any = None,
+        retryable: bool = False,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+        self.message = message
+        self.details = details
+        self.retryable = retryable
+        self.headers = headers
+
+
 def error_body(
     request: Request,
     *,
@@ -37,6 +57,20 @@ def install_exception_handlers(app: FastAPI) -> None:
             ),
         )
 
+    @app.exception_handler(ApiError)
+    async def api_error_handler(request: Request, exc: ApiError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=error_body(
+                request,
+                code=exc.code,
+                message=exc.message,
+                details=exc.details,
+                retryable=exc.retryable,
+            ),
+            headers=exc.headers,
+        )
+
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, _: Exception) -> JSONResponse:
         return JSONResponse(
@@ -48,4 +82,3 @@ def install_exception_handlers(app: FastAPI) -> None:
                 retryable=True,
             ),
         )
-
