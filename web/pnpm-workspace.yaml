@@ -1,0 +1,5 @@
+allowBuilds:
+  # Next.js生产图片优化的官方依赖。
+  sharp: true
+  # eslint-config-next通过TypeScript resolver使用。
+  unrs-resolver: true
