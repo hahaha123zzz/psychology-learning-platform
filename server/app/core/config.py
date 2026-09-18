@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     minio_secure: bool = False
     minio_bucket: str = "course-materials"
 
-    jwt_secret: str = "dev-only-change-me"
+    jwt_secret: str = "dev-only-change-me-32-bytes-minimum-key!"
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 30
     refresh_token_days: int = 14
