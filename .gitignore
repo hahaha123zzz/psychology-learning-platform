@@ -33,3 +33,4 @@ Thumbs.db
 
 # Python build artifacts
 *.egg-info/
+*.tsbuildinfo
