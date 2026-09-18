@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import ApiError
 from app.core.response import ok
 from app.db.models import (
+    Attempt,
     ChatSession,
     ChatTurn,
     LearningSession,
@@ -59,6 +60,36 @@ async def _get_owned_session(
     return session_row
 
 
+async def _reject_coach_during_closed_exam(db: AsyncSession, user: User) -> None:
+    """正式测验（ai_policy=disabled）进行中时，服务端拒绝题目教练。"""
+    from sqlalchemy import exists as _exists
+
+    from app.db.models import Assessment
+
+    attempt_exists = (
+        await db.execute(
+            select(
+                _exists().where(
+                    Attempt.user_id == user.id,
+                    Attempt.status == "in_progress",
+                    Attempt.assessment_id.in_(
+                        select(Assessment.id).where(
+                            Assessment.status == "published",
+                            Assessment.ai_policy == "disabled",
+                        )
+                    ),
+                )
+            )
+        )
+    ).scalar()
+    if attempt_exists:
+        raise ApiError(
+            status_code=403,
+            code="COACH_DISABLED_FOR_EXAM",
+            message="正式测验进行中，题目教练不可用",
+        )
+
+
 @router.post("/chat/sessions", response_model=None)
 async def create_chat_session(
     body: ChatSessionCreate,
@@ -75,6 +106,8 @@ async def create_chat_session(
             code="VALIDATION_ERROR",
             message="教学模式必须指定章节上下文",
         )
+    if body.mode == "question_coach":
+        await _reject_coach_during_closed_exam(db, user)
     session_row = ChatSession(
         course_id=body.course_id,
         user_id=user.id,

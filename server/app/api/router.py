@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.modules.assessments.router import router as assessments_router
 from app.modules.auth.router import router as auth_router
 from app.modules.courses.router import router as courses_router
 from app.modules.health.router import router as health_router
@@ -13,4 +14,5 @@ api_router.include_router(auth_router, tags=["auth"])
 api_router.include_router(courses_router, tags=["courses"])
 api_router.include_router(materials_router, tags=["materials"])
 api_router.include_router(knowledge_router, tags=["knowledge"])
+api_router.include_router(assessments_router, tags=["assessments"])
 api_router.include_router(tutor_router, tags=["tutor"])

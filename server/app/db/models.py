@@ -204,6 +204,152 @@ class LearningSession(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampM
     )
 
 
+class Question(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
+    __tablename__ = "questions"
+
+    course_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    created_by: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft", server_default="draft"
+    )
+    current_version_id: Mapped[str | None] = mapped_column(String(26))
+    origin: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="teacher", server_default="teacher"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft','approved','published','rejected','archived')",
+            name="ck_questions_status",
+        ),
+        CheckConstraint("origin IN ('teacher','agent')", name="ck_questions_origin"),
+    )
+
+
+class QuestionVersion(Base, ULIDPrimaryKeyMixin):
+    """不可变题目版本：作答与引用始终绑定具体版本。"""
+
+    __tablename__ = "question_versions"
+
+    question_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("questions.id"), nullable=False
+    )
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)
+    stem: Mapped[str] = mapped_column(Text, nullable=False)
+    options: Mapped[list | None] = mapped_column(JSON)
+    answer: Mapped[dict | None] = mapped_column(JSON)
+    rubric: Mapped[str | None] = mapped_column(Text)
+    explanation: Mapped[str | None] = mapped_column(Text)
+    difficulty: Mapped[int] = mapped_column(Integer, nullable=False)
+    knowledge_point_ids: Mapped[list | None] = mapped_column(JSON, default=list)
+    evidence_ids: Mapped[list | None] = mapped_column(JSON, default=list)
+    created_by: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("question_id", "version_no", name="uq_question_versions_no"),
+        CheckConstraint(
+            "type IN ('single','multiple','true_false','short_answer','essay')",
+            name="ck_question_versions_type",
+        ),
+        CheckConstraint("difficulty BETWEEN 1 AND 5", name="ck_question_versions_difficulty"),
+    )
+
+
+class Assessment(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
+    __tablename__ = "assessments"
+
+    course_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    opens_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closes_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ai_policy: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="full_after_submit",
+        server_default="full_after_submit",
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft", server_default="draft"
+    )
+    created_by: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "ai_policy IN ('disabled','direction_only','full_after_submit')",
+            name="ck_assessments_ai_policy",
+        ),
+        CheckConstraint(
+            "status IN ('draft','published','closed')", name="ck_assessments_status"
+        ),
+    )
+
+
+class AssessmentItem(Base, ULIDPrimaryKeyMixin):
+    __tablename__ = "assessment_items"
+
+    assessment_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("assessments.id"), nullable=False
+    )
+    question_version_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("question_versions.id"), nullable=False
+    )
+    points: Mapped[float] = mapped_column(nullable=False, default=1.0)
+    order_no: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "assessment_id", "question_version_id", name="uq_assessment_items"
+        ),
+    )
+
+
+class Attempt(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
+    __tablename__ = "attempts"
+
+    assessment_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("assessments.id"), nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="in_progress", server_default="in_progress"
+    )
+    score: Mapped[float | None] = mapped_column()
+    grading_status: Mapped[str | None] = mapped_column(String(20))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    coach_hints: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('in_progress','submitted','graded')", name="ck_attempts_status"
+        ),
+    )
+
+
+class AttemptAnswer(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
+    __tablename__ = "attempt_answers"
+
+    attempt_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("attempts.id"), nullable=False
+    )
+    question_version_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("question_versions.id"), nullable=False
+    )
+    response: Mapped[dict | None] = mapped_column(JSON)
+    client_saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_correct: Mapped[bool | None] = mapped_column(Boolean)
+    points_earned: Mapped[float | None] = mapped_column()
+
+    __table_args__ = (
+        UniqueConstraint(
+            "attempt_id", "question_version_id", name="uq_attempt_answers"
+        ),
+    )
+
+
 class Organization(Base, ULIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "organizations"
 
