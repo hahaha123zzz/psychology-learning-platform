@@ -1,11 +1,12 @@
 
 from fastapi import APIRouter, Depends, File, Form, Header, Request, Response, UploadFile
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ApiError
 from app.core.response import ok
 from app.core.storage import put_object
-from app.db.models import Material, MaterialVersion, User
+from app.db.models import Job, Material, MaterialVersion, User
 from app.db.session import get_db_session
 from app.modules.auth.dependencies import get_current_user, require_course_role
 from app.modules.courses import service as course_service
@@ -172,3 +173,233 @@ async def upload_material(
         await db.commit()
 
     return ok(request, body_data, status_code=201)
+
+
+@router.post("/material-versions/{version_id}/parse", response_model=None)
+async def trigger_parse(
+    version_id: str,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    version, material = await materials_service.get_version_with_material_or_404(
+        db, version_id
+    )
+    await require_course_role(
+        material.course_id, user, db, roles={"teacher"}
+    )
+    if idempotency_key:
+        existing = await materials_service.find_parse_job_by_idempotency_key(
+            db, idempotency_key
+        )
+        if existing is not None:
+            return ok(
+                request,
+                {"job_id": existing.id, "status": existing.status},
+                status_code=202,
+            )
+
+    active = await materials_service.find_active_parse_job(db, version_id)
+    if active is not None:
+        raise ApiError(
+            status_code=409,
+            code="PARSE_JOB_ALREADY_ACTIVE",
+            message="该版本已有进行中的解析任务",
+            details={"job_id": active.id},
+        )
+
+    if version.status not in ("uploaded", "failed"):
+        raise ApiError(
+            status_code=409,
+            code="INVALID_VERSION_STATUS",
+            message="当前版本状态不可触发解析",
+            details={"status": version.status},
+        )
+
+    job = Job(
+        kind="material_parse",
+        status="queued",
+        stage="queued",
+        payload={"material_version_id": version_id},
+        idempotency_key=idempotency_key,
+        created_by=user.id,
+    )
+    db.add(job)
+    version.status = "parsing"
+    await course_service.write_audit(
+        db,
+        actor_id=user.id,
+        action="material.parse_triggered",
+        resource_type="material_version",
+        resource_id=version_id,
+        course_id=material.course_id,
+        detail={"job_kind": job.kind},
+    )
+    await db.commit()
+    await db.refresh(job, attribute_names=["id"])
+    materials_service.spawn_parse_job(job.id, version_id)
+    return ok(
+        request, {"job_id": job.id, "status": "queued"}, status_code=202
+    )
+
+
+@router.get("/jobs/{job_id}", response_model=None)
+async def get_job_status(
+    job_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    job = (
+        await db.execute(select(Job).where(Job.id == job_id).limit(1))
+    ).scalar_one_or_none()
+    if job is None:
+        raise ApiError(status_code=404, code="JOB_NOT_FOUND", message="任务不存在")
+    if job.created_by != user.id and not user.is_platform_admin:
+        version_id = (job.payload or {}).get("material_version_id")
+        if version_id:
+            version, material = await materials_service.get_version_with_material_or_404(
+                db, version_id
+            )
+            await require_course_role(
+                material.course_id, user, db, roles={"teacher"}
+            )
+        else:
+            raise ApiError(status_code=404, code="JOB_NOT_FOUND", message="任务不存在")
+    return ok(request, materials_service.job_out(job))
+
+
+@router.get("/courses/{course_id}/materials", response_model=None)
+async def list_materials(
+    course_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    role = await require_course_role(
+        course_id, user, db, roles={"teacher", "assistant", "student"}
+    )
+    is_staff = role in ("teacher", "assistant") or user.is_platform_admin
+    query = (
+        select(Material, MaterialVersion)
+        .outerjoin(MaterialVersion, Material.current_version_id == MaterialVersion.id)
+        .where(Material.course_id == course_id)
+        .order_by(Material.created_at.desc())
+    )
+    if not is_staff:
+        query = query.where(
+            Material.visibility == "published", Material.status == "active"
+        )
+    else:
+        query = query.where(Material.status.in_(("active", "archived")))
+    result = await db.execute(query)
+    items = []
+    for material, version in result.all():
+        item: dict = {
+            "id": material.id,
+            "title": material.title,
+            "material_type": material.material_type,
+            "status": material.status,
+            "created_at": material.created_at.isoformat(),
+            "current_version": None,
+        }
+        if is_staff:
+            item["visibility"] = material.visibility
+        if version is not None:
+            item["current_version"] = {
+                "id": version.id,
+                "version_no": version.version_no,
+                "status": version.status,
+                "size_bytes": version.size_bytes,
+                "content_type": version.content_type,
+            }
+        items.append(item)
+    return ok(request, items, has_more=False)
+
+
+@router.post("/material-versions/{version_id}/publish", response_model=None)
+async def publish_version(
+    version_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    from datetime import UTC, datetime
+
+    version, material = await materials_service.get_version_with_material_or_404(
+        db, version_id
+    )
+    await require_course_role(
+        material.course_id, user, db, roles={"teacher"}
+    )
+    if version.status != "parsed":
+        raise ApiError(
+            status_code=409,
+            code="MATERIAL_NOT_PARSED",
+            message="资料必须解析成功后才能发布",
+            details={"status": version.status},
+        )
+    if material.status != "active":
+        raise ApiError(
+            status_code=409,
+            code="MATERIAL_ARCHIVED",
+            message="已归档资料不能发布",
+        )
+    material.visibility = "published"
+    material.current_version_id = version.id
+    published_at = datetime.now(UTC)
+    await course_service.write_audit(
+        db,
+        actor_id=user.id,
+        action="material.published",
+        resource_type="material_version",
+        resource_id=version.id,
+        course_id=material.course_id,
+        detail={"published_at": published_at.isoformat()},
+    )
+    await db.commit()
+    return ok(
+        request,
+        {
+            "material_id": material.id,
+            "version_id": version.id,
+            "published_at": published_at.isoformat(),
+            "index_job_id": None,
+        },
+    )
+
+
+@router.delete("/materials/{material_id}", response_model=None)
+async def archive_material(
+    material_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    material = (
+        await db.execute(select(Material).where(Material.id == material_id).limit(1))
+    ).scalar_one_or_none()
+    if material is None:
+        raise ApiError(
+            status_code=404, code="MATERIAL_NOT_FOUND", message="资料不存在或无权访问"
+        )
+    await require_course_role(
+        material.course_id, user, db, roles={"teacher"}
+    )
+    if material.status == "archived":
+        raise ApiError(
+            status_code=409, code="MATERIAL_ALREADY_ARCHIVED", message="资料已归档"
+        )
+    material.status = "archived"
+    await course_service.write_audit(
+        db,
+        actor_id=user.id,
+        action="material.archived",
+        resource_type="material",
+        resource_id=material.id,
+        course_id=material.course_id,
+        detail=None,
+    )
+    await db.commit()
+    return ok(request, {"id": material.id, "status": material.status})

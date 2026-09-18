@@ -35,6 +35,7 @@ class Settings(BaseSettings):
 
     upload_max_mb: int = 200
     course_storage_quota_gb: int = 20
+    parse_simulate_seconds: float = 2.0
 
 
 @lru_cache

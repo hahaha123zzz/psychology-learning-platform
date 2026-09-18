@@ -10,7 +10,10 @@ from app.core.middleware import RequestContextMiddleware
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # 后续在这里初始化共享连接池、对象存储桶和后台任务资源。
+    # 启动时初始化共享资源：对象存储桶等
+    from app.core.storage import ensure_bucket
+
+    await ensure_bucket()
     yield
 
 

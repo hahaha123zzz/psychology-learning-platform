@@ -24,6 +24,36 @@ from app.db.base import (
 )
 
 
+class Job(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
+    """统一异步任务：解析、索引、Embedding等共用同一状态合同。"""
+
+    __tablename__ = "jobs"
+
+    kind: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="queued", server_default="queued"
+    )
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    stage: Mapped[str | None] = mapped_column(String(100))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text)
+    retryable: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    idempotency_key: Mapped[str | None] = mapped_column(String(128))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','running','succeeded','failed','cancelled')",
+            name="ck_jobs_status",
+        ),
+        UniqueConstraint("kind", "idempotency_key", name="uq_jobs_kind_idempotency"),
+    )
+
+
 class Organization(Base, ULIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "organizations"
 
@@ -197,7 +227,7 @@ class MaterialVersion(Base, ULIDPrimaryKeyMixin):
     __table_args__ = (
         UniqueConstraint("material_id", "version_no", name="uq_material_versions_no"),
         CheckConstraint(
-            "status IN ('uploading','uploaded','failed','removed')",
+            "status IN ('uploading','uploaded','failed','parsing','parsed','removed')",
             name="ck_material_versions_status",
         ),
     )
