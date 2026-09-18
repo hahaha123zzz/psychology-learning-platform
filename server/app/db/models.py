@@ -141,6 +141,13 @@ class ChatSession(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="active", server_default="active"
     )
+    parent_session_id: Mapped[str | None] = mapped_column(String(26), index=True)
+    is_branch: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    branch_source_turn_id: Mapped[str | None] = mapped_column(String(26))
+    branch_selection: Mapped[str | None] = mapped_column(Text)
+    merge_note: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint(
@@ -346,6 +353,32 @@ class AttemptAnswer(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMix
     __table_args__ = (
         UniqueConstraint(
             "attempt_id", "question_version_id", name="uq_attempt_answers"
+        ),
+    )
+
+
+class ReviewTask(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
+    """错题归因产生的复习任务：间隔到期，完成后关闭。"""
+
+    __tablename__ = "review_tasks"
+
+    user_id: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+    course_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    question_version_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    source_attempt_id: Mapped[str | None] = mapped_column(String(26))
+    reason: Mapped[str] = mapped_column(String(30), nullable=False)
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending"
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "reason IN ('wrong_answer','review_schedule')", name="ck_review_tasks_reason"
+        ),
+        CheckConstraint(
+            "status IN ('pending','done','dismissed')", name="ck_review_tasks_status"
         ),
     )
 

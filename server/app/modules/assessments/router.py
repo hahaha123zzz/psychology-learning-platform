@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import select
@@ -13,6 +13,7 @@ from app.db.models import (
     AttemptAnswer,
     Question,
     QuestionVersion,
+    ReviewTask,
     User,
 )
 from app.db.session import get_db_session
@@ -645,6 +646,7 @@ async def submit_attempt(
 
     total_score = 0.0
     has_subjective = False
+    wrong_versions: list[tuple[float, str]] = []
     for item, version, answer in rows:
         correctness = _grade_objective(version, answer.response if answer else None)
         if correctness is None:
@@ -655,11 +657,25 @@ async def submit_attempt(
             answer.points_earned = item.points if correctness else 0.0
         if correctness:
             total_score += item.points
+        else:
+            wrong_versions.append((item.points, version.id))
 
     attempt.status = "graded" if not has_subjective else "submitted"
     attempt.score = total_score
     attempt.grading_status = "graded" if not has_subjective else "pending_teacher"
     attempt.submitted_at = now
+    if assessment is not None:
+        for _points, version_id in wrong_versions:
+            db.add(
+                ReviewTask(
+                    user_id=attempt.user_id,
+                    course_id=assessment.course_id,
+                    question_version_id=version_id,
+                    source_attempt_id=attempt.id,
+                    reason="wrong_answer",
+                    due_at=now + timedelta(days=1),
+                )
+            )
     await db.commit()
     return ok(
         request,
