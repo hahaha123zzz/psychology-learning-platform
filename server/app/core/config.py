@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     login_fail_limit: int = 5
     login_fail_window_seconds: int = 900
 
+    upload_max_mb: int = 200
+    course_storage_quota_gb: int = 20
+
 
 @lru_cache
 def get_settings() -> Settings:

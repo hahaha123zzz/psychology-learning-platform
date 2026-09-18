@@ -140,3 +140,64 @@ class IdempotencyRecord(Base, ULIDPrimaryKeyMixin, TimestampMixin):
             name="uq_idempotency_key_user_endpoint",
         ),
     )
+
+
+class Material(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
+    __tablename__ = "materials"
+
+    course_id: Mapped[str] = mapped_column(String(26), ForeignKey("courses.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    material_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    visibility: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft", server_default="draft"
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="active", server_default="active"
+    )
+    created_by: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+    current_version_id: Mapped[str | None] = mapped_column(String(26))
+
+    __table_args__ = (
+        CheckConstraint(
+            "material_type IN ('textbook','slides','handout','exercise','reference','other')",
+            name="ck_materials_type",
+        ),
+        CheckConstraint(
+            "visibility IN ('draft','published')", name="ck_materials_visibility"
+        ),
+        CheckConstraint(
+            "status IN ('active','archived','deleted')", name="ck_materials_status"
+        ),
+        Index("ix_materials_course", "course_id", "status"),
+    )
+
+
+class MaterialVersion(Base, ULIDPrimaryKeyMixin):
+    """教材版本：一旦上传成功即不可变，更新必须创建新版本。"""
+
+    __tablename__ = "material_versions"
+
+    material_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("materials.id"), nullable=False
+    )
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="uploading", server_default="uploading"
+    )
+    object_key: Mapped[str | None] = mapped_column(String(512))
+    sha256: Mapped[str | None] = mapped_column(String(64), index=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer)
+    content_type: Mapped[str | None] = mapped_column(String(100))
+    original_filename: Mapped[str | None] = mapped_column(String(255))
+    created_by: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("material_id", "version_no", name="uq_material_versions_no"),
+        CheckConstraint(
+            "status IN ('uploading','uploaded','failed','removed')",
+            name="ck_material_versions_status",
+        ),
+    )

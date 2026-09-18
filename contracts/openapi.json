@@ -538,10 +538,109 @@
           }
         }
       }
+    },
+    "/api/v1/courses/{course_id}/materials": {
+      "post": {
+        "tags": [
+          "materials"
+        ],
+        "summary": "Upload Material",
+        "operationId": "upload_material_api_v1_courses__course_id__materials_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_material_api_v1_courses__course_id__materials_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "Body_upload_material_api_v1_courses__course_id__materials_post": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "material_type": {
+            "type": "string",
+            "pattern": "^(textbook|slides|handout|exercise|reference|other)$",
+            "title": "Material Type"
+          },
+          "visibility": {
+            "type": "string",
+            "pattern": "^(draft|published)$",
+            "title": "Visibility",
+            "default": "draft"
+          },
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "material_type",
+          "file"
+        ],
+        "title": "Body_upload_material_api_v1_courses__course_id__materials_post"
+      },
       "CourseCreate": {
         "properties": {
           "title": {
