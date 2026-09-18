@@ -125,6 +125,48 @@ async def run_turn_stream(
     """生成SSE事件流。仅当全部成功时才提交（半截结论不落库）。"""
     yield _sse("state", {"stage": "retrieving"})
 
+    from app.modules.memory.service import is_crisis_content, safety_response
+
+    if is_crisis_content(content):
+        answer = safety_response()
+        yield _sse("state", {"stage": "safety"})
+        for chunk_start in range(0, len(answer), 24):
+            yield _sse(
+                "delta",
+                {"sequence": chunk_start // 24, "text": answer[chunk_start : chunk_start + 24]},
+            )
+        db.add(
+            ChatTurn(
+                session_id=session_row.id,
+                client_turn_id=client_turn_id,
+                role="student",
+                content=content,
+            )
+        )
+        tutor_turn = ChatTurn(
+            session_id=session_row.id,
+            client_turn_id=f"{client_turn_id}:tutor",
+            role="tutor",
+            content=answer,
+            citations=[],
+            refusal=True,
+            finish_reason="safety",
+        )
+        db.add(tutor_turn)
+        await db.flush()
+        await db.refresh(tutor_turn, attribute_names=["id"])
+        await db.commit()
+        yield _sse(
+            "done",
+            {
+                "turn_id": tutor_turn.id,
+                "finish_reason": "safety",
+                "saved": True,
+                "refusal": True,
+            },
+        )
+        return
+
     try:
         items, warnings = await knowledge_service.hybrid_search(
             db,

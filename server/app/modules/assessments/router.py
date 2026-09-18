@@ -665,6 +665,41 @@ async def submit_attempt(
     attempt.grading_status = "graded" if not has_subjective else "pending_teacher"
     attempt.submitted_at = now
     if assessment is not None:
+        from app.modules.memory import service as memory_service
+
+        hints_by_default = 0
+        for _item, version, answer in rows:
+            correctness = None
+            if answer is not None:
+                correctness = answer.is_correct
+            if correctness is None:
+                continue
+            knowledge_points = [
+                kp for kp in (version.knowledge_point_ids or []) if isinstance(kp, str)
+            ][:5] or [f"{version.stem[:30]}"]
+            await memory_service.record_evidence(
+                db,
+                user_id=attempt.user_id,
+                course_id=assessment.course_id,
+                knowledge_points=knowledge_points,
+                question_version_id=version.id,
+                attempt_id=attempt.id,
+                source_type="formal_quiz",
+                hints_used=hints_by_default,
+                correct=correctness,
+            )
+        await memory_service.recompute_mastery(
+            db, user_id=attempt.user_id, course_id=assessment.course_id
+        )
+        await memory_service.update_memory_after_submit(
+            db,
+            user_id=attempt.user_id,
+            course_id=assessment.course_id,
+            attempt_id=attempt.id,
+        )
+        await memory_service.promote_weakness_if_mastered(
+            db, user_id=attempt.user_id, course_id=assessment.course_id
+        )
         for _points, version_id in wrong_versions:
             db.add(
                 ReviewTask(

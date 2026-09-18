@@ -383,6 +383,120 @@ class ReviewTask(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin)
     )
 
 
+class LearningEvidence(Base, ULIDPrimaryKeyMixin):
+    """掌握度证据账本：只追加不可变，每次状态变化可追溯到证据。"""
+
+    __tablename__ = "learning_evidences"
+
+    user_id: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+    course_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    knowledge_point: Mapped[str] = mapped_column(String(200), nullable=False)
+    question_version_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    attempt_id: Mapped[str | None] = mapped_column(String(26))
+    source_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    hints_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    correct: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    weight: Mapped[float] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_learning_evidences_user_course",
+            "user_id",
+            "course_id",
+        ),
+        CheckConstraint(
+            "source_type IN ('formal_quiz','practice','review')",
+            name="ck_learning_evidences_source",
+        ),
+    )
+
+
+class MasteryState(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
+    """聚合后的当前掌握状态。未学习/学习中/需巩固/基本掌握/已掌握。"""
+
+    __tablename__ = "mastery_states"
+
+    user_id: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+    course_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    knowledge_point: Mapped[str] = mapped_column(String(200), nullable=False)
+    state: Mapped[str] = mapped_column(String(30), nullable=False)
+    evidence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    correct_ratio: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    weight_score: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    last_evidence_id: Mapped[str | None] = mapped_column(String(26))
+
+    __table_args__ = (
+        Index(
+            "ix_mastery_states_user_course",
+            "user_id",
+            "course_id",
+        ),
+        UniqueConstraint(
+            "user_id", "course_id", "knowledge_point", name="uq_mastery_user_course_kp"
+        ),
+        CheckConstraint(
+            "state IN ('not_started','learning','needs_consolidation','proficient','mastered')",
+            name="ck_mastery_state",
+        ),
+    )
+
+
+class MemoryItem(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
+    """分层学习记忆：L1候选/L2稳定/L3偏好；过时隐藏不删除；替代关系可审计。"""
+
+    __tablename__ = "memory_items"
+
+    user_id: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+    course_id: Mapped[str | None] = mapped_column(String(26))
+    layer: Mapped[str] = mapped_column(String(10), nullable=False)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    source_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    source_ref: Mapped[str | None] = mapped_column(String(64))
+    confidence: Mapped[float] = mapped_column(nullable=False, default=0.5)
+    superseded_by_id: Mapped[str | None] = mapped_column(String(26))
+    stale: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
+    __table_args__ = (
+        Index("ix_memory_items_user", "user_id"),
+        CheckConstraint("layer IN ('L1','L2','L3')", name="ck_memory_items_layer"),
+        CheckConstraint(
+            "source_type IN ('quiz','tutor','practice','user','review')",
+            name="ck_memory_items_source",
+        ),
+    )
+
+
+class ModelCallLog(Base, ULIDPrimaryKeyMixin):
+    """模型网关调用日志：不含密钥与原文，只记元数据。"""
+
+    __tablename__ = "model_call_logs"
+
+    purpose: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    user_id: Mapped[str | None] = mapped_column(String(26))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('ok','timeout','error','budget_exceeded','circuit_open')",
+            name="ck_model_call_logs_status",
+        ),
+    )
+
+
 class Organization(Base, ULIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "organizations"
 
