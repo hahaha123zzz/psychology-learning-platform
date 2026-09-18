@@ -55,3 +55,18 @@ def presigned_get_url(*, key: str, expires_seconds: int = 600) -> str:
     return client.presigned_get_object(
         settings.minio_bucket, key, expires=timedelta(seconds=expires_seconds)
     )
+
+
+def get_object_bytes_sync(key: str) -> bytes:
+    client = get_storage_client()
+    settings = get_settings()
+    response = client.get_object(settings.minio_bucket, key)
+    try:
+        return response.read()
+    finally:
+        response.close()
+        response.release_conn()
+
+
+async def get_object_bytes(key: str) -> bytes:
+    return await asyncio.to_thread(get_object_bytes_sync, key)

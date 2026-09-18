@@ -118,3 +118,46 @@ def create_user_sync(
             return user.id
 
     return asyncio.run(_create())
+
+
+def _pdf_escape(text: str) -> str:
+    return text.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
+
+
+def make_pdf(pages: list[list[str]]) -> bytes:
+    """生成带文本层的合法PDF（含xref），每页多行文本。"""
+    objects: dict[int, bytes] = {}
+    n_pages = len(pages)
+    kids = " ".join(f"{4 + 2 * i} 0 R" for i in range(n_pages))
+    objects[1] = b"<< /Type /Catalog /Pages 2 0 R >>"
+    objects[2] = f"<< /Type /Pages /Kids [{kids}] /Count {n_pages} >>".encode()
+    objects[3] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+    for i, lines in enumerate(pages):
+        page_no = 4 + 2 * i
+        content_no = page_no + 1
+        objects[page_no] = (
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            f"/Resources << /Font << /F1 3 0 R >> >> /Contents {content_no} 0 R >>"
+        ).encode()
+        text_ops = ["BT /F1 14 Tf 72 720 Td 16 TL"]
+        for line in lines:
+            text_ops.append(f"({_pdf_escape(line)}) Tj T*")
+        text_ops.append("ET")
+        stream = "\n".join(text_ops).encode("latin-1", errors="replace")
+        objects[content_no] = (
+            b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n"
+            + stream + b"\nendstream"
+        )
+    out = bytearray(b"%PDF-1.4\n")
+    offsets: dict[int, int] = {}
+    for num in sorted(objects):
+        offsets[num] = len(out)
+        out += f"{num} 0 obj\n".encode() + objects[num] + b"\nendobj\n"
+    xref_pos = len(out)
+    size = max(objects) + 1
+    out += f"xref\n0 {size}\n".encode()
+    out += b"0000000000 65535 f \n"
+    for num in sorted(objects):
+        out += f"{offsets[num]:010d} 00000 n \n".encode()
+    out += f"trailer\n<< /Size {size} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF".encode()
+    return bytes(out)

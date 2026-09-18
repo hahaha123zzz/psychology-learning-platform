@@ -15,3 +15,14 @@ class MaterialUploadOut(BaseModel):
     status: str
     sha256: str
     size_bytes: int
+
+
+class KnowledgeObjectCorrection(BaseModel):
+    version: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=500)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    normalized_content: str | None = None
+    reading_order: int | None = Field(default=None, ge=0)
+    review_status: str | None = Field(
+        default=None, pattern="^(pending|approved|rejected|corrected)$"
+    )

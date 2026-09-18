@@ -223,11 +223,56 @@ class MaterialVersion(Base, ULIDPrimaryKeyMixin):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    page_count: Mapped[int | None] = mapped_column(Integer)
+    quality_report: Mapped[dict | None] = mapped_column(JSON)
 
     __table_args__ = (
         UniqueConstraint("material_id", "version_no", name="uq_material_versions_no"),
         CheckConstraint(
             "status IN ('uploading','uploaded','failed','parsing','parsed','removed')",
             name="ck_material_versions_status",
+        ),
+    )
+
+
+class KnowledgeObject(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
+    """教材解析中间格式对象。raw_content不可修改，教师修正写入override层。"""
+
+    __tablename__ = "knowledge_objects"
+
+    material_version_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("material_versions.id"), nullable=False
+    )
+    type: Mapped[str] = mapped_column(String(20), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(200))
+    chapter_path: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    parent_id: Mapped[str | None] = mapped_column(String(26))
+    physical_page: Mapped[int] = mapped_column(Integer, nullable=False)
+    printed_page: Mapped[int | None] = mapped_column(Integer)
+    reading_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    bbox: Mapped[list | None] = mapped_column(JSON)
+    raw_content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    normalized_content: Mapped[str | None] = mapped_column(Text)
+    parser: Mapped[str] = mapped_column(String(50), nullable=False)
+    parser_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    confidence: Mapped[float] = mapped_column(nullable=False, default=0.9)
+    review_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending"
+    )
+    override: Mapped[list | None] = mapped_column(JSON)
+
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('chapter','paragraph','figure','table','formula')",
+            name="ck_knowledge_objects_type",
+        ),
+        CheckConstraint(
+            "review_status IN ('pending','approved','rejected','corrected')",
+            name="ck_knowledge_objects_review",
+        ),
+        Index(
+            "ix_knowledge_objects_version_order",
+            "material_version_id",
+            "reading_order",
         ),
     )

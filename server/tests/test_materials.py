@@ -1,8 +1,8 @@
 import io
 
-from tests.conftest import create_user_sync
+from tests.conftest import create_user_sync, make_pdf
 
-MINIMAL_PDF = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
+MINIMAL_PDF = make_pdf([["Minimal test page for upload fixture text"]])
 FAKE_DOCX = b"this is not a zip file at all" * 3
 
 

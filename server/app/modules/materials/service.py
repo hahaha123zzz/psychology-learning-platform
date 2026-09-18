@@ -9,7 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.db.models import Course, Job, Material, MaterialVersion
+from app.db.models import (
+    Course,
+    Job,
+    KnowledgeObject,
+    Material,
+    MaterialVersion,
+)
 from app.db.session import session_factory
 
 ALLOWED_TYPES: dict[str, tuple[str, str | None]] = {
@@ -159,15 +165,6 @@ async def get_course_or_404(db: AsyncSession, course_id: str) -> Course:
 
 # ---- 解析任务 ----
 
-PARSE_STAGES: list[tuple[str, int]] = [
-    ("download", 15),
-    ("render", 35),
-    ("parse", 60),
-    ("normalize", 80),
-    ("quality", 95),
-    ("persist", 100),
-]
-
 _background_tasks: set[asyncio.Task] = set()
 
 
@@ -197,9 +194,11 @@ async def find_parse_job_by_idempotency_key(
 
 
 async def run_parse_job(job_id: str, version_id: str) -> None:
-    """后台执行解析。阶段进度只增不减；异常时版本回退为 failed。"""
-    settings = get_settings()
-    stage_sleep = max(settings.parse_simulate_seconds, 0.1) / len(PARSE_STAGES)
+    """后台执行解析：下载→解析→质量检查→持久化。失败时版本回退为failed。"""
+    from app.core.storage import get_object_bytes
+    from app.db.models import KnowledgeObject
+    from app.modules.materials.parsers.base import get_parser
+
     async with session_factory() as session:
         job = await session.get(Job, job_id)
         version = await session.get(MaterialVersion, version_id)
@@ -211,15 +210,57 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
         version.status = "parsing"
         await session.commit()
         try:
-            for stage, progress in PARSE_STAGES:
-                await asyncio.sleep(stage_sleep)
-                job.stage = stage
-                job.progress = max(job.progress, progress)
-                await session.commit()
+            if not version.object_key:
+                raise RuntimeError("版本缺少对象键，无法解析")
+            data = await get_object_bytes(version.object_key)
+            job.progress = max(job.progress, 30)
+            job.stage = "parse"
+            await session.commit()
+
+            parser = get_parser(version.content_type)
+            result = await asyncio.to_thread(parser.parse, data, version.content_type or "")
+            job.progress = max(job.progress, 70)
+            job.stage = "quality"
+            await session.commit()
+
+            empty_pages = max(result.page_count - _pages_with_objects(result.objects), 0)
+            low_confidence = sum(1 for o in result.objects if o.confidence < 0.5)
+            quality_report = {
+                "parser": parser.name,
+                "parser_version": parser.version,
+                "page_count": result.page_count,
+                "object_count": len(result.objects),
+                "empty_pages": empty_pages,
+                "low_confidence_objects": low_confidence,
+                "issues": result.issues,
+            }
+
+            job.stage = "persist"
+            rows = [
+                KnowledgeObject(
+                    material_version_id=version_id,
+                    type=o.type,
+                    title=o.title,
+                    chapter_path=o.chapter_path,
+                    physical_page=o.physical_page,
+                    printed_page=o.printed_page,
+                    reading_order=o.reading_order,
+                    bbox=o.bbox,
+                    raw_content=o.raw_content,
+                    parser=parser.name,
+                    parser_version=parser.version,
+                    confidence=o.confidence,
+                    review_status="pending",
+                )
+                for o in result.objects
+            ]
+            session.add_all(rows)
+            version.page_count = result.page_count
+            version.quality_report = quality_report
             version.status = "parsed"
-            job.status = "succeeded"
-            job.stage = "done"
             job.progress = 100
+            job.stage = "done"
+            job.status = "succeeded"
             job.finished_at = datetime.now(UTC)
             await session.commit()
         except Exception as exc:  # noqa: BLE001
@@ -229,6 +270,10 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
             job.retryable = True
             job.finished_at = datetime.now(UTC)
             await session.commit()
+
+
+def _pages_with_objects(objects) -> int:
+    return len({o.physical_page for o in objects if o.raw_content})
 
 
 def spawn_parse_job(job_id: str, version_id: str) -> None:
@@ -268,3 +313,59 @@ async def get_version_with_material_or_404(
             message="资料版本不存在或无权访问",
         )
     return row[0], row[1]
+
+
+async def get_object_or_404(db: AsyncSession, object_id: str) -> KnowledgeObject:
+    result = await db.execute(
+        select(KnowledgeObject).where(KnowledgeObject.id == object_id).limit(1)
+    )
+    object_row = result.scalar_one_or_none()
+    if object_row is None:
+        raise ApiError(
+            status_code=404,
+            code="KNOWLEDGE_OBJECT_NOT_FOUND",
+            message="知识对象不存在或无权访问",
+        )
+    return object_row
+
+
+async def build_outline(db: AsyncSession, version_id: str, page_count: int | None) -> list[dict]:
+    result = await db.execute(
+        select(KnowledgeObject)
+        .where(
+            KnowledgeObject.material_version_id == version_id,
+            KnowledgeObject.type == "chapter",
+        )
+        .order_by(KnowledgeObject.reading_order.asc())
+    )
+    chapters = list(result.scalars())
+
+    count_result = await db.execute(
+        select(
+            KnowledgeObject.chapter_path, func.count(KnowledgeObject.id)
+        )
+        .where(KnowledgeObject.material_version_id == version_id)
+        .group_by(KnowledgeObject.chapter_path)
+    )
+    counts = {path: count for path, count in count_result.all()}
+
+    outline: list[dict] = []
+    for index, chapter in enumerate(chapters):
+        start_page = chapter.physical_page
+        next_page = (
+            chapters[index + 1].physical_page if index + 1 < len(chapters) else None
+        )
+        end_page = (next_page - 1) if next_page else (page_count or start_page)
+        outline.append(
+            {
+                "id": chapter.id,
+                "title": chapter.title or (chapter.normalized_content or "")[:50] or "未命名",
+                "level": len([p for p in chapter.chapter_path.split("/") if p]),
+                "parent_id": chapter.parent_id,
+                "start_page": start_page,
+                "end_page": end_page,
+                "review_status": chapter.review_status,
+                "object_count": counts.get(chapter.chapter_path, 0),
+            }
+        )
+    return outline

@@ -11,7 +11,11 @@ from app.db.session import get_db_session
 from app.modules.auth.dependencies import get_current_user, require_course_role
 from app.modules.courses import service as course_service
 from app.modules.materials import service as materials_service
-from app.modules.materials.schemas import MaterialUploadForm, MaterialUploadOut
+from app.modules.materials.schemas import (
+    KnowledgeObjectCorrection,
+    MaterialUploadForm,
+    MaterialUploadOut,
+)
 
 router = APIRouter()
 
@@ -340,6 +344,16 @@ async def publish_version(
             message="资料必须解析成功后才能发布",
             details={"status": version.status},
         )
+    report = version.quality_report or {}
+    issues = report.get("issues") or []
+    blocking = [i for i in issues if i in ("no_text_extracted", "parser_unavailable")]
+    if blocking:
+        raise ApiError(
+            status_code=409,
+            code="QUALITY_GATE_FAILED",
+            message="解析质量未达标，不能发布（如扫描件缺少文本层）",
+            details={"issues": blocking, "quality_report": report},
+        )
     if material.status != "active":
         raise ApiError(
             status_code=409,
@@ -367,6 +381,105 @@ async def publish_version(
             "published_at": published_at.isoformat(),
             "index_job_id": None,
         },
+    )
+
+
+@router.get("/material-versions/{version_id}/outline", response_model=None)
+async def get_outline(
+    version_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    version, material = await materials_service.get_version_with_material_or_404(
+        db, version_id
+    )
+    role = await require_course_role(
+        material.course_id, user, db, roles={"teacher", "assistant", "student"}
+    )
+    if role == "student" and (
+        material.visibility != "published" or material.status != "active"
+    ):
+        raise ApiError(
+            status_code=404,
+            code="MATERIAL_VERSION_NOT_FOUND",
+            message="资料版本不存在或无权访问",
+        )
+    outline = await materials_service.build_outline(
+        db, version_id, version.page_count
+    )
+    return ok(request, outline, has_more=False)
+
+
+@router.patch("/knowledge-objects/{object_id}", response_model=None)
+async def correct_knowledge_object(
+    object_id: str,
+    request: Request,
+    body: KnowledgeObjectCorrection,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    from datetime import UTC, datetime
+
+    knowledge_object = await materials_service.get_object_or_404(db, object_id)
+    version, material = await materials_service.get_version_with_material_or_404(
+        db, knowledge_object.material_version_id
+    )
+    await require_course_role(
+        material.course_id, user, db, roles={"teacher"}
+    )
+    if knowledge_object.version != body.version:
+        raise ApiError(
+            status_code=409,
+            code="RESOURCE_VERSION_CONFLICT",
+            message="知识对象已被其他人修改，请刷新后重试",
+            details={
+                "expected_version": body.version,
+                "actual_version": knowledge_object.version,
+            },
+        )
+
+    changes: dict = {}
+    if body.title is not None:
+        changes["title"] = body.title
+    if body.normalized_content is not None:
+        changes["normalized_content"] = body.normalized_content
+    if body.reading_order is not None:
+        changes["reading_order"] = body.reading_order
+    if body.review_status is not None:
+        changes["review_status"] = body.review_status
+    if not changes:
+        raise ApiError(
+            status_code=422, code="VALIDATION_ERROR", message="没有需要修正的字段"
+        )
+
+    override_entry = {
+        "reason": body.reason,
+        "changes": changes,
+        "by": user.id,
+        "at": datetime.now(UTC).isoformat(),
+    }
+    override_list = list(knowledge_object.override or [])
+    override_list.append(override_entry)
+    knowledge_object.override = override_list
+    for field_name, value in changes.items():
+        setattr(knowledge_object, field_name, value)
+    if "normalized_content" in changes and body.review_status is None:
+        knowledge_object.review_status = "corrected"
+    knowledge_object.version += 1
+    await course_service.write_audit(
+        db,
+        actor_id=user.id,
+        action="knowledge_object.corrected",
+        resource_type="knowledge_object",
+        resource_id=knowledge_object.id,
+        course_id=material.course_id,
+        detail={"reason": body.reason, "fields": sorted(changes)},
+    )
+    await db.commit()
+    return ok(
+        request,
+        {"id": knowledge_object.id, "version": knowledge_object.version},
     )
 
 

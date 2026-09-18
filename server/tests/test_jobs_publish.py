@@ -1,6 +1,6 @@
 import time
 
-from tests.conftest import create_user_sync
+from tests.conftest import create_user_sync, make_pdf
 from tests.test_materials import _login, _setup_course, _upload
 
 
@@ -135,9 +135,17 @@ def test_publish_requires_parsed_status(client) -> None:
 
 def test_publish_makes_material_visible_to_students(client) -> None:
     course_id, _ = _setup_course(client)
-    _upload_one(client, course_id, title="草稿章节", content=b"%PDF-1.4 draft\n")
+    _upload_one(
+        client,
+        course_id,
+        title="草稿章节",
+        content=make_pdf([["Draft chapter body text for visibility test"]]),
+    )
     published = _upload_one(
-        client, course_id, title="已发布章节", content=b"%PDF-1.4 published\n"
+        client,
+        course_id,
+        title="已发布章节",
+        content=make_pdf([["Published chapter body text for test"]]),
     )
 
     _login(client, "ms@uni.edu")
