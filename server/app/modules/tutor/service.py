@@ -12,6 +12,9 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
+from app.core.model_gateway import call_model
+from app.core.providers.llm import OpenAICompatibleLLM
 from app.db.base import new_ulid
 from app.db.models import ChatTurn, LearningSession
 from app.modules.knowledge import service as knowledge_service
@@ -83,6 +86,50 @@ def generate_answer(query: str, package: EvidencePackage) -> str:
     if not picked:
         picked = [best_sentences[0][1]] if best_sentences else []
     return "根据教材：" + " ".join(picked)
+
+
+async def generate_grounded_answer(
+    db: AsyncSession,
+    *,
+    query: str,
+    package: EvidencePackage,
+    user_id: str,
+    purpose: str,
+) -> tuple[str, str]:
+    """按部署配置调用单一供应商；失败时退回教材抽取式答案。"""
+    settings = get_settings()
+    if settings.llm_provider == "internal" or not package.items:
+        return generate_answer(query, package), "internal"
+    try:
+        provider = OpenAICompatibleLLM(
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key,
+            model=settings.llm_model,
+            timeout_seconds=settings.llm_timeout_seconds,
+        )
+    except ValueError:
+        return generate_answer(query, package), "internal_configuration_fallback"
+
+    async def invoke():
+        generated = await provider.generate_grounded_answer(
+            query=query, evidence=package.items
+        )
+        return generated, generated.prompt_tokens, generated.completion_tokens
+
+    try:
+        result = await call_model(
+            db,
+            purpose=purpose,
+            provider=settings.llm_provider,
+            model=settings.llm_model,
+            invoke=invoke,
+            user_id=user_id,
+        )
+    except Exception:  # noqa: BLE001 外部失败不得破坏教材约束回答
+        return generate_answer(query, package), "internal_fallback"
+    if result.status != "ok" or result.output is None:
+        return generate_answer(query, package), "internal_fallback"
+    return result.output.answer, settings.llm_provider
 
 
 # ---- 主张—证据校验 ----
@@ -203,8 +250,19 @@ async def run_turn_stream(
     )
 
     refusal = not package.items
-    answer = generate_answer(content, package)
+    answer, generation_provider = await generate_grounded_answer(
+        db,
+        query=content,
+        package=package,
+        user_id=session_row.user_id,
+        purpose=purpose,
+    )
     verification = verify_claims(answer, package)
+    if verification["unsupported_count"]:
+        answer = generate_answer(content, package)
+        generation_provider = "internal_verification_fallback"
+        verification = verify_claims(answer, package)
+    verification["generation_provider"] = generation_provider
     answer = answer.removeprefix("根据教材：")
     answer = "根据教材：" + answer if not refusal else answer
 

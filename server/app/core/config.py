@@ -37,8 +37,13 @@ class Settings(BaseSettings):
     course_storage_quota_gb: int = 20
     parse_simulate_seconds: float = 2.0
 
+    llm_provider: str = "internal"
+    llm_base_url: str = ""
+    llm_api_key: str = ""
+    llm_model: str = ""
+    llm_timeout_seconds: float = 30.0
+
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
