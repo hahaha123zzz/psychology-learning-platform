@@ -2493,6 +2493,47 @@
           }
         }
       }
+    },
+    "/api/v1/courses/{course_id}/analytics/overview": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Course Analytics Overview",
+        "description": "返回可核对的班级聚合；不下发问答正文、记忆条目或个人明细。",
+        "operationId": "course_analytics_overview_api_v1_courses__course_id__analytics_overview_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.modules.analytics.router import router as analytics_router
 from app.modules.assessments.router import router as assessments_router
 from app.modules.auth.router import router as auth_router
 from app.modules.courses.router import router as courses_router
@@ -20,3 +21,4 @@ api_router.include_router(assessments_router, tags=["assessments"])
 api_router.include_router(question_agent_router, tags=["question-agent"])
 api_router.include_router(memory_router, tags=["memory"])
 api_router.include_router(tutor_router, tags=["tutor"])
+api_router.include_router(analytics_router, tags=["analytics"])
