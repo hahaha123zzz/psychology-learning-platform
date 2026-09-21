@@ -59,7 +59,7 @@ def _run_migrations() -> None:
     command.upgrade(alembic_cfg, "head")
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def _prepare_database() -> None:
     _ensure_test_database()
     _run_migrations()
@@ -67,7 +67,7 @@ def _prepare_database() -> None:
 
 
 @pytest.fixture()
-def client():
+def client(_prepare_database):
     from app.main import app
 
     with TestClient(app) as c:

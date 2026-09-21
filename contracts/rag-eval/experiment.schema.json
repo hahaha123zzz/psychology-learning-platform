@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Multimodal Textbook RAG Experiment Record",
+  "type": "object",
+  "required": [
+    "experiment_id",
+    "dataset_id",
+    "dataset_version",
+    "retrieval_version",
+    "channels",
+    "fusion",
+    "rerank",
+    "adaptive_cutoff",
+    "runtime",
+    "metrics"
+  ],
+  "properties": {
+    "experiment_id": {"type": "string", "minLength": 1},
+    "dataset_id": {"type": "string", "minLength": 1},
+    "dataset_version": {"type": "string", "minLength": 1},
+    "retrieval_version": {"type": "string", "minLength": 1},
+    "channels": {
+      "type": "object",
+      "required": ["sparse", "dense", "visual"],
+      "properties": {
+        "sparse": {"type": "object"},
+        "dense": {"type": "object"},
+        "visual": {"type": "object"}
+      }
+    },
+    "fusion": {"type": "object", "required": ["strategy", "version"]},
+    "rerank": {"type": "object", "required": ["enabled"]},
+    "adaptive_cutoff": {"type": "object", "required": ["enabled"]},
+    "runtime": {
+      "type": "object",
+      "required": ["provider", "hardware_or_api_quota", "concurrency"]
+    },
+    "metrics": {"type": "object"}
+  }
+}

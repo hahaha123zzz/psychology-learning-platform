@@ -1,0 +1,36 @@
+{
+  "dataset_id": "multimodal-textbook-sample-v1",
+  "schema_version": "rag-eval/v3-run",
+  "results": [
+    {
+      "case_id": "case-stroop-flow",
+      "retrieved_object_ids": ["obj-figure-stroop", "obj-paragraph-stroop"],
+      "predicted_page": 1,
+      "predicted_bbox": [0.16, 0.34, 0.84, 0.82],
+      "cited_object_ids": ["obj-figure-stroop", "obj-paragraph-stroop"],
+      "claim_support_levels": ["supported", "supported"],
+      "refused": false,
+      "latency_ms": 820.0
+    },
+    {
+      "case_id": "case-reaction-time",
+      "retrieved_object_ids": ["obj-table-reaction-time"],
+      "predicted_page": 2,
+      "predicted_bbox": [0.12, 0.20, 0.88, 0.64],
+      "cited_object_ids": ["obj-table-reaction-time"],
+      "claim_support_levels": ["supported"],
+      "refused": false,
+      "latency_ms": 760.0
+    },
+    {
+      "case_id": "case-out-of-scope",
+      "retrieved_object_ids": [],
+      "predicted_page": null,
+      "predicted_bbox": null,
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "refused": true,
+      "latency_ms": 110.0
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "dataset_id": "multimodal-textbook-sample-v1",
+  "schema_version": "rag-eval/v3",
+  "documents": [
+    {"id": "doc-psych-001", "title": "实验心理学示例教材", "format": "pdf", "page_count": 2}
+  ],
+  "objects": [
+    {
+      "id": "obj-paragraph-stroop",
+      "document_id": "doc-psych-001",
+      "object_type": "paragraph",
+      "page": 1,
+      "bbox": [0.10, 0.10, 0.90, 0.28],
+      "chapter_path": "4.2"
+    },
+    {
+      "id": "obj-figure-stroop",
+      "document_id": "doc-psych-001",
+      "object_type": "image",
+      "page": 1,
+      "bbox": [0.16, 0.34, 0.84, 0.82],
+      "chapter_path": "4.2"
+    },
+    {
+      "id": "obj-table-reaction-time",
+      "document_id": "doc-psych-001",
+      "object_type": "table",
+      "page": 2,
+      "bbox": [0.12, 0.20, 0.88, 0.64],
+      "chapter_path": "4.3"
+    }
+  ],
+  "cases": [
+    {
+      "id": "case-stroop-flow",
+      "query": "图中的斯特鲁普实验流程如何进行？",
+      "expected_refusal": false,
+      "answer_points": ["区分一致与不一致条件", "展示颜色命名任务"],
+      "relevant_object_ids": ["obj-figure-stroop", "obj-paragraph-stroop"],
+      "allowed_evidence_ids": ["obj-figure-stroop", "obj-paragraph-stroop"]
+    },
+    {
+      "id": "case-reaction-time",
+      "query": "表中的不一致条件反应时间是多少？",
+      "expected_refusal": false,
+      "answer_points": ["680 ms"],
+      "relevant_object_ids": ["obj-table-reaction-time"],
+      "allowed_evidence_ids": ["obj-table-reaction-time"]
+    },
+    {
+      "id": "case-out-of-scope",
+      "query": "量子隐形传态如何实现？",
+      "expected_refusal": true,
+      "answer_points": [],
+      "relevant_object_ids": [],
+      "allowed_evidence_ids": []
+    }
+  ]
+}

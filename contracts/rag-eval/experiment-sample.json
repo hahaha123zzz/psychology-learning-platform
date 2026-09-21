@@ -1,0 +1,30 @@
+{
+  "experiment_id": "hybrid-v1-baseline-sample",
+  "dataset_id": "multimodal-textbook-sample-v1",
+  "dataset_version": "2026-09-21",
+  "retrieval_version": "hybrid-v1",
+  "channels": {
+    "sparse": {"enabled": true, "provider": "postgresql", "model": "simple-tsvector"},
+    "dense": {"enabled": true, "provider": "internal", "model": "hash-v1", "dimension": 384},
+    "visual": {"enabled": false, "provider": null, "model": null}
+  },
+  "fusion": {"strategy": "rrf", "version": "rrf-v1", "parameters": {"k": 60}},
+  "rerank": {"enabled": false, "provider": null, "model": null},
+  "adaptive_cutoff": {"enabled": false, "strategy": "fixed-k", "parameters": {"top_k": 8}},
+  "runtime": {
+    "provider": "internal",
+    "hardware_or_api_quota": "local deterministic baseline",
+    "concurrency": 1
+  },
+  "metrics": {
+    "recall_at_k": null,
+    "ndcg_at_k": null,
+    "figure_hit_rate": null,
+    "page_recall_at_k": null,
+    "bbox_hit_rate": null,
+    "p95_latency_ms": null,
+    "throughput_per_second": null,
+    "index_size_bytes": null,
+    "estimated_cost": null
+  }
+}
