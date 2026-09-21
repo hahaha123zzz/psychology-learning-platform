@@ -391,6 +391,56 @@ async def publish_assessment(
     return ok(request, {"id": assessment.id, "status": assessment.status})
 
 
+def _assessment_availability(assessment: Assessment, now: datetime) -> str:
+    if assessment.status != "published":
+        return assessment.status
+    if assessment.opens_at and now < assessment.opens_at:
+        return "scheduled"
+    if assessment.closes_at and now > assessment.closes_at:
+        return "closed"
+    return "open"
+
+
+@router.get("/courses/{course_id}/assessments", response_model=None)
+async def list_assessments(
+    course_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    role = await require_course_role(
+        course_id, user, db, roles={"teacher", "assistant", "student"}
+    )
+    staff = role in ("teacher", "assistant") or user.is_platform_admin
+    query = select(Assessment).where(Assessment.course_id == course_id)
+    if not staff:
+        query = query.where(Assessment.status == "published")
+    rows = (
+        await db.execute(query.order_by(Assessment.created_at.desc(), Assessment.id.desc()))
+    ).scalars()
+    now = datetime.now(UTC)
+    return ok(
+        request,
+        [
+            {
+                "id": assessment.id,
+                "title": assessment.title,
+                "status": assessment.status,
+                "availability": _assessment_availability(assessment, now),
+                "ai_policy": assessment.ai_policy,
+                "opens_at": assessment.opens_at.isoformat()
+                if assessment.opens_at
+                else None,
+                "closes_at": assessment.closes_at.isoformat()
+                if assessment.closes_at
+                else None,
+            }
+            for assessment in rows
+        ],
+        has_more=False,
+    )
+
+
 async def _get_assessment_or_404(
     db: AsyncSession, assessment_id: str, user: User, *, staff: bool = True
 ) -> Assessment:
@@ -426,6 +476,28 @@ async def get_assessment(
         assessment.course_id, user, db, roles={"teacher", "assistant", "student"}
     )
     staff = role in ("teacher", "assistant") or user.is_platform_admin
+    if not staff:
+        if assessment.status != "published":
+            raise ApiError(
+                status_code=404,
+                code="ASSESSMENT_NOT_FOUND",
+                message="测验不存在或无权访问",
+            )
+        now = datetime.now(UTC)
+        if assessment.opens_at and now < assessment.opens_at:
+            raise ApiError(
+                status_code=409,
+                code="ASSESSMENT_NOT_OPEN",
+                message="测验尚未开始",
+                details={"opens_at": assessment.opens_at.isoformat()},
+            )
+        if assessment.closes_at and now > assessment.closes_at:
+            raise ApiError(
+                status_code=409,
+                code="ASSESSMENT_CLOSED",
+                message="测验已结束",
+                details={"closes_at": assessment.closes_at.isoformat()},
+            )
     rows = (
         await db.execute(
             select(AssessmentItem, QuestionVersion)

@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from tests.test_materials import _login, _setup_course
 
 QUESTION_BODY = {
@@ -172,6 +174,48 @@ def test_full_assessment_attempt_and_grading(client) -> None:
     assert result_view.status_code == 200
     item = result_view.json()["data"]["items"][0]
     assert item["is_correct"] is True
+
+
+def test_student_assessment_discovery_hides_drafts_and_protects_scheduled_items(
+    client,
+) -> None:
+    course_id, question = _prepare_published_question(client)
+    question_id = question["id"]
+    client.post(
+        f"/api/v1/questions/{question_id}/review",
+        json={"action": "approve", "version": 1, "comment": "ok"},
+    )
+    client.post(f"/api/v1/questions/{question_id}/publish")
+    opens_at = datetime.now(UTC) + timedelta(days=1)
+    created = client.post(
+        f"/api/v1/courses/{course_id}/assessments",
+        json={
+            "title": "明日测验",
+            "question_ids": [question_id],
+            "opens_at": opens_at.isoformat(),
+        },
+    )
+    assessment_id = created.json()["data"]["id"]
+
+    teacher_list = client.get(f"/api/v1/courses/{course_id}/assessments")
+    assert teacher_list.status_code == 200
+    assert teacher_list.json()["data"][0]["availability"] == "draft"
+
+    _login(client, "ms@uni.edu")
+    hidden_list = client.get(f"/api/v1/courses/{course_id}/assessments")
+    assert hidden_list.status_code == 200
+    assert hidden_list.json()["data"] == []
+    hidden_detail = client.get(f"/api/v1/assessments/{assessment_id}")
+    assert hidden_detail.status_code == 404
+
+    _login(client, "mt@uni.edu")
+    client.post(f"/api/v1/assessments/{assessment_id}/publish")
+    _login(client, "ms@uni.edu")
+    scheduled_list = client.get(f"/api/v1/courses/{course_id}/assessments")
+    assert scheduled_list.json()["data"][0]["availability"] == "scheduled"
+    scheduled_detail = client.get(f"/api/v1/assessments/{assessment_id}")
+    assert scheduled_detail.status_code == 409
+    assert scheduled_detail.json()["error"]["code"] == "ASSESSMENT_NOT_OPEN"
 
 
 def test_unpublished_question_rejected_from_assessment(client) -> None:
