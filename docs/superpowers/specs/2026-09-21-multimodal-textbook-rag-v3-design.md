@@ -168,7 +168,40 @@ render_version
 
 关系记录来源、置信度和审核状态，用于 Evidence Closure，但不能绕过发布和权限过滤。
 
-### 5.5 RetrievalIndexEntry
+### 5.5 RetrievalUnit 与 GenerationUnit
+
+`KnowledgeObject` 是教材事实对象，但检索粒度与生成上下文不能等同。V3 显式区分两个概念：
+
+#### RetrievalUnit
+
+`RetrievalUnit` 是用于召回和排序的可重建派生单元，可以比教材对象更小或更适合特定检索通道。例如：
+
+- 长段落按语义边界形成 Child Chunk。
+- 表格形成整表、行、列或关键单元格组合。
+- 图片形成图片裁剪、Caption/OCR 文本和视觉 Patch 表示。
+- 页面形成供多向量视觉检索使用的 Page Unit。
+- 公式形成 LaTeX、语义描述和公式裁剪表示。
+
+每个 RetrievalUnit 必须记录其来源 `KnowledgeObject`、字符范围或 `bbox`、构建策略、Representation 版本和覆盖范围。Sparse、Dense、Visual 和 Multi-vector 索引都建立在 RetrievalUnit 上，而不是默认直接对整个 Paragraph Object 建索引。RetrievalUnit 只能用于找回教材，不能单独成为最终事实引用。
+
+#### GenerationUnit
+
+`GenerationUnit` 是检索完成后为回答临时组装的最小充分上下文。它通常包含命中 RetrievalUnit 对应的完整父对象、必要前后对象以及 Evidence Closure 补入的图、表、公式、标题、单位和定义。GenerationUnit 在进入模型前冻结为 EvidencePackage 快照，并受 Token、视觉页数和延迟预算约束。
+
+典型规则为：
+
+```text
+Child Chunk 用于召回
+→ Parent Object 用于理解
+→ Relation Closure 用于补齐证据
+→ GenerationUnit 用于生成与核验
+```
+
+表格问题可以按单元格或行召回，但生成时必须携带足以解释该数值的表头、单位、标题和注释；视觉页面可以按 Patch 召回，但生成时只发送相关页面区域及其关系对象。去重以 GenerationUnit 的教材覆盖范围为准，避免多个 Child Chunk 重复占用上下文。
+
+Late Chunking 只是一种 RetrievalUnit 表示策略：先在较大的父上下文中编码，再取得局部单元表示。它不能替代父对象、原始内容或 GenerationUnit 的显式组装。
+
+### 5.6 RetrievalIndexEntry
 
 索引条目关联对象或表示，记录：
 
@@ -185,7 +218,7 @@ status
 
 不同 Embedding 模型的向量绝不混用。新索引完整构建、抽检通过后原子切换为当前版本。
 
-### 5.6 Evidence
+### 5.7 Evidence
 
 Evidence 绑定：
 
@@ -196,7 +229,7 @@ Evidence 绑定：
 
 Evidence 读取时重新校验课程成员、发布状态和版本可用性。对历史回答，允许读取其旧版本证据，但不能借此访问用户从未拥有权限的教材。
 
-### 5.7 ParseReviewIssue
+### 5.8 ParseReviewIssue
 
 记录低置信对象、阅读顺序异常、跨页表格、公式不确定、Caption 缺失、图文关系冲突、页面渲染失败等问题。阻塞级 Issue 全部关闭后，教师才可确认发布。
 
@@ -249,7 +282,18 @@ Rewrite、Multi-query 和 HyDE 仅用于查找教材，输出不进入 Evidence�
 
 ### 8.2 并行召回与融合
 
-在允许的范围内并行运行 Sparse、Dense 和 Visual 召回。每个通道取较宽候选集，Fusion 记录各通道排名和命中原因。Reranker 综合：
+在允许的范围内并行运行 Sparse、Dense 和 Visual 召回。每个通道取较宽候选集，Fusion 记录各通道排名、原始分数、归一化分数和命中原因。
+
+Query Analyzer 输出 `channel_priors`，表达当前问题对各通道的先验重要性。例如图片问题提高 Visual 优先级，定义题提高 Sparse/Dense 优先级；先验参数来自评测配置，不能在业务代码中写死。通道不可用时必须显式记录降级原因，不能简单把剩余权重重新归一化后假装检索完整。
+
+Fusion 采用可替换、可版本化的策略接口，并按同一评测集依次比较：
+
+1. RRF，作为与分数量纲无关的稳定基线。
+2. Weighted RRF，作为首期推荐实现，用 Query Type 的 Channel Prior 调整各通道贡献。
+3. Score Normalization Fusion，比较分位数、z-score 或校准后的跨通道分数融合。
+4. Learned Fusion，仅在真实教材和足够人工相关性标注到位后评估，首期不以小规模模拟集训练线上排序器。
+
+每次 Fusion 输出 `fusion_version`、Query Type、Channel Prior、各候选通道贡献和最终排名，保证离线复现和消融评测。Reranker 在 Fusion 候选上继续综合：
 
 - 文本与视觉相关性。
 - 问题目标与对象类型是否一致。
@@ -392,6 +436,29 @@ Provider Adapter 对业务层暴露统一用途接口：
 
 候选供应商必须在相同测试集、配置和并发条件下对照，综合质量、延迟、稳定性和成本选择默认配置。
 
+### 14.4 文本与视觉模型选型实验
+
+架构层只冻结能力接口，不预先指定某个模型。实施前必须用同一教材评测集和固定硬件/API 配额完成模型选型实验，并把结论记录为独立 ADR。
+
+视觉检索候选至少覆盖以下技术路线：
+
+- ColPali 类页面多向量 Late Interaction。
+- ColQwen 类中文/多语言文档视觉多向量模型。
+- VisRAG 风格的页面召回后 VLM 阅读链路。
+- CLIP 类单向量视觉基线。
+
+比较指标包括 Figure Hit Rate、Page Recall@K、对象/BBox 命中率、P95 延迟、并发吞吐、VRAM 或 API 成本、索引大小和构建时间。最终选择 Pareto 合理方案，不能只看单项 Recall；单向量方案即使速度更快，也只有在复杂图表和布局测试达到门槛时才能成为默认通道。
+
+文本检索候选至少包含 BGE-M3、其他中文/多语言 Embedding 以及候选供应商的 API Embedding。实验矩阵比较：
+
+```text
+Dense only
+Sparse + Dense
+Sparse + Dense + Multi-vector
+```
+
+统一报告 Recall@K、MRR、nDCG、中文术语与模糊表达命中率、延迟、吞吐、索引大小和调用成本。BGE-M3 只是候选，不因设计阶段曾被提及而直接成为默认模型。Embedding、Visual Retrieval、Rerank 和 Fusion 分别做消融实验，避免把组合提升错误归因给单一模型。
+
 ## 15. 分阶段实施顺序
 
 ### 阶段 0：基线与评测夹具
@@ -399,13 +466,13 @@ Provider Adapter 对业务层暴露统一用途接口：
 - 固定当前 V2 检索基线。
 - 制作 PDF/Word 多模态测试资料和标注集。
 - 建立解析、检索、引用、回答、拒答和性能报告格式。
-- 用相同问题集完成候选 Provider 初筛。
+- 建立 Text/Visual Retrieval 与 Fusion 的统一实验 Harness，用相同问题集完成候选 Provider 和模型初筛。
 
 ### 阶段 1：不可变资产与对象模型
 
 - 新增 V3 数据迁移。
 - 建立 Word → PDF、PDF → Page Image 链路。
-- 实现 KnowledgeObject、Asset、Representation、Relation 和 ReviewIssue。
+- 实现 KnowledgeObject、Asset、Representation、Relation、RetrievalUnit、GenerationUnit 和 ReviewIssue。
 - 接入 MinerU Adapter，并建立 Docling 回退接口。
 
 ### 阶段 2：教师审核与质量门禁
@@ -417,12 +484,13 @@ Provider Adapter 对业务层暴露统一用途接口：
 
 - 替换 `hash-v1`，接入真实 Text/Visual Embedding。
 - 建立 Sparse、Dense、Visual 索引和版本切换。
-- 增加真实 Reranker 与 Provider 对照评测。
+- 完成文本 Embedding、视觉单向量/多向量路线、真实 Reranker 与 Provider 对照评测，并用 ADR 冻结首期默认组合。
 
 ### 阶段 4：Query Router 与 Adaptive Retrieval
 
 - 实现确定性范围解析、模态分类和受限 Query Rewrite。
-- 实现并行召回、Query-aware Fusion、Adaptive Cutoff 和 Evidence Closure。
+- 实现 Query Type → Channel Prior、RRF/Weighted RRF 基线、并行召回、Query-aware Fusion、Adaptive Cutoff 和 Evidence Closure。
+- 对 Fusion、Rerank、Adaptive Cutoff 分别进行消融评测；真实标注不足时不启用 Learned Fusion。
 - 将教材问答和题目生成统一迁移到新 Evidence 接口。
 
 ### 阶段 5：跨模态回答与引用
