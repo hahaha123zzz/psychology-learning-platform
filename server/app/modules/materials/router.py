@@ -1,12 +1,12 @@
 
 from fastapi import APIRouter, Depends, File, Form, Header, Request, Response, UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ApiError
 from app.core.response import ok
 from app.core.storage import put_object
-from app.db.models import Job, Material, MaterialVersion, User
+from app.db.models import Job, Material, MaterialVersion, ParseReviewIssue, User
 from app.db.session import get_db_session
 from app.modules.auth.dependencies import get_current_user, require_course_role
 from app.modules.courses import service as course_service
@@ -15,6 +15,7 @@ from app.modules.materials.schemas import (
     KnowledgeObjectCorrection,
     MaterialUploadForm,
     MaterialUploadOut,
+    ParseReviewIssueResolution,
 )
 
 router = APIRouter()
@@ -326,6 +327,10 @@ async def list_materials(
                 "size_bytes": version.size_bytes,
                 "content_type": version.content_type,
             }
+            if is_staff:
+                item["current_version"]["quality_gate_status"] = (
+                    version.quality_gate_status
+                )
         items.append(item)
     return ok(request, items, has_more=False)
 
@@ -362,6 +367,20 @@ async def publish_version(
             message="解析质量未达标，不能发布（如扫描件缺少文本层）",
             details={"issues": blocking, "quality_report": report},
         )
+    open_blocking = await db.scalar(
+        select(func.count(ParseReviewIssue.id)).where(
+            ParseReviewIssue.material_version_id == version_id,
+            ParseReviewIssue.severity == "blocking",
+            ParseReviewIssue.status == "open",
+        )
+    )
+    if open_blocking:
+        raise ApiError(
+            status_code=409,
+            code="QUALITY_REVIEW_REQUIRED",
+            message="仍有未处理的阻塞解析问题，不能发布",
+            details={"open_blocking_issue_count": int(open_blocking)},
+        )
     if material.status != "active":
         raise ApiError(
             status_code=409,
@@ -370,6 +389,7 @@ async def publish_version(
         )
     material.visibility = "published"
     material.current_version_id = version.id
+    version.quality_gate_status = "approved"
     published_at = datetime.now(UTC)
     await course_service.write_audit(
         db,
@@ -388,6 +408,114 @@ async def publish_version(
             "version_id": version.id,
             "published_at": published_at.isoformat(),
             "index_job_id": None,
+        },
+    )
+
+
+@router.get("/material-versions/{version_id}/review-issues", response_model=None)
+async def list_parse_review_issues(
+    version_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    version, material = await materials_service.get_version_with_material_or_404(
+        db, version_id
+    )
+    await require_course_role(
+        material.course_id, user, db, roles={"teacher", "assistant"}
+    )
+    issues = list(
+        (
+            await db.execute(
+                select(ParseReviewIssue)
+                .where(ParseReviewIssue.material_version_id == version.id)
+                .order_by(
+                    ParseReviewIssue.severity.asc(),
+                    ParseReviewIssue.created_at.asc(),
+                )
+            )
+        ).scalars()
+    )
+    return ok(
+        request,
+        [
+            {
+                "id": issue.id,
+                "knowledge_object_id": issue.knowledge_object_id,
+                "severity": issue.severity,
+                "code": issue.code,
+                "detail": issue.detail,
+                "status": issue.status,
+                "resolution": issue.resolution,
+                "resolved_by": issue.resolved_by,
+                "resolved_at": issue.resolved_at.isoformat()
+                if issue.resolved_at
+                else None,
+            }
+            for issue in issues
+        ],
+        has_more=False,
+    )
+
+
+@router.patch("/parse-review-issues/{issue_id}", response_model=None)
+async def resolve_parse_review_issue(
+    issue_id: str,
+    body: ParseReviewIssueResolution,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    from datetime import UTC, datetime
+
+    issue = await materials_service.get_parse_review_issue_or_404(db, issue_id)
+    version, material = await materials_service.get_version_with_material_or_404(
+        db, issue.material_version_id
+    )
+    await require_course_role(material.course_id, user, db, roles={"teacher"})
+    if issue.status != "open":
+        raise ApiError(
+            status_code=409,
+            code="PARSE_REVIEW_ISSUE_ALREADY_CLOSED",
+            message="解析审核问题已处理",
+            details={"status": issue.status},
+        )
+    if issue.severity == "blocking":
+        raise ApiError(
+            status_code=409,
+            code="BLOCKING_ISSUE_REQUIRES_REPARSE",
+            message="阻塞问题必须修复源文件或解析配置并重新解析，不能手工关闭",
+        )
+    issue.status = body.status
+    issue.resolution = body.resolution
+    issue.resolved_by = user.id
+    issue.resolved_at = datetime.now(UTC)
+    remaining = await db.scalar(
+        select(func.count(ParseReviewIssue.id)).where(
+            ParseReviewIssue.material_version_id == version.id,
+            ParseReviewIssue.severity == "blocking",
+            ParseReviewIssue.status == "open",
+            ParseReviewIssue.id != issue.id,
+        )
+    )
+    version.quality_gate_status = "blocked" if remaining else "pending"
+    await course_service.write_audit(
+        db,
+        actor_id=user.id,
+        action="material.parse_issue_resolved",
+        resource_type="parse_review_issue",
+        resource_id=issue.id,
+        course_id=material.course_id,
+        detail={"status": body.status, "severity": issue.severity},
+    )
+    await db.commit()
+    return ok(
+        request,
+        {
+            "id": issue.id,
+            "status": issue.status,
+            "quality_gate_status": version.quality_gate_status,
         },
     )
 

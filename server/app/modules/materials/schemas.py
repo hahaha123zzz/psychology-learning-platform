@@ -26,3 +26,8 @@ class KnowledgeObjectCorrection(BaseModel):
     review_status: str | None = Field(
         default=None, pattern="^(pending|approved|rejected|corrected)$"
     )
+
+
+class ParseReviewIssueResolution(BaseModel):
+    status: str = Field(pattern="^(resolved|ignored)$")
+    resolution: str = Field(min_length=1, max_length=1000)

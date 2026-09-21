@@ -179,6 +179,8 @@ def test_publish_makes_material_visible_to_students(client) -> None:
     teacher_items = teacher_view.json()["data"]
     assert len(teacher_items) == 2
     assert all("visibility" in item for item in teacher_items)
+    published_item = next(i for i in teacher_items if i["id"] == published["material_id"])
+    assert published_item["current_version"]["quality_gate_status"] == "approved"
 
 
 def test_student_listing_requires_current_version_to_be_parsed(client) -> None:

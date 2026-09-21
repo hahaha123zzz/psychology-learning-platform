@@ -162,6 +162,30 @@ def test_quality_gate_blocks_scanned_pdf_publish(client) -> None:
     assert error["code"] == "QUALITY_GATE_FAILED"
     assert "no_text_extracted" in error["details"]["issues"]
 
+    issues = client.get(f"/api/v1/material-versions/{version_id}/review-issues")
+    assert issues.status_code == 200
+    blocking = next(
+        issue
+        for issue in issues.json()["data"]
+        if issue["code"] == "no_text_extracted"
+    )
+    assert blocking["severity"] == "blocking"
+    assert blocking["status"] == "open"
+
+    cannot_close = client.patch(
+        f"/api/v1/parse-review-issues/{blocking['id']}",
+        json={"status": "ignored", "resolution": "直接忽略"},
+    )
+    assert cannot_close.status_code == 409
+    assert (
+        cannot_close.json()["error"]["code"]
+        == "BLOCKING_ISSUE_REQUIRES_REPARSE"
+    )
+
+    _login(client, "ms@uni.edu")
+    hidden = client.get(f"/api/v1/material-versions/{version_id}/review-issues")
+    assert hidden.status_code == 404
+
 
 def test_published_outline_visible_to_students(client) -> None:
     course_id, _ = _setup_course(client)

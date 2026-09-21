@@ -779,6 +779,96 @@
         }
       }
     },
+    "/api/v1/material-versions/{version_id}/review-issues": {
+      "get": {
+        "tags": [
+          "materials"
+        ],
+        "summary": "List Parse Review Issues",
+        "operationId": "list_parse_review_issues_api_v1_material_versions__version_id__review_issues_get",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/parse-review-issues/{issue_id}": {
+      "patch": {
+        "tags": [
+          "materials"
+        ],
+        "summary": "Resolve Parse Review Issue",
+        "operationId": "resolve_parse_review_issue_api_v1_parse_review_issues__issue_id__patch",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Issue Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParseReviewIssueResolution"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/material-versions/{version_id}/outline": {
       "get": {
         "tags": [
@@ -3061,6 +3151,27 @@
           "role"
         ],
         "title": "MemberRoleUpdate"
+      },
+      "ParseReviewIssueResolution": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "pattern": "^(resolved|ignored)$",
+            "title": "Status"
+          },
+          "resolution": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Resolution"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "resolution"
+        ],
+        "title": "ParseReviewIssueResolution"
       },
       "QuestionCreate": {
         "properties": {

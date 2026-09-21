@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from fastapi import UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -15,6 +15,7 @@ from app.db.models import (
     KnowledgeObject,
     Material,
     MaterialVersion,
+    ParseReviewIssue,
 )
 from app.db.session import session_factory
 
@@ -236,6 +237,11 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
             }
 
             job.stage = "persist"
+            await session.execute(
+                delete(ParseReviewIssue).where(
+                    ParseReviewIssue.material_version_id == version_id
+                )
+            )
             rows = [
                 KnowledgeObject(
                     material_version_id=version_id,
@@ -255,8 +261,42 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
                 for o in result.objects
             ]
             session.add_all(rows)
+            blocking_codes = {"no_text_extracted", "parser_unavailable"}
+            review_issues = [
+                ParseReviewIssue(
+                    material_version_id=version_id,
+                    severity="blocking" if code in blocking_codes else "warning",
+                    code=code,
+                    detail={"source": "parser"},
+                )
+                for code in sorted(set(result.issues))
+            ]
+            if empty_pages:
+                review_issues.append(
+                    ParseReviewIssue(
+                        material_version_id=version_id,
+                        severity="warning",
+                        code="empty_pages_detected",
+                        detail={"count": empty_pages},
+                    )
+                )
+            if low_confidence:
+                review_issues.append(
+                    ParseReviewIssue(
+                        material_version_id=version_id,
+                        severity="warning",
+                        code="low_confidence_objects",
+                        detail={"count": low_confidence, "threshold": 0.5},
+                    )
+                )
+            session.add_all(review_issues)
             version.page_count = result.page_count
             version.quality_report = quality_report
+            version.quality_gate_status = (
+                "blocked"
+                if any(issue.severity == "blocking" for issue in review_issues)
+                else "pending"
+            )
             version.status = "parsed"
             job.progress = 100
             job.stage = "done"
@@ -269,6 +309,7 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
             version = await session.get(MaterialVersion, version_id)
             if job is not None and version is not None:
                 version.status = "failed"
+                version.quality_gate_status = "blocked"
                 job.status = "failed"
                 job.error = str(exc)[:500]
                 job.retryable = True
@@ -331,6 +372,19 @@ async def get_object_or_404(db: AsyncSession, object_id: str) -> KnowledgeObject
             message="知识对象不存在或无权访问",
         )
     return object_row
+
+
+async def get_parse_review_issue_or_404(
+    db: AsyncSession, issue_id: str
+) -> ParseReviewIssue:
+    issue = await db.get(ParseReviewIssue, issue_id)
+    if issue is None:
+        raise ApiError(
+            status_code=404,
+            code="PARSE_REVIEW_ISSUE_NOT_FOUND",
+            message="解析审核问题不存在或无权访问",
+        )
+    return issue
 
 
 async def build_outline(db: AsyncSession, version_id: str, page_count: int | None) -> list[dict]:
