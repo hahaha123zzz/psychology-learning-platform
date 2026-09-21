@@ -42,6 +42,12 @@ async def upload_material(
     form = MaterialUploadForm(
         title=title, material_type=material_type, visibility=visibility
     )
+    if form.visibility != "draft":
+        raise ApiError(
+            status_code=422,
+            code="MATERIAL_REQUIRES_REVIEW",
+            message="资料上传后必须完成解析和教师审核，不能直接发布",
+        )
     request_hash = course_service.canonical_request_hash(
         {**form.model_dump(), "filename": file.filename}
     )
@@ -293,7 +299,9 @@ async def list_materials(
     )
     if not is_staff:
         query = query.where(
-            Material.visibility == "published", Material.status == "active"
+            Material.visibility == "published",
+            Material.status == "active",
+            MaterialVersion.status == "parsed",
         )
     else:
         query = query.where(Material.status.in_(("active", "archived")))
@@ -398,7 +406,10 @@ async def get_outline(
         material.course_id, user, db, roles={"teacher", "assistant", "student"}
     )
     if role == "student" and (
-        material.visibility != "published" or material.status != "active"
+        material.visibility != "published"
+        or material.status != "active"
+        or version.status != "parsed"
+        or material.current_version_id != version.id
     ):
         raise ApiError(
             status_code=404,

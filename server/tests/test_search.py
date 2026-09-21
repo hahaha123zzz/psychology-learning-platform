@@ -1,5 +1,8 @@
+import asyncio
 import time
 
+from app.db.models import Material, MaterialVersion
+from app.db.session import session_factory
 from tests.conftest import make_pdf
 from tests.test_materials import _login, _setup_course, _upload
 
@@ -114,6 +117,48 @@ def test_student_search_after_publish_has_no_score(client) -> None:
     assert len(items) >= 1
     assert "score" not in items[0]
     assert items[0]["evidence_id"]
+
+
+def test_student_search_cannot_request_non_current_published_version(client) -> None:
+    course_id, _, version_id = _prepare(client, publish=True)
+
+    async def replace_current_version() -> None:
+        async with session_factory() as db:
+            old_version = await db.get(MaterialVersion, version_id)
+            assert old_version is not None
+            replacement = MaterialVersion(
+                material_id=old_version.material_id,
+                version_no=2,
+                status="parsed",
+                object_key="test/current.pdf",
+                sha256="c" * 64,
+                size_bytes=10,
+                content_type="application/pdf",
+                original_filename="current.pdf",
+                created_by=old_version.created_by,
+                page_count=1,
+                quality_report={"issues": []},
+            )
+            db.add(replacement)
+            await db.flush()
+            material = await db.get(Material, old_version.material_id)
+            assert material is not None
+            material.current_version_id = replacement.id
+            await db.commit()
+
+    asyncio.run(replace_current_version())
+
+    _login(client, "ms@uni.edu")
+    response = client.post(
+        "/api/v1/knowledge/search",
+        json={
+            "course_id": course_id,
+            "query": "independent variable",
+            "material_version_ids": [version_id],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["items"] == []
 
 
 def test_evidence_ticket_binds_to_owner(client) -> None:

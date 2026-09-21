@@ -218,7 +218,9 @@ async def resolve_searchable_versions(
     )
     if not staff:
         query = query.where(
-            Material.visibility == "published", Material.status == "active"
+            Material.visibility == "published",
+            Material.status == "active",
+            Material.current_version_id == MaterialVersion.id,
         )
     if requested_version_ids:
         query = query.where(MaterialVersion.id.in_(requested_version_ids))

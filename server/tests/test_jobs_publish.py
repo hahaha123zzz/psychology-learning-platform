@@ -1,5 +1,8 @@
+import asyncio
 import time
 
+from app.db.models import Material
+from app.db.session import session_factory
 from tests.conftest import create_user_sync, make_pdf
 from tests.test_materials import _login, _setup_course, _upload
 
@@ -176,6 +179,25 @@ def test_publish_makes_material_visible_to_students(client) -> None:
     teacher_items = teacher_view.json()["data"]
     assert len(teacher_items) == 2
     assert all("visibility" in item for item in teacher_items)
+
+
+def test_student_listing_requires_current_version_to_be_parsed(client) -> None:
+    course_id, _ = _setup_course(client)
+    data = _upload_one(client, course_id, title="未解析但错误标记可见")
+
+    async def mark_published() -> None:
+        async with session_factory() as db:
+            material = await db.get(Material, data["material_id"])
+            assert material is not None
+            material.visibility = "published"
+            await db.commit()
+
+    asyncio.run(mark_published())
+
+    _login(client, "ms@uni.edu")
+    response = client.get(f"/api/v1/courses/{course_id}/materials")
+    assert response.status_code == 200
+    assert response.json()["data"] == []
 
 
 def test_archive_hides_material_from_students(client) -> None:

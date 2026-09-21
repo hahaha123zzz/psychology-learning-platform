@@ -69,8 +69,7 @@ def test_unauthenticated_upload_rejected(client) -> None:
 def test_upload_pdf_material_success(client) -> None:
     course_id, _ = _setup_course(client)
     response = _upload(
-        client, course_id, title="实验心理学教材", material_type="textbook",
-        visibility="published",
+        client, course_id, title="实验心理学教材", material_type="textbook"
     )
     assert response.status_code == 201
     data = response.json()["data"]
@@ -78,6 +77,13 @@ def test_upload_pdf_material_success(client) -> None:
     assert data["sha256"] and len(data["sha256"]) == 64
     assert data["size_bytes"] == len(MINIMAL_PDF)
     assert data["material_id"] and data["version_id"]
+
+
+def test_upload_cannot_bypass_teacher_review_with_published_visibility(client) -> None:
+    course_id, _ = _setup_course(client)
+    response = _upload(client, course_id, visibility="published")
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "MATERIAL_REQUIRES_REVIEW"
 
 
 def test_upload_unsupported_extension_rejected(client) -> None:

@@ -1,5 +1,8 @@
+import asyncio
 import time
 
+from app.db.models import Material, MaterialVersion
+from app.db.session import session_factory
 from tests.conftest import make_pdf
 from tests.test_materials import _login, _setup_course, _upload
 
@@ -64,6 +67,45 @@ def test_draft_outline_hidden_from_students(client) -> None:
 
     _login(client, "ms@uni.edu")
     response = client.get(f"/api/v1/material-versions/{version_id}/outline")
+    assert response.status_code == 404
+
+
+def test_student_cannot_read_non_current_version_outline(client) -> None:
+    course_id, _ = _setup_course(client)
+    first = _upload(client, course_id, title="已发布教材", content=TWO_CHAPTER_PDF)
+    first_version_id = first.json()["data"]["version_id"]
+    material_id = first.json()["data"]["material_id"]
+    _parse_and_wait(client, first_version_id)
+    client.post(f"/api/v1/material-versions/{first_version_id}/publish")
+
+    async def replace_current_version() -> None:
+        async with session_factory() as db:
+            old_version = await db.get(MaterialVersion, first_version_id)
+            assert old_version is not None
+            replacement = MaterialVersion(
+                material_id=material_id,
+                version_no=2,
+                status="parsed",
+                object_key="test/replacement.pdf",
+                sha256="b" * 64,
+                size_bytes=10,
+                content_type="application/pdf",
+                original_filename="replacement.pdf",
+                created_by=old_version.created_by,
+                page_count=1,
+                quality_report={"issues": []},
+            )
+            db.add(replacement)
+            await db.flush()
+            material = await db.get(Material, material_id)
+            assert material is not None
+            material.current_version_id = replacement.id
+            await db.commit()
+
+    asyncio.run(replace_current_version())
+
+    _login(client, "ms@uni.edu")
+    response = client.get(f"/api/v1/material-versions/{first_version_id}/outline")
     assert response.status_code == 404
 
 
