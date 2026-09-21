@@ -112,9 +112,7 @@ class KnowledgeChunk(Base):
     )
     course_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
     chapter_object_id: Mapped[str | None] = mapped_column(String(26))
-    chapter_path: Mapped[str] = mapped_column(
-        String(100), nullable=False, server_default=""
-    )
+    chapter_path: Mapped[str] = mapped_column(String(100), nullable=False, server_default="")
     physical_page: Mapped[int] = mapped_column(Integer, nullable=False)
     reading_order: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -238,9 +236,7 @@ class QuestionVersion(Base, ULIDPrimaryKeyMixin):
 
     __tablename__ = "question_versions"
 
-    question_id: Mapped[str] = mapped_column(
-        String(26), ForeignKey("questions.id"), nullable=False
-    )
+    question_id: Mapped[str] = mapped_column(String(26), ForeignKey("questions.id"), nullable=False)
     version_no: Mapped[int] = mapped_column(Integer, nullable=False)
     type: Mapped[str] = mapped_column(String(20), nullable=False)
     stem: Mapped[str] = mapped_column(Text, nullable=False)
@@ -274,7 +270,9 @@ class Assessment(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin)
     opens_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closes_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ai_policy: Mapped[str] = mapped_column(
-        String(30), nullable=False, default="full_after_submit",
+        String(30),
+        nullable=False,
+        default="full_after_submit",
         server_default="full_after_submit",
     )
     status: Mapped[str] = mapped_column(
@@ -287,9 +285,7 @@ class Assessment(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin)
             "ai_policy IN ('disabled','direction_only','full_after_submit')",
             name="ck_assessments_ai_policy",
         ),
-        CheckConstraint(
-            "status IN ('draft','published','closed')", name="ck_assessments_status"
-        ),
+        CheckConstraint("status IN ('draft','published','closed')", name="ck_assessments_status"),
     )
 
 
@@ -306,9 +302,7 @@ class AssessmentItem(Base, ULIDPrimaryKeyMixin):
     order_no: Mapped[int] = mapped_column(Integer, nullable=False)
 
     __table_args__ = (
-        UniqueConstraint(
-            "assessment_id", "question_version_id", name="uq_assessment_items"
-        ),
+        UniqueConstraint("assessment_id", "question_version_id", name="uq_assessment_items"),
     )
 
 
@@ -325,9 +319,7 @@ class Attempt(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
     score: Mapped[float | None] = mapped_column()
     grading_status: Mapped[str | None] = mapped_column(String(20))
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    coach_hints: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    coach_hints: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     __table_args__ = (
         CheckConstraint(
@@ -339,9 +331,7 @@ class Attempt(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
 class AttemptAnswer(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
     __tablename__ = "attempt_answers"
 
-    attempt_id: Mapped[str] = mapped_column(
-        String(26), ForeignKey("attempts.id"), nullable=False
-    )
+    attempt_id: Mapped[str] = mapped_column(String(26), ForeignKey("attempts.id"), nullable=False)
     question_version_id: Mapped[str] = mapped_column(
         String(26), ForeignKey("question_versions.id"), nullable=False
     )
@@ -351,9 +341,7 @@ class AttemptAnswer(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMix
     points_earned: Mapped[float | None] = mapped_column()
 
     __table_args__ = (
-        UniqueConstraint(
-            "attempt_id", "question_version_id", name="uq_attempt_answers"
-        ),
+        UniqueConstraint("attempt_id", "question_version_id", name="uq_attempt_answers"),
     )
 
 
@@ -377,9 +365,7 @@ class ReviewTask(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin)
         CheckConstraint(
             "reason IN ('wrong_answer','review_schedule')", name="ck_review_tasks_reason"
         ),
-        CheckConstraint(
-            "status IN ('pending','done','dismissed')", name="ck_review_tasks_status"
-        ),
+        CheckConstraint("status IN ('pending','done','dismissed')", name="ck_review_tasks_status"),
     )
 
 
@@ -536,9 +522,7 @@ class AuthSession(Base, ULIDPrimaryKeyMixin, TimestampMixin):
     last_ip: Mapped[str | None] = mapped_column(String(64))
     user_agent: Mapped[str | None] = mapped_column(String(255))
 
-    __table_args__ = (
-        Index("ix_auth_sessions_user_active", "user_id", "expires_at"),
-    )
+    __table_args__ = (Index("ix_auth_sessions_user_active", "user_id", "expires_at"),)
 
 
 class Course(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
@@ -565,9 +549,7 @@ class Course(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
 class CourseMember(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
     __tablename__ = "course_members"
 
-    course_id: Mapped[str] = mapped_column(
-        String(26), ForeignKey("courses.id"), nullable=False
-    )
+    course_id: Mapped[str] = mapped_column(String(26), ForeignKey("courses.id"), nullable=False)
     user_id: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(
@@ -635,12 +617,8 @@ class Material(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
             "material_type IN ('textbook','slides','handout','exercise','reference','other')",
             name="ck_materials_type",
         ),
-        CheckConstraint(
-            "visibility IN ('draft','published')", name="ck_materials_visibility"
-        ),
-        CheckConstraint(
-            "status IN ('active','archived','deleted')", name="ck_materials_status"
-        ),
+        CheckConstraint("visibility IN ('draft','published')", name="ck_materials_visibility"),
+        CheckConstraint("status IN ('active','archived','deleted')", name="ck_materials_status"),
         Index("ix_materials_course", "course_id", "status"),
     )
 
@@ -650,9 +628,7 @@ class MaterialVersion(Base, ULIDPrimaryKeyMixin):
 
     __tablename__ = "material_versions"
 
-    material_id: Mapped[str] = mapped_column(
-        String(26), ForeignKey("materials.id"), nullable=False
-    )
+    material_id: Mapped[str] = mapped_column(String(26), ForeignKey("materials.id"), nullable=False)
     version_no: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="uploading", server_default="uploading"
@@ -668,12 +644,23 @@ class MaterialVersion(Base, ULIDPrimaryKeyMixin):
     )
     page_count: Mapped[int | None] = mapped_column(Integer)
     quality_report: Mapped[dict | None] = mapped_column(JSON)
+    canonical_pdf_key: Mapped[str | None] = mapped_column(String(512))
+    render_manifest: Mapped[dict | None] = mapped_column(JSON)
+    render_version: Mapped[str | None] = mapped_column(String(50))
+    pipeline_version: Mapped[str | None] = mapped_column(String(50))
+    quality_gate_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending"
+    )
 
     __table_args__ = (
         UniqueConstraint("material_id", "version_no", name="uq_material_versions_no"),
         CheckConstraint(
             "status IN ('uploading','uploaded','failed','parsing','parsed','removed')",
             name="ck_material_versions_status",
+        ),
+        CheckConstraint(
+            "quality_gate_status IN ('pending','blocked','approved')",
+            name="ck_material_versions_quality_gate",
         ),
     )
 
@@ -718,4 +705,256 @@ class KnowledgeObject(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampM
             "material_version_id",
             "reading_order",
         ),
+    )
+
+
+class ObjectAsset(Base, ULIDPrimaryKeyMixin, TimestampMixin):
+    """教材版本的不可变二进制产物：页面、裁剪、快照和解析调试资产。"""
+
+    __tablename__ = "object_assets"
+
+    material_version_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("material_versions.id"), nullable=False
+    )
+    knowledge_object_id: Mapped[str | None] = mapped_column(
+        String(26), ForeignKey("knowledge_objects.id")
+    )
+    asset_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    object_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    physical_page: Mapped[int | None] = mapped_column(Integer)
+    bbox: Mapped[list | None] = mapped_column(JSON)
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+    render_version: Mapped[str | None] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="ready", server_default="ready"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "asset_type IN ('canonical_pdf','page_image','object_crop','parser_payload')",
+            name="ck_object_assets_type",
+        ),
+        CheckConstraint("status IN ('ready','failed','removed')", name="ck_object_assets_status"),
+        UniqueConstraint("material_version_id", "object_key", name="uq_object_assets_version_key"),
+        Index("ix_object_assets_version_page", "material_version_id", "physical_page"),
+    )
+
+
+class ObjectRepresentation(Base, ULIDPrimaryKeyMixin, TimestampMixin):
+    """可重建的对象派生表示，不能单独成为教材事实引用。"""
+
+    __tablename__ = "object_representations"
+
+    knowledge_object_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("knowledge_objects.id"), nullable=False
+    )
+    representation_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    text_content: Mapped[str | None] = mapped_column(Text)
+    structured_content: Mapped[dict | None] = mapped_column(JSON)
+    provider: Mapped[str | None] = mapped_column(String(50))
+    model: Mapped[str | None] = mapped_column(String(100))
+    generator_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    confidence: Mapped[float | None] = mapped_column()
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="ready", server_default="ready"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "representation_type IN "
+            "('ocr','caption','table_json','table_markdown','latex','semantic_description','retrieval_text')",
+            name="ck_object_representations_type",
+        ),
+        CheckConstraint(
+            "status IN ('queued','ready','failed','superseded')",
+            name="ck_object_representations_status",
+        ),
+        UniqueConstraint(
+            "knowledge_object_id",
+            "representation_type",
+            "generator_version",
+            "source_hash",
+            name="uq_object_representations_source",
+        ),
+        Index("ix_object_representations_object", "knowledge_object_id", "representation_type"),
+    )
+
+
+class ObjectRelation(Base, ULIDPrimaryKeyMixin, TimestampMixin):
+    """经解析或审核确认的教材对象关系，用于最小证据闭包。"""
+
+    __tablename__ = "object_relations"
+
+    source_object_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("knowledge_objects.id"), nullable=False
+    )
+    target_object_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("knowledge_objects.id"), nullable=False
+    )
+    relation_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    source: Mapped[str] = mapped_column(String(50), nullable=False)
+    confidence: Mapped[float] = mapped_column(nullable=False, default=0.9)
+    review_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "relation_type IN "
+            "('parent_of','previous','next','caption_of','references','continues_on','explains',"
+            "'same_table','same_figure')",
+            name="ck_object_relations_type",
+        ),
+        CheckConstraint(
+            "review_status IN ('pending','approved','rejected')",
+            name="ck_object_relations_review",
+        ),
+        UniqueConstraint(
+            "source_object_id", "target_object_id", "relation_type", name="uq_object_relations_edge"
+        ),
+        Index("ix_object_relations_source", "source_object_id", "relation_type"),
+        Index("ix_object_relations_target", "target_object_id", "relation_type"),
+    )
+
+
+class RetrievalUnit(Base, ULIDPrimaryKeyMixin, TimestampMixin):
+    """只用于召回和排序的派生单元，显式区别于生成上下文。"""
+
+    __tablename__ = "retrieval_units"
+
+    material_version_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("material_versions.id"), nullable=False
+    )
+    source_object_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("knowledge_objects.id"), nullable=False
+    )
+    parent_object_id: Mapped[str | None] = mapped_column(
+        String(26), ForeignKey("knowledge_objects.id")
+    )
+    representation_id: Mapped[str | None] = mapped_column(
+        String(26), ForeignKey("object_representations.id")
+    )
+    unit_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    channel_hint: Mapped[str] = mapped_column(String(20), nullable=False)
+    char_start: Mapped[int | None] = mapped_column(Integer)
+    char_end: Mapped[int | None] = mapped_column(Integer)
+    bbox: Mapped[list | None] = mapped_column(JSON)
+    text_content: Mapped[str | None] = mapped_column(Text)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    build_strategy: Mapped[str] = mapped_column(String(50), nullable=False)
+    build_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="ready", server_default="ready"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "unit_type IN ('text_child','table','table_row','table_column','table_cells',"
+            "'image','page','equation')",
+            name="ck_retrieval_units_type",
+        ),
+        CheckConstraint(
+            "channel_hint IN ('sparse','dense','visual','multi_vector')",
+            name="ck_retrieval_units_channel",
+        ),
+        CheckConstraint(
+            "status IN ('queued','ready','failed','superseded')", name="ck_retrieval_units_status"
+        ),
+        UniqueConstraint(
+            "source_object_id",
+            "representation_id",
+            "unit_type",
+            "build_strategy",
+            "build_version",
+            "content_hash",
+            name="uq_retrieval_units_build",
+        ),
+        Index("ix_retrieval_units_version_type", "material_version_id", "unit_type"),
+        Index("ix_retrieval_units_source", "source_object_id"),
+    )
+
+
+class RetrievalIndexEntry(Base, ULIDPrimaryKeyMixin, TimestampMixin):
+    """检索索引元数据；向量载荷由对应 Provider/索引适配器管理。"""
+
+    __tablename__ = "retrieval_index_entries"
+
+    retrieval_unit_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("retrieval_units.id"), nullable=False
+    )
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    dimension: Mapped[int | None] = mapped_column(Integer)
+    index_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="queued", server_default="queued"
+    )
+    metadata_json: Mapped[dict | None] = mapped_column(JSON)
+
+    __table_args__ = (
+        CheckConstraint(
+            "channel IN ('sparse','dense','visual','multi_vector')",
+            name="ck_retrieval_index_entries_channel",
+        ),
+        CheckConstraint(
+            "status IN ('queued','building','ready','failed','superseded')",
+            name="ck_retrieval_index_entries_status",
+        ),
+        UniqueConstraint(
+            "retrieval_unit_id",
+            "channel",
+            "provider",
+            "model",
+            "model_version",
+            "index_version",
+            "source_hash",
+            name="uq_retrieval_index_entries_version",
+        ),
+        Index("ix_retrieval_index_entries_lookup", "channel", "index_version", "status"),
+    )
+
+
+class ParseReviewIssue(Base, ULIDPrimaryKeyMixin, TimestampMixin):
+    """教师发布前必须处理的解析与质量问题。"""
+
+    __tablename__ = "parse_review_issues"
+
+    material_version_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("material_versions.id"), nullable=False
+    )
+    knowledge_object_id: Mapped[str | None] = mapped_column(
+        String(26), ForeignKey("knowledge_objects.id")
+    )
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)
+    code: Mapped[str] = mapped_column(String(80), nullable=False)
+    detail: Mapped[dict | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="open", server_default="open"
+    )
+    resolution: Mapped[str | None] = mapped_column(Text)
+    resolved_by: Mapped[str | None] = mapped_column(String(26), ForeignKey("users.id"))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "severity IN ('blocking','warning','info')", name="ck_parse_review_issues_severity"
+        ),
+        CheckConstraint(
+            "status IN ('open','resolved','ignored')", name="ck_parse_review_issues_status"
+        ),
+        UniqueConstraint(
+            "material_version_id",
+            "knowledge_object_id",
+            "code",
+            "status",
+            name="uq_parse_review_issues_open",
+        ),
+        Index("ix_parse_review_issues_version", "material_version_id", "severity", "status"),
     )
