@@ -238,6 +238,11 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
 
             job.stage = "persist"
             await session.execute(
+                delete(KnowledgeObject).where(
+                    KnowledgeObject.material_version_id == version_id
+                )
+            )
+            await session.execute(
                 delete(ParseReviewIssue).where(
                     ParseReviewIssue.material_version_id == version_id
                 )

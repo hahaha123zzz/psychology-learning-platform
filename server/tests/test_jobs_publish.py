@@ -27,6 +27,12 @@ def _wait_job(client, job_id: str, timeout: float = 20.0) -> dict:
     raise AssertionError(f"任务未在{timeout}s内完成: {last}")
 
 
+def _embed_and_wait(client, version_id: str) -> dict:
+    response = client.post(f"/api/v1/material-versions/{version_id}/embed")
+    assert response.status_code == 202
+    return _wait_job(client, response.json()["data"]["job_id"])
+
+
 def _upload_one(client, course_id: str, **kwargs):
     response = _upload(client, course_id, **kwargs)
     assert response.status_code == 201
@@ -136,6 +142,18 @@ def test_publish_requires_parsed_status(client) -> None:
     assert early.json()["error"]["code"] == "MATERIAL_NOT_PARSED"
 
 
+def test_publish_requires_current_embedding_index(client) -> None:
+    course_id, _ = _setup_course(client)
+    data = _upload_one(client, course_id)
+    parse_job = _parse(client, data["version_id"]).json()["data"]["job_id"]
+    assert _wait_job(client, parse_job)["status"] == "succeeded"
+
+    response = client.post(f"/api/v1/material-versions/{data['version_id']}/publish")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "MATERIAL_INDEX_NOT_READY"
+
+
 def test_publish_makes_material_visible_to_students(client) -> None:
     course_id, _ = _setup_course(client)
     _upload_one(
@@ -159,6 +177,8 @@ def test_publish_makes_material_visible_to_students(client) -> None:
     _login(client, "mt@uni.edu")
     job_id = _parse(client, published["version_id"]).json()["data"]["job_id"]
     _wait_job(client, job_id)
+    embed_job = _embed_and_wait(client, published["version_id"])
+    assert embed_job["status"] == "succeeded", embed_job
     publish = client.post(
         f"/api/v1/material-versions/{published['version_id']}/publish"
     )
@@ -166,7 +186,7 @@ def test_publish_makes_material_visible_to_students(client) -> None:
     body = publish.json()["data"]
     assert body["material_id"] == published["material_id"]
     assert body["published_at"]
-    assert "index_job_id" in body
+    assert body["index_job_id"]
 
     _login(client, "ms@uni.edu")
     student_view = client.get(f"/api/v1/courses/{course_id}/materials")
@@ -208,6 +228,7 @@ def test_archive_hides_material_from_students(client) -> None:
     _login(client, "mt@uni.edu")
     job_id = _parse(client, data["version_id"]).json()["data"]["job_id"]
     _wait_job(client, job_id)
+    _embed_and_wait(client, data["version_id"])
     client.post(f"/api/v1/material-versions/{data['version_id']}/publish")
 
     archived = client.delete(f"/api/v1/materials/{data['material_id']}")

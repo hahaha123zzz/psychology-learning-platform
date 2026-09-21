@@ -97,7 +97,10 @@ def test_review_task_created_on_wrong_answer(client) -> None:
     upload = _upload(client, course_id, content=TWO_CHAPTER_PDF)
     version_id = upload.json()["data"]["version_id"]
     for kind in ("parse", "embed"):
-        client.post(f"/api/v1/material-versions/{version_id}/{kind}")
+        response = client.post(f"/api/v1/material-versions/{version_id}/{kind}")
+        assert response.status_code == 202
+        job = _wait_job(client, response.json()["data"]["job_id"])
+        assert job["status"] == "succeeded", job
     client.post(f"/api/v1/material-versions/{version_id}/publish")
 
     created = client.post(

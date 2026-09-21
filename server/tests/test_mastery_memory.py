@@ -1,16 +1,17 @@
 from tests.conftest import create_user_sync
 from tests.test_materials import _login, _setup_course, _upload
 from tests.test_question_bank import QUESTION_BODY
-from tests.test_search import TWO_CHAPTER_PDF
+from tests.test_search import TWO_CHAPTER_PDF, _parse_and_wait
 
 
 def _prepare_published(client):
     course_id, student_id = _setup_course(client)
     upload = _upload(client, course_id, content=TWO_CHAPTER_PDF)
     version_id = upload.json()["data"]["version_id"]
-    client.post(f"/api/v1/material-versions/{version_id}/parse")
-    client.post(f"/api/v1/material-versions/{version_id}/embed")
-    client.post(f"/api/v1/material-versions/{version_id}/publish")
+    assert _parse_and_wait(client, version_id)["status"] == "succeeded"
+    assert _parse_and_wait(client, version_id, kind="embed")["status"] == "succeeded"
+    publish = client.post(f"/api/v1/material-versions/{version_id}/publish")
+    assert publish.status_code == 200
 
     created = client.post(
         f"/api/v1/courses/{course_id}/questions", json=QUESTION_BODY

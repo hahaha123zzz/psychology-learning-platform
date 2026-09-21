@@ -53,7 +53,8 @@ def build_chunk_rows(objects: list[KnowledgeObject]) -> list[dict]:
         if object.type == "chapter":
             flush()
             continue
-        if object.type != "paragraph" or not object.raw_content.strip():
+        content = (object.normalized_content or object.raw_content).strip()
+        if object.type != "paragraph" or not content:
             continue
         if current is None or current["chapter_path"] != object.chapter_path:
             flush()
@@ -66,7 +67,7 @@ def build_chunk_rows(objects: list[KnowledgeObject]) -> list[dict]:
                 "reading_order": object.reading_order,
                 "parts": [],
             }
-        current["parts"].append(object.raw_content.strip())
+        current["parts"].append(content)
         if sum(len(p) for p in current["parts"]) >= MAX_CHUNK_CHARS:
             flush()
     flush()

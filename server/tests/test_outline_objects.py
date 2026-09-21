@@ -20,6 +20,19 @@ def _parse_and_wait(client, version_id: str, timeout: float = 20.0) -> dict:
     raise AssertionError("任务超时")
 
 
+def _embed_and_wait(client, version_id: str, timeout: float = 20.0) -> dict:
+    response = client.post(f"/api/v1/material-versions/{version_id}/embed")
+    assert response.status_code == 202
+    job_id = response.json()["data"]["job_id"]
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        job = client.get(f"/api/v1/jobs/{job_id}").json()["data"]
+        if job["status"] in ("succeeded", "failed"):
+            return job
+        time.sleep(0.3)
+    raise AssertionError("索引任务超时")
+
+
 TWO_CHAPTER_PDF = make_pdf(
     [
         [
@@ -64,6 +77,7 @@ def test_draft_outline_hidden_from_students(client) -> None:
     upload = _upload(client, course_id, content=TWO_CHAPTER_PDF)
     version_id = upload.json()["data"]["version_id"]
     _parse_and_wait(client, version_id)
+    _embed_and_wait(client, version_id)
 
     _login(client, "ms@uni.edu")
     response = client.get(f"/api/v1/material-versions/{version_id}/outline")
@@ -76,6 +90,7 @@ def test_student_cannot_read_non_current_version_outline(client) -> None:
     first_version_id = first.json()["data"]["version_id"]
     material_id = first.json()["data"]["material_id"]
     _parse_and_wait(client, first_version_id)
+    _embed_and_wait(client, first_version_id)
     client.post(f"/api/v1/material-versions/{first_version_id}/publish")
 
     async def replace_current_version() -> None:
@@ -145,6 +160,10 @@ def test_teacher_correction_creates_override_and_new_version(client) -> None:
     outline_after = client.get(f"/api/v1/material-versions/{version_id}/outline")
     assert outline_after.json()["data"][0]["title"] == "第一章 实验心理学基础"
 
+    stale_publish = client.post(f"/api/v1/material-versions/{version_id}/publish")
+    assert stale_publish.status_code == 409
+    assert stale_publish.json()["error"]["code"] == "MATERIAL_INDEX_NOT_READY"
+
 
 def test_quality_gate_blocks_scanned_pdf_publish(client) -> None:
     scanned = make_pdf([[], []])
@@ -195,6 +214,7 @@ def test_published_outline_visible_to_students(client) -> None:
     )
     version_id = upload.json()["data"]["version_id"]
     _parse_and_wait(client, version_id)
+    _embed_and_wait(client, version_id)
     publish = client.post(f"/api/v1/material-versions/{version_id}/publish")
     assert publish.status_code == 200
 

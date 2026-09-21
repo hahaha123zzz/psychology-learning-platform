@@ -1,8 +1,9 @@
 
 from fastapi import APIRouter, Depends, File, Form, Header, Request, Response, UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.embedding import get_embedding_client
 from app.core.errors import ApiError
 from app.core.response import ok
 from app.core.storage import put_object
@@ -387,6 +388,41 @@ async def publish_version(
             code="MATERIAL_ARCHIVED",
             message="已归档资料不能发布",
         )
+    try:
+        embedding_version = get_embedding_client().version
+    except ValueError as exc:
+        raise ApiError(
+            status_code=503,
+            code="EMBEDDING_CONFIGURATION_INVALID",
+            message="Embedding 配置无效，暂时不能发布",
+            retryable=False,
+        ) from exc
+    indexed_chunks = await db.scalar(
+        text(
+            "SELECT count(*) FROM knowledge_chunks "
+            "WHERE material_version_id = :version_id "
+            "AND embedding_version = :embedding_version "
+            "AND embedding IS NOT NULL"
+        ),
+        {"version_id": version_id, "embedding_version": embedding_version},
+    )
+    if not indexed_chunks:
+        raise ApiError(
+            status_code=409,
+            code="MATERIAL_INDEX_NOT_READY",
+            message="当前模型版本的教材索引尚未就绪，请先构建索引",
+            details={"embedding_version": embedding_version},
+        )
+    index_job_id = await db.scalar(
+        select(Job.id)
+        .where(
+            Job.kind == "material_embed",
+            Job.status == "succeeded",
+            Job.payload["material_version_id"].as_string() == version_id,
+        )
+        .order_by(Job.finished_at.desc())
+        .limit(1)
+    )
     material.visibility = "published"
     material.current_version_id = version.id
     version.quality_gate_status = "approved"
@@ -407,7 +443,7 @@ async def publish_version(
             "material_id": material.id,
             "version_id": version.id,
             "published_at": published_at.isoformat(),
-            "index_job_id": None,
+            "index_job_id": index_job_id,
         },
     )
 
@@ -606,6 +642,11 @@ async def correct_knowledge_object(
     if "normalized_content" in changes and body.review_status is None:
         knowledge_object.review_status = "corrected"
     knowledge_object.version += 1
+    # 教师修订会使候选索引失效；必须重新构建后才能发布。
+    await db.execute(
+        text("DELETE FROM knowledge_chunks WHERE material_version_id = :version_id"),
+        {"version_id": version.id},
+    )
     await course_service.write_audit(
         db,
         actor_id=user.id,
