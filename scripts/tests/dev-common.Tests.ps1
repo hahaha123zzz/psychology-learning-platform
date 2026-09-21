@@ -36,4 +36,11 @@ Describe "开发启动公共函数" {
             $caught.Exception.GetType().FullName | Should Be "System.Management.Automation.ParameterBindingValidationException"
         }
     }
+
+    It "前端启动可通过项目内 Corepack 缓存取得锁定的 pnpm" {
+        $webScript = Get-Content -Raw -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) "dev-web.ps1")
+        $webScript | Should Match "COREPACK_HOME"
+        $webScript | Should Match "corepack"
+        $webScript | Should Match "tmp\\corepack"
+    }
 }

@@ -14,7 +14,10 @@ $envTemplatePath = Join-Path $repoRoot ".env.example"
 try {
     Assert-DevCommand -Name "docker"
     Assert-DevCommand -Name "python"
-    Assert-DevCommand -Name "pnpm"
+    Assert-DevCommand -Name "node"
+    if ($null -eq (Get-Command "pnpm" -ErrorAction SilentlyContinue)) {
+        Assert-DevCommand -Name "corepack"
+    }
 
     if (-not (Test-Path -LiteralPath $envPath)) {
         Copy-Item -LiteralPath $envTemplatePath -Destination $envPath

@@ -21,7 +21,7 @@ docs/         设计与执行计划
 .\scripts\dev.ps1
 ```
 
-该命令首次自动创建 `.env`，启动并等待 PostgreSQL、Redis、MinIO，然后在后台启动 API 和 Web。访问前端 `http://localhost:3000`，API 文档 `http://localhost:8000/docs`。
+该命令首次自动创建 `.env`，启动并等待 PostgreSQL、Redis、MinIO，然后在后台启动 API 和 Web。若未安装全局 pnpm，会通过 Node.js 自带的 Corepack 在项目临时目录中准备锁定的 pnpm 版本。访问前端 `http://localhost:3000`，API 文档 `http://localhost:8000/docs`。
 
 - 查看日志：`Get-Content .\logs\dev\api.err.log -Wait` 或 `Get-Content .\logs\dev\web.err.log -Wait`
 - 停止 API/Web：`.\scripts\dev-stop.ps1`（不会停止 Docker 依赖或删除数据）
