@@ -36,6 +36,12 @@ def get_parser(content_type: str | None) -> DocumentParser:
 
     if content_type == "application/pdf":
         return StubPdfParser()
+    if content_type == (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ):
+        from app.modules.materials.parsers.docx import DocxParser
+
+        return DocxParser()
     from app.modules.materials.parsers.stub_pdf import UnsupportedTypeParser
 
     return UnsupportedTypeParser()

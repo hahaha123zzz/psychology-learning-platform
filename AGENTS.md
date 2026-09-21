@@ -148,7 +148,7 @@ pnpm build
 
 以下实现适合离线开发和确定性测试，但不是生产级外部能力：
 
-- PDF 解析器是基于 `pypdf` 的 `StubPdfParser`；Word 可上传但尚无可用转换/解析主路径，尚未接入 MinerU、OCR、表格、公式和版面恢复。
+- PDF 使用基于 `pypdf` 的 `StubPdfParser`；DOCX 已有 OOXML 结构解析主路径，可提取标题、段落、表格、图片和公式对象，但不伪造页内 bbox，并会产生 `layout_bbox_unavailable` 告警。尚未接入 MinerU、OCR 和可验证的版面恢复。
 - Embedding 已支持 OpenAI-compatible 外部服务；尚未配置真实 Key 联调，数据库仍固定为 384 维，供应商模型必须支持 `dimensions=384`，切换模型后必须重建索引。未配置时使用本地确定性哈希 `hash-v1`。
 - 问答已具备 OpenAI-compatible 外部生成适配器和教材证据回退；尚未配置真实 Key 做供应商联调。教学状态机和出题仍以本地确定性逻辑为主。
 - 异步解析/生成主要由应用进程内任务驱动，尚未形成生产 Worker、可靠队列和跨进程恢复能力。
