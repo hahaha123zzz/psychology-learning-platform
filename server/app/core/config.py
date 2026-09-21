@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     llm_model: str = ""
     llm_timeout_seconds: float = 30.0
 
+    # Embedding 与 LLM 共用 llm_provider 供应商标识，避免同一部署混用供应商。
+    # 数据库当前固定为 vector(384)，外部模型必须支持返回 384 维向量。
+    embedding_base_url: str = ""
+    embedding_api_key: str = ""
+    embedding_model: str = ""
+    embedding_dimension: int = 384
+    embedding_timeout_seconds: float = 30.0
+
 
 @lru_cache
 def get_settings() -> Settings:

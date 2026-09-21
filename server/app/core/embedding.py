@@ -1,8 +1,11 @@
-"""Embedding 客户端接口。当前为本地确定性哈希实现（离线可用、可复现），
-接入真实Embedding API时替换实现并更新version，触发索引重建。"""
+"""Embedding 客户端与部署级供应商选择。"""
 
 import hashlib
 import re
+from typing import Protocol
+
+from app.core.config import get_settings
+from app.core.providers.embedding import OpenAICompatibleEmbedding
 
 DIM = 384
 VERSION = "hash-v1"
@@ -10,10 +13,16 @@ VERSION = "hash-v1"
 _TOKEN_RE = re.compile(r"[\u4e00-\u9fff]|[a-zA-Z0-9]+")
 
 
-class EmbeddingClient:
+class EmbeddingClient(Protocol):
+    version: str
+
+    async def embed(self, texts: list[str]) -> list[list[float]]: ...
+
+
+class HashEmbeddingClient:
     version = VERSION
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    async def embed(self, texts: list[str]) -> list[list[float]]:
         return [self._embed_one(t) for t in texts]
 
     def _embed_one(self, text: str) -> list[float]:
@@ -35,4 +44,14 @@ class EmbeddingClient:
 
 
 def get_embedding_client() -> EmbeddingClient:
-    return EmbeddingClient()
+    settings = get_settings()
+    if settings.llm_provider == "internal" or not settings.embedding_model:
+        return HashEmbeddingClient()
+    return OpenAICompatibleEmbedding(
+        provider=settings.llm_provider,
+        base_url=settings.embedding_base_url or settings.llm_base_url,
+        api_key=settings.embedding_api_key or settings.llm_api_key,
+        model=settings.embedding_model,
+        dimension=settings.embedding_dimension,
+        timeout_seconds=settings.embedding_timeout_seconds,
+    )

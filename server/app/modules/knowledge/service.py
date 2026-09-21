@@ -124,6 +124,17 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
             job.progress = 20
             await session.commit()
 
+            total = len(rows)
+            for start in range(0, total, EMBED_BATCH):
+                batch = rows[start : start + EMBED_BATCH]
+                vectors = await client.embed([r["text"] for r in batch])
+                for row, vector in zip(batch, vectors, strict=True):
+                    row["embedding"] = "[" + ",".join(f"{v:.6f}" for v in vector) + "]"
+                progress = 20 + int(70 * (start + len(batch)) / total)
+                job.progress = max(job.progress or 0, progress)
+                await session.commit()
+
+            # 先完整取得新向量，再在一个事务中替换旧索引；外部调用失败不会破坏旧索引。
             await session.execute(
                 text("DELETE FROM knowledge_chunks WHERE material_version_id = :v"),
                 {"v": version_id},
@@ -133,9 +144,10 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
                     text(
                         "INSERT INTO knowledge_chunks "
                         "(id, material_version_id, course_id, chapter_object_id, "
-                        " chapter_path, physical_page, reading_order, text) "
+                        " chapter_path, physical_page, reading_order, text, "
+                        " embedding, embedding_version) "
                         "VALUES (:id, :version, :course, :chapter, :path, "
-                        " :page, :order, :text)"
+                        " :page, :order, :text, CAST(:embedding AS vector), :ev)"
                     ),
                     {
                         "id": row["id"],
@@ -146,28 +158,10 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
                         "page": row["physical_page"],
                         "order": row["reading_order"],
                         "text": row["text"],
+                        "embedding": row["embedding"],
+                        "ev": client.version,
                     },
                 )
-            await session.commit()
-
-            total = len(rows)
-            for start in range(0, total, EMBED_BATCH):
-                batch = rows[start : start + EMBED_BATCH]
-                vectors = client.embed([r["text"] for r in batch])
-                for row, vector in zip(batch, vectors, strict=True):
-                    literal = "[" + ",".join(f"{v:.6f}" for v in vector) + "]"
-                    await session.execute(
-                        text(
-                            "UPDATE knowledge_chunks "
-                            "SET embedding = CAST(:vec AS vector), embedding_version = :ev "
-                            "WHERE id = :id"
-                        ),
-                        {"vec": literal, "ev": client.version, "id": row["id"]},
-                    )
-                progress = 20 + int(70 * (start + len(batch)) / total)
-                job.progress = max(job.progress or 0, progress)
-                await session.commit()
-
             await session.execute(text("ANALYZE knowledge_chunks"))
             version.status = "parsed"
             job.stage = "done"
@@ -258,8 +252,6 @@ async def hybrid_search(
         return [], ["当前课程没有可检索的已解析资料"]
 
     client = get_embedding_client()
-    query_vector = client.embed([query])[0]
-    vector_literal = "[" + ",".join(f"{v:.6f}" for v in query_vector) + "]"
     version_list = ", ".join(f"'{v}'" for v in version_ids)
 
     tsq = _or_tsquery(query)
@@ -277,19 +269,25 @@ async def hybrid_search(
     ).all()
     bm25_hits = [(row[0], float(row[1])) for row in bm25_rows]
 
-    vector_rows = (
-        await db.execute(
-            text(
-                "SELECT id, 1 - (embedding <=> CAST(:vec AS vector)) AS cosine "
-                "FROM knowledge_chunks "
-                f"WHERE material_version_id IN ({version_list}) "
-                "AND embedding_version = :ev AND embedding IS NOT NULL "
-                "ORDER BY embedding <=> CAST(:vec AS vector) LIMIT 50"
-            ),
-            {"vec": vector_literal, "ev": client.version},
-        )
-    ).all()
-    vector_hits = [(row[0], float(row[1])) for row in vector_rows]
+    vector_hits: list[tuple[str, float]] = []
+    try:
+        query_vector = (await client.embed([query]))[0]
+        vector_literal = "[" + ",".join(f"{v:.6f}" for v in query_vector) + "]"
+        vector_rows = (
+            await db.execute(
+                text(
+                    "SELECT id, 1 - (embedding <=> CAST(:vec AS vector)) AS cosine "
+                    "FROM knowledge_chunks "
+                    f"WHERE material_version_id IN ({version_list}) "
+                    "AND embedding_version = :ev AND embedding IS NOT NULL "
+                    "ORDER BY embedding <=> CAST(:vec AS vector) LIMIT 50"
+                ),
+                {"vec": vector_literal, "ev": client.version},
+            )
+        ).all()
+        vector_hits = [(row[0], float(row[1])) for row in vector_rows]
+    except Exception:  # noqa: BLE001 外部向量服务失败时保留 BM25 可用性
+        warnings.append("语义检索暂时不可用，已降级为关键词检索")
 
     fused = _rrf_fuse(bm25_hits, vector_hits)[:top_k]
 
