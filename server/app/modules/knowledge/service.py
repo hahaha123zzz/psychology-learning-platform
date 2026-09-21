@@ -277,23 +277,19 @@ async def hybrid_search(
     ).all()
     bm25_hits = [(row[0], float(row[1])) for row in bm25_rows]
 
-    vector_hits: list[tuple[str, float]] = []
-    if staff:
-        vector_rows = (
-            await db.execute(
-                text(
-                    "SELECT id, 1 - (embedding <=> CAST(:vec AS vector)) AS cosine "
-                    "FROM knowledge_chunks "
-                    f"WHERE material_version_id IN ({version_list}) "
-                    "AND embedding_version = :ev AND embedding IS NOT NULL "
-                    "ORDER BY embedding <=> CAST(:vec AS vector) LIMIT 50"
-                ),
-                {"vec": vector_literal, "ev": client.version},
-            )
-        ).all()
-        vector_hits = [(row[0], float(row[1])) for row in vector_rows]
-    else:
-        warnings.append("部分检索通道仅对教师开放调试")
+    vector_rows = (
+        await db.execute(
+            text(
+                "SELECT id, 1 - (embedding <=> CAST(:vec AS vector)) AS cosine "
+                "FROM knowledge_chunks "
+                f"WHERE material_version_id IN ({version_list}) "
+                "AND embedding_version = :ev AND embedding IS NOT NULL "
+                "ORDER BY embedding <=> CAST(:vec AS vector) LIMIT 50"
+            ),
+            {"vec": vector_literal, "ev": client.version},
+        )
+    ).all()
+    vector_hits = [(row[0], float(row[1])) for row in vector_rows]
 
     fused = _rrf_fuse(bm25_hits, vector_hits)[:top_k]
 

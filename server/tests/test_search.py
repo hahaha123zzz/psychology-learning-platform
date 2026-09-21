@@ -117,6 +117,7 @@ def test_student_search_after_publish_has_no_score(client) -> None:
     assert len(items) >= 1
     assert "score" not in items[0]
     assert items[0]["evidence_id"]
+    assert "vector" in items[0]["retrieval_sources"]
 
 
 def test_student_search_cannot_request_non_current_published_version(client) -> None:
@@ -181,6 +182,34 @@ def test_evidence_ticket_binds_to_owner(client) -> None:
     forbidden = client.get(f"/api/v1/evidence/{evidence_id}")
     assert forbidden.status_code == 404
     assert forbidden.json()["error"]["code"] == "EVIDENCE_NOT_FOUND"
+
+
+def test_student_evidence_is_revoked_when_material_archived(client) -> None:
+    course_id, _, version_id = _prepare(client, publish=True)
+    _login(client, "ms@uni.edu")
+    search = client.post(
+        "/api/v1/knowledge/search",
+        json={"course_id": course_id, "query": "participants"},
+    )
+    evidence_id = search.json()["data"]["items"][0]["evidence_id"]
+
+    _login(client, "mt@uni.edu")
+
+    async def archive_material() -> None:
+        async with session_factory() as db:
+            version = await db.get(MaterialVersion, version_id)
+            assert version is not None
+            material = await db.get(Material, version.material_id)
+            assert material is not None
+            material.status = "archived"
+            await db.commit()
+
+    asyncio.run(archive_material())
+
+    _login(client, "ms@uni.edu")
+    revoked = client.get(f"/api/v1/evidence/{evidence_id}")
+    assert revoked.status_code == 404
+    assert revoked.json()["error"]["code"] == "EVIDENCE_NOT_FOUND"
 
 
 def test_search_unknown_course_404(client) -> None:

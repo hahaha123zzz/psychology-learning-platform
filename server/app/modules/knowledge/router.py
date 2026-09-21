@@ -156,7 +156,7 @@ async def get_evidence(
         raise ApiError(
             status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已过期"
         )
-    await require_course_role(
+    role = await require_course_role(
         ticket.course_id, user, db, roles={"teacher", "assistant", "student"}
     )
 
@@ -164,7 +164,8 @@ async def get_evidence(
         await db.execute(
             text(
                 "SELECT kc.text, kc.chapter_path, kc.physical_page, "
-                "kc.reading_order, mv.object_key, mv.id, m.title, m.id "
+                "kc.reading_order, mv.object_key, mv.id, m.title, m.id, "
+                "m.visibility, m.status, m.current_version_id "
                 "FROM knowledge_chunks kc "
                 "JOIN material_versions mv ON mv.id = kc.material_version_id "
                 "JOIN materials m ON m.id = mv.material_id "
@@ -174,6 +175,16 @@ async def get_evidence(
         )
     ).first()
     if row is None:
+        raise ApiError(
+            status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已过期"
+        )
+    if ticket.material_version_id != row[5]:
+        raise ApiError(
+            status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已过期"
+        )
+    if role == "student" and (
+        row[8] != "published" or row[9] != "active" or row[10] != row[5]
+    ):
         raise ApiError(
             status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已过期"
         )
