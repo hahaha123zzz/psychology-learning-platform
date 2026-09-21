@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateRange(5, 300)][int]$DependencyTimeoutSeconds = 90,
     [ValidateRange(5, 180)][int]$ApplicationTimeoutSeconds = 180

@@ -1,4 +1,4 @@
-$common = Join-Path (Split-Path -Parent $PSScriptRoot) "dev-common.ps1"
+﻿$common = Join-Path (Split-Path -Parent $PSScriptRoot) "dev-common.ps1"
 . $common
 
 Describe "开发启动公共函数" {

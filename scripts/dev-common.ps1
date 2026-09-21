@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 function Get-DevRepositoryRoot {
     Split-Path -Parent $PSScriptRoot

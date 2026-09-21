@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "dev-common.ps1")
 
 $repoRoot = Get-DevRepositoryRoot
