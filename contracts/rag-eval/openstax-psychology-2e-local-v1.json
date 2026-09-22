@@ -1,0 +1,113 @@
+{
+  "dataset_id": "openstax-psychology-2e-local-v1",
+  "schema_version": "rag-eval/v3",
+  "documents": [
+    {
+      "id": "openstax-psychology-2e",
+      "title": "Psychology 2e",
+      "format": "pdf",
+      "page_count": 755,
+      "sha256": "2f08113c78127bc684922ad6a819db22bd4705ce9fcf28a07f36a2041b1474e2"
+    }
+  ],
+  "objects": [
+    {
+      "id": "openstax-p066-variables",
+      "document_id": "openstax-psychology-2e",
+      "object_type": "paragraph",
+      "page": 66,
+      "chapter_path": "2.3"
+    },
+    {
+      "id": "openstax-p067-quasi-experiment",
+      "document_id": "openstax-psychology-2e",
+      "object_type": "paragraph",
+      "page": 67,
+      "chapter_path": "2.3"
+    },
+    {
+      "id": "openstax-p197-classical-conditioning-figure",
+      "document_id": "openstax-psychology-2e",
+      "object_type": "image",
+      "page": 197,
+      "chapter_path": "6.2"
+    },
+    {
+      "id": "openstax-p262-memory-model",
+      "document_id": "openstax-psychology-2e",
+      "object_type": "paragraph",
+      "page": 262,
+      "chapter_path": "8.2"
+    },
+    {
+      "id": "openstax-p262-rehearsal",
+      "document_id": "openstax-psychology-2e",
+      "object_type": "paragraph",
+      "page": 262,
+      "chapter_path": "8.2"
+    }
+  ],
+  "cases": [
+    {
+      "id": "case-independent-dependent-variable",
+      "query": "In an experiment, what is the difference between an independent variable and a dependent variable?",
+      "expected_refusal": false,
+      "answer_points": [
+        "The independent variable is manipulated or controlled by the experimenter.",
+        "The dependent variable is measured to determine the effect of the independent variable."
+      ],
+      "relevant_object_ids": ["openstax-p066-variables"],
+      "allowed_evidence_ids": ["openstax-p066-variables"]
+    },
+    {
+      "id": "case-quasi-experimental-causality",
+      "query": "Why can a quasi-experimental study of sex and spatial memory not make a cause-and-effect claim?",
+      "expected_refusal": false,
+      "answer_points": [
+        "The researcher cannot directly control or manipulate a person's sex.",
+        "Without manipulation and random assignment, the design cannot establish cause and effect."
+      ],
+      "relevant_object_ids": ["openstax-p067-quasi-experiment"],
+      "allowed_evidence_ids": ["openstax-p067-quasi-experiment"]
+    },
+    {
+      "id": "case-classical-conditioning-sequence",
+      "query": "According to the classical conditioning diagram, what happens before, during, and after conditioning?",
+      "expected_refusal": false,
+      "answer_points": [
+        "Before conditioning, food produces salivation and the bell is neutral.",
+        "During conditioning, the bell is repeatedly paired with food.",
+        "After conditioning, the bell becomes a conditioned stimulus that produces salivation."
+      ],
+      "relevant_object_ids": ["openstax-p197-classical-conditioning-figure"],
+      "allowed_evidence_ids": ["openstax-p197-classical-conditioning-figure"]
+    },
+    {
+      "id": "case-memory-three-stages",
+      "query": "What are the three stages that information passes through before it is stored in long-term memory?",
+      "expected_refusal": false,
+      "answer_points": ["Sensory memory", "Short-term memory", "Long-term memory"],
+      "relevant_object_ids": ["openstax-p262-memory-model"],
+      "allowed_evidence_ids": ["openstax-p262-memory-model"]
+    },
+    {
+      "id": "case-active-rehearsal",
+      "query": "How does active rehearsal help information move into long-term memory?",
+      "expected_refusal": false,
+      "answer_points": [
+        "Active rehearsal means repeating or practicing information.",
+        "Rehearsal moves information from short-term memory to long-term memory."
+      ],
+      "relevant_object_ids": ["openstax-p262-rehearsal"],
+      "allowed_evidence_ids": ["openstax-p262-rehearsal"]
+    },
+    {
+      "id": "case-out-of-scope-szechuan-cooking",
+      "query": "How do I make authentic mapo tofu?",
+      "expected_refusal": true,
+      "answer_points": [],
+      "relevant_object_ids": [],
+      "allowed_evidence_ids": []
+    }
+  ]
+}

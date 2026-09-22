@@ -221,7 +221,13 @@ async def trigger_parse(
             details={"job_id": active.id},
         )
 
-    if version.status not in ("uploaded", "failed"):
+    if version.status == "parsed" and material.visibility != "draft":
+        raise ApiError(
+            status_code=409,
+            code="PUBLISHED_VERSION_IMMUTABLE",
+            message="已发布版本不能原地重解析，请创建新版本",
+        )
+    if version.status not in ("uploaded", "failed", "parsed"):
         raise ApiError(
             status_code=409,
             code="INVALID_VERSION_STATUS",
@@ -239,6 +245,7 @@ async def trigger_parse(
     )
     db.add(job)
     version.status = "parsing"
+    version.quality_gate_status = "pending"
     await course_service.write_audit(
         db,
         actor_id=user.id,

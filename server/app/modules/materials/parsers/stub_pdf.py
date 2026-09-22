@@ -15,6 +15,9 @@ CHAPTER_RE = re.compile(
     r"|附录\s*[A-Za-z0-9一二三四五六七八九十]?"
     r"|Chapter\s+[0-9]+|Appendix\s+[A-Z0-9])"
 )
+ENGLISH_CHAPTER_RE = re.compile(r"^Chapter\s+([0-9]+)\b", re.IGNORECASE)
+CHAPTER_OUTLINE_RE = re.compile(r"^CHAPTER\s+OUTLINE$", re.IGNORECASE)
+FIRST_SECTION_RE = re.compile(r"^([0-9]+)\.1\s+\S")
 
 MAX_PARAGRAPH_CHARS = 600
 
@@ -41,22 +44,60 @@ class StubPdfParser:
             total_text += len(text.strip())
             lines = [line.strip() for line in text.splitlines() if line.strip()]
             page_paragraphs: list[str] = []
-            for line in lines:
-                if CHAPTER_RE.match(line):
-                    chapter_no += 1
-                    current_path = str(chapter_no)
-                    order += 1
-                    objects.append(
-                        ParsedObject(
-                            type="chapter",
-                            title=line[:200],
-                            raw_content=line,
-                            physical_page=page_index,
-                            reading_order=order,
-                            chapter_path=current_path,
-                            confidence=0.9,
+            english_chapter_lines = [line for line in lines if ENGLISH_CHAPTER_RE.match(line)]
+            suppress_english_toc = len(english_chapter_lines) > 1
+
+            # OpenStax 等原生数字教材的章首页常以 CHAPTER OUTLINE 加 N.1 开头，
+            # 章名本身可能是图片文字。用首节编号恢复章边界，同时避免把前言中连续的
+            # “Chapter 1…Chapter 16”目录条目当成真实章节。
+            if any(CHAPTER_OUTLINE_RE.match(line) for line in lines):
+                section_matches = (FIRST_SECTION_RE.match(line) for line in lines)
+                first_section = next(
+                    (match for match in section_matches if match is not None),
+                    None,
+                )
+                if first_section is not None:
+                    detected_chapter = int(first_section.group(1))
+                    if current_path != str(detected_chapter):
+                        chapter_no = detected_chapter
+                        current_path = str(chapter_no)
+                        order += 1
+                        objects.append(
+                            ParsedObject(
+                                type="chapter",
+                                title=f"Chapter {chapter_no}",
+                                raw_content=f"Chapter {chapter_no}",
+                                physical_page=page_index,
+                                reading_order=order,
+                                chapter_path=current_path,
+                                confidence=0.8,
+                            )
                         )
+            for line in lines:
+                english_chapter = ENGLISH_CHAPTER_RE.match(line)
+                is_suppressed_toc_entry = suppress_english_toc and english_chapter
+                if CHAPTER_RE.match(line) and not is_suppressed_toc_entry:
+                    detected_chapter = (
+                        int(english_chapter.group(1))
+                        if english_chapter is not None
+                        else chapter_no + 1
                     )
+                    if current_path != str(detected_chapter):
+                        chapter_no = detected_chapter
+                        current_path = str(chapter_no)
+                        order += 1
+                        objects.append(
+                            ParsedObject(
+                                type="chapter",
+                                title=line[:200],
+                                raw_content=line,
+                                physical_page=page_index,
+                                reading_order=order,
+                                chapter_path=current_path,
+                                confidence=0.9,
+                            )
+                        )
+                    continue
                 else:
                     page_paragraphs.append(line)
             if page_paragraphs:

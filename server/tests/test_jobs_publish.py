@@ -100,14 +100,20 @@ def test_parse_concurrent_active_job_conflict(client) -> None:
     _wait_job(client, first.json()["data"]["job_id"])
 
 
-def test_parse_rejected_for_invalid_status(client) -> None:
+def test_parsed_draft_can_be_reparsed_and_old_index_is_invalidated(client) -> None:
     course_id, _ = _setup_course(client)
     data = _upload_one(client, course_id)
     job_id = _parse(client, data["version_id"]).json()["data"]["job_id"]
     _wait_job(client, job_id)
+    assert _embed_and_wait(client, data["version_id"])["status"] == "succeeded"
+
     again = _parse(client, data["version_id"])
-    assert again.status_code == 409
-    assert again.json()["error"]["code"] == "INVALID_VERSION_STATUS"
+    assert again.status_code == 202
+    assert _wait_job(client, again.json()["data"]["job_id"])["status"] == "succeeded"
+
+    publish = client.post(f"/api/v1/material-versions/{data['version_id']}/publish")
+    assert publish.status_code == 409
+    assert publish.json()["error"]["code"] == "MATERIAL_INDEX_NOT_READY"
 
 
 def test_student_cannot_trigger_parse_or_view_job(client) -> None:
@@ -187,6 +193,10 @@ def test_publish_makes_material_visible_to_students(client) -> None:
     assert body["material_id"] == published["material_id"]
     assert body["published_at"]
     assert body["index_job_id"]
+
+    reparse = _parse(client, published["version_id"])
+    assert reparse.status_code == 409
+    assert reparse.json()["error"]["code"] == "PUBLISHED_VERSION_IMMUTABLE"
 
     _login(client, "ms@uni.edu")
     student_view = client.get(f"/api/v1/courses/{course_id}/materials")

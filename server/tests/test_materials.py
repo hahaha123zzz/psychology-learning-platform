@@ -1,9 +1,32 @@
 import io
 
+from app.modules.materials.parsers.stub_pdf import StubPdfParser
 from tests.conftest import create_user_sync, make_pdf
 
 MINIMAL_PDF = make_pdf([["Minimal test page for upload fixture text"]])
 FAKE_DOCX = b"this is not a zip file at all" * 3
+
+
+def test_pdf_parser_ignores_contents_chapters_and_detects_outline_boundary() -> None:
+    source = make_pdf(
+        [
+            ["Contents", "Chapter 1: Introduction", "Chapter 2: Research"],
+            [
+                "Chapter 6",
+                "INTRODUCTION",
+                "CHAPTER OUTLINE",
+                "6.1 What Is Learning?",
+                "Body text",
+            ],
+        ]
+    )
+
+    result = StubPdfParser().parse(source, "application/pdf")
+    chapters = [item for item in result.objects if item.type == "chapter"]
+
+    assert [(item.title, item.physical_page, item.chapter_path) for item in chapters] == [
+        ("Chapter 6", 2, "6")
+    ]
 
 
 def _login(client, email: str, password: str = "correct-password"):

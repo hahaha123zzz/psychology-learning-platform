@@ -12,6 +12,7 @@ from app.core.errors import ApiError
 from app.db.models import (
     Course,
     Job,
+    KnowledgeChunk,
     KnowledgeObject,
     Material,
     MaterialVersion,
@@ -237,6 +238,12 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
             }
 
             job.stage = "persist"
+            # 重新解析会改变对象边界，旧检索分块不得继续作为可发布证据。
+            await session.execute(
+                delete(KnowledgeChunk).where(
+                    KnowledgeChunk.material_version_id == version_id
+                )
+            )
             await session.execute(
                 delete(KnowledgeObject).where(
                     KnowledgeObject.material_version_id == version_id

@@ -1,0 +1,89 @@
+{
+  "dataset_id": "openstax-psychology-2e-local-v1",
+  "schema_version": "rag-eval/v3-run",
+  "run_id": "openstax-local-hybrid-v1-hash-v1-20260922",
+  "retrieval_version": "hybrid-v1",
+  "embedding_version": "hash-v1",
+  "material_version_id": "01M33P6ACK2GAFPF6FCP95Z0YZ",
+  "matching_note": "当前索引未保留 KnowledgeObject 到 RetrievalUnit 的稳定映射，因此 exact object 指标不使用页码代理；另行报告 ranked page 指标。",
+  "results": [
+    {
+      "case_id": "case-independent-dependent-variable",
+      "retrieved_object_ids": ["opaque:case-1:r1", "opaque:case-1:r2", "opaque:case-1:r3", "opaque:case-1:r4", "opaque:case-1:r5", "opaque:case-1:r6", "opaque:case-1:r7", "opaque:case-1:r8"],
+      "retrieved_pages": [66, 75, 75, 68, 79, 158, 75, 77],
+      "predicted_page": 66,
+      "predicted_bbox": null,
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": false,
+      "refused": false,
+      "latency_ms": 51.5342
+    },
+    {
+      "case_id": "case-quasi-experimental-causality",
+      "retrieved_object_ids": ["opaque:case-2:r1", "opaque:case-2:r2", "opaque:case-2:r3", "opaque:case-2:r4", "opaque:case-2:r5", "opaque:case-2:r6", "opaque:case-2:r7", "opaque:case-2:r8"],
+      "retrieved_pages": [67, 81, 287, 32, 691, 65, 329, 557],
+      "predicted_page": 67,
+      "predicted_bbox": null,
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": false,
+      "refused": false,
+      "latency_ms": 46.7506
+    },
+    {
+      "case_id": "case-classical-conditioning-sequence",
+      "retrieved_object_ids": ["opaque:case-3:r1", "opaque:case-3:r2", "opaque:case-3:r3", "opaque:case-3:r4", "opaque:case-3:r5", "opaque:case-3:r6", "opaque:case-3:r7", "opaque:case-3:r8"],
+      "retrieved_pages": [202, 197, 199, 218, 195, 204, 220, 200],
+      "predicted_page": 202,
+      "predicted_bbox": null,
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": false,
+      "refused": false,
+      "latency_ms": 38.0384
+    },
+    {
+      "case_id": "case-memory-three-stages",
+      "retrieved_object_ids": ["opaque:case-4:r1", "opaque:case-4:r2", "opaque:case-4:r3", "opaque:case-4:r4", "opaque:case-4:r5", "opaque:case-4:r6", "opaque:case-4:r7", "opaque:case-4:r8"],
+      "retrieved_pages": [262, 261, 263, 286, 262, 281, 262, 284],
+      "predicted_page": 262,
+      "predicted_bbox": null,
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": false,
+      "refused": false,
+      "latency_ms": 49.4288
+    },
+    {
+      "case_id": "case-active-rehearsal",
+      "retrieved_object_ids": ["opaque:case-5:r1", "opaque:case-5:r2", "opaque:case-5:r3", "opaque:case-5:r4", "opaque:case-5:r5", "opaque:case-5:r6", "opaque:case-5:r7", "opaque:case-5:r8"],
+      "retrieved_pages": [262, 286, 285, 262, 285, 261, 281, 263],
+      "predicted_page": 262,
+      "predicted_bbox": null,
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": false,
+      "refused": false,
+      "latency_ms": 39.1814
+    },
+    {
+      "case_id": "case-out-of-scope-szechuan-cooking",
+      "retrieved_object_ids": ["opaque:case-6:r1", "opaque:case-6:r2", "opaque:case-6:r3", "opaque:case-6:r4", "opaque:case-6:r5", "opaque:case-6:r6", "opaque:case-6:r7", "opaque:case-6:r8"],
+      "retrieved_pages": [488, 77, 298, 35, 265, 409, 493, 81],
+      "predicted_page": 488,
+      "predicted_bbox": null,
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": false,
+      "refused": false,
+      "latency_ms": 29.6215
+    }
+  ]
+}
