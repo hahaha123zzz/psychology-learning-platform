@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.embedding import get_embedding_client
 from app.db.base import new_ulid
 from app.db.models import (
@@ -274,6 +275,7 @@ async def hybrid_search(
     try:
         query_vector = (await client.embed([query]))[0]
         vector_literal = "[" + ",".join(f"{v:.6f}" for v in query_vector) + "]"
+        min_similarity = get_settings().retrieval_min_vector_similarity
         vector_rows = (
             await db.execute(
                 text(
@@ -281,9 +283,14 @@ async def hybrid_search(
                     "FROM knowledge_chunks "
                     f"WHERE material_version_id IN ({version_list}) "
                     "AND embedding_version = :ev AND embedding IS NOT NULL "
+                    "AND 1 - (embedding <=> CAST(:vec AS vector)) >= :min_similarity "
                     "ORDER BY embedding <=> CAST(:vec AS vector) LIMIT 50"
                 ),
-                {"vec": vector_literal, "ev": client.version},
+                {
+                    "vec": vector_literal,
+                    "ev": client.version,
+                    "min_similarity": min_similarity,
+                },
             )
         ).all()
         vector_hits = [(row[0], float(row[1])) for row in vector_rows]

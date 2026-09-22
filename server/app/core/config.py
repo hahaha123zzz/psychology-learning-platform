@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     embedding_model: str = ""
     embedding_dimension: int = 384
     embedding_timeout_seconds: float = 30.0
+    retrieval_min_vector_similarity: float = 0.1
 
 
 @lru_cache
