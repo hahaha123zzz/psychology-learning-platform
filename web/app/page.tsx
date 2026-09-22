@@ -1,27 +1,20 @@
-const capabilities = [
-  ["课程资料", "教师上传教材和课件，系统保留版本、章节和原始位置。"],
-  ["可信答疑", "回答主要依据课程资料，并提供可点击的教材引用。"],
-  ["引导学习", "AI按诊断、提示、练习和总结逐步帮助学生理解。"],
-];
+import Link from "next/link";
+import { Icon } from "@iconify/react";
 
 export default function Home() {
   return (
-    <main className="content">
-      <section className="hero">
-        <span className="eyebrow">FOUNDATION · V0.1</span>
-        <h1>把教材变成可验证、可引导的学习过程</h1>
-        <p className="lead">基础框架已经建立。接下来将依次加入课程、教材解析、知识库、AI教师、题目教练和学习记忆。</p>
+    <main className="home-app">
+      <header className="home-header"><span className="app-brand"><Icon icon="solar:book-2-bold-duotone" />实验心理学智能学习平台</span><span>以教材为依据 · 让学习过程可追溯</span></header>
+      <section className="home-hero">
+        <p className="eyebrow">EXPERIMENTAL PSYCHOLOGY</p>
+        <h1>从可信教材出发，<br />完成每一次有效学习。</h1>
+        <p>教师审核、发布并维护教材证据；学生在原文、AI 讲解、练习和复习之间持续前进。</p>
+        <div className="workspace-choices">
+          <Link href="/teacher" className="workspace-choice teacher-choice"><span className="choice-icon"><Icon icon="solar:clipboard-check-bold-duotone" /></span><span><strong>进入教师工作台</strong><small>审核教材解析，管理课程与班级学情</small></span><Icon icon="solar:arrow-right-linear" /></Link>
+          <Link href="/student" className="workspace-choice student-choice"><span className="choice-icon"><Icon icon="solar:book-bookmark-bold-duotone" /></span><span><strong>进入学生学习空间</strong><small>阅读教材，与 AI 教师进行有据对话</small></span><Icon icon="solar:arrow-right-linear" /></Link>
+        </div>
       </section>
-      <section className="grid" aria-label="平台核心能力">
-        {capabilities.map(([title, description]) => (
-          <article className="card" key={title}>
-            <span className="badge">规划中</span>
-            <h2>{title}</h2>
-            <p>{description}</p>
-          </article>
-        ))}
-      </section>
+      <footer className="home-footer"><span><Icon icon="solar:verified-check-bold" />教材为准</span><span><Icon icon="solar:link-circle-linear" />引用可定位</span><span><Icon icon="solar:chart-2-linear" />学习可回看</span></footer>
     </main>
   );
 }
-
