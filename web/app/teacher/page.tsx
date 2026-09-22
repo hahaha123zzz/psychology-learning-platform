@@ -1,29 +1,3 @@
-"use client";
+import TeacherWorkspace from "../../components/TeacherWorkspace";
 
-import Link from "next/link";
-import { Icon } from "@iconify/react";
-import { useState } from "react";
-
-const chapters = [["封面、版权页", "1–4", "done"], ["第一章 绪论", "5–32", "done"], ["第二章 心理学实验的基本问题", "33–41", "done"], ["第三章 实验设计", "42–78", "active"], ["第四章 心理物理法", "79–112", ""], ["第五章 反应时实验", "113–146", ""], ["第六章 记忆的实验研究", "147–182", ""]];
-
-export default function TeacherPage() {
-  const [tab, setTab] = useState<"result" | "edit">("result");
-  const [notice, setNotice] = useState("");
-  const [correction, setCorrection] = useState("实验设计是指在控制无关变量的前提下，系统安排自变量的水平与被试的分配，并通过观察因变量的变化来验证研究假设的过程。一个良好的实验设计应当能够有效控制混淆因素，提高实验的内部效度。");
-  return <main className="teacher-app">
-    <header className="app-header"><Link href="/teacher" className="app-brand"><Icon icon="solar:book-2-bold-duotone" /> 实验心理学智能学习平台</Link><button className="course-switcher">2026 秋 · 实验心理学 <Icon icon="solar:alt-arrow-down-linear" /></button><div className="header-spacer" /><span className="role-label">教师端</span><button className="profile-button"><span className="avatar">陈</span>陈老师 <Icon icon="solar:alt-arrow-down-linear" /></button></header>
-    <div className="teacher-layout">
-      <aside className="teacher-nav" aria-label="教师功能导航">{[["solar:home-2-linear", "课程概览"], ["solar:book-bookmark-bold-duotone", "教材资料"], ["solar:clipboard-list-linear", "题库与测验"], ["solar:chart-2-linear", "班级学情"]].map(([icon, label]) => <button className={label === "教材资料" ? "nav-item selected" : "nav-item"} key={label}><Icon icon={icon} />{label}</button>)}</aside>
-      <section className="teacher-workspace">
-        <div className="workspace-heading"><div><p className="eyebrow">教材发布工作台</p><h1>解析审核</h1><p>对照教材原文与解析结果，处理质量问题，构建候选索引，审核通过后发布。</p></div><span className="draft-pill">草稿 v1</span></div>
-        <ol className="release-steps" aria-label="教材发布进度">{["上传完成", "解析完成", "抽样审核中", "待构建索引", "待发布"].map((label, index) => <li className={index < 2 ? "complete" : index === 2 ? "current" : ""} key={label}><span>{index < 2 ? <Icon icon="solar:check-circle-bold" /> : index + 1}</span>{label}</li>)}</ol>
-        <div className="review-grid">
-          <aside className="chapter-panel"><div className="panel-title"><strong>《实验心理学》第三版.pdf</strong><button aria-label="更多章节操作"><Icon icon="solar:menu-dots-linear" /></button></div>{chapters.map(([title, pages, state]) => <button key={title} className={`chapter-row ${state}`}><span>{title}</span><small>{pages}</small>{state === "done" ? <Icon icon="solar:check-circle-bold" /> : state === "active" ? <Icon icon="solar:refresh-circle-linear" /> : <Icon icon="solar:clock-circle-linear" />}</button>)}</aside>
-          <section className="paper-stage" aria-label="教材原页预览"><div className="viewer-toolbar"><button><Icon icon="solar:alt-arrow-left-linear" /></button><strong>42</strong><span>/ 386</span><button><Icon icon="solar:alt-arrow-right-linear" /></button><span className="toolbar-space" /><button><Icon icon="solar:minus-circle-linear" /></button><span>100%</span><button><Icon icon="solar:add-circle-linear" /></button><button><Icon icon="solar:full-screen-linear" /></button></div><article className="textbook-page"><div className="page-running-head"><span>42</span><span>第三章　实验设计</span></div><h2>3.1　实验设计的概念</h2><div className="bbox paragraph-object"><p>实验设计是指在控制无关变量的前提下，系统安排自变量的水平与被试的分配，并通过观察因变量的变化来验证研究假设的过程。一个良好的实验设计应当能够有效控制混淆因素，提高实验的内部效度，并在可行的范围内兼顾外部效度。</p></div><p>与描述性研究不同，实验研究通过主动操纵自变量，考察其对因变量的因果影响。在实验设计中，研究者需要明确实验目的、选择合适的实验范式，确定自变量与因变量的操作化定义，并合理安排被试的分组与实验程序。</p><h2>3.2　实验设计的基本类型</h2><h3>3.2.1　被试间设计与被试内设计</h3><p>根据被试在实验中的参与方式，实验设计可以分为被试间设计和被试内设计。两种设计各有优缺点，研究者应根据研究目的和实验材料选择合适的方案。</p><div className="diagram-object"><span>自变量<br/><small>（实验条件）</small></span><Icon icon="solar:arrow-right-linear" /><span>被试<br/><small>（行为反应）</small></span><Icon icon="solar:arrow-right-linear" /><span>因变量<br/><small>（测量指标）</small></span></div><div className="caption-object">图 3-1　实验设计的基本框架</div><p>图 3-1 展示了实验设计中自变量、被试与因变量之间的基本关系。</p></article></section>
-          <aside className="inspector-panel"><div className="inspector-tabs"><button className={tab === "result" ? "active" : ""} onClick={() => setTab("result")}>解析结果</button><button className={tab === "edit" ? "active" : ""} onClick={() => setTab("edit")}>教师修正</button></div><section className="object-summary"><h2>段落对象 · p42</h2><dl><dt>对象类型</dt><dd>段落</dd><dt>所属章节</dt><dd>第三章 实验设计</dd><dt>置信度</dt><dd><span className="confidence"><i />0.87</span></dd><dt>审核状态</dt><dd><span className="status-dot" />待确认</dd></dl></section>{tab === "result" ? <section className="parse-copy"><h3>解析得到的文本</h3><p>{correction}</p><h3>质量问题（2）</h3><button className="issue-card warning" onClick={() => setTab("edit")}><Icon icon="solar:danger-triangle-bold" /><span><strong>图注与图片关系待确认</strong><small>图 3-1 的图注可能未与上方图片正确关联。</small></span></button><button className="issue-card success" onClick={() => setTab("edit")}><Icon icon="solar:check-circle-bold" /><span><strong>章节标题已修正</strong><small>已将“实验的设计”统一为“实验设计”。</small></span></button></section> : <section className="correction-form"><label htmlFor="corrected">修正文本 <span>（可编辑）</span></label><textarea id="corrected" value={correction} maxLength={500} onChange={event => setCorrection(event.target.value)} /><span className="counter">{correction.length}/500</span><label>审核决定</label><div className="decision-group"><button className="selected"><Icon icon="solar:check-circle-bold" />确认正确</button><button>需要修改</button><button>仍有问题</button></div></section>}{notice && <p className="inline-notice"><Icon icon="solar:check-circle-bold" />{notice}</p>}</aside>
-        </div>
-        <footer className="review-actions"><p><Icon icon="solar:info-circle-linear" />已完成 2 / 3 个抽样，发现 2 个问题（1 个待确认，1 个已解决）</p><div><button className="secondary-button" onClick={() => { setTab("edit"); setNotice("已保存为教师修正草稿。"); }}>保存修正</button><button className="primary-button" onClick={() => setNotice("当前抽样仍有待确认问题，处理后即可构建候选索引。")}><Icon icon="solar:database-bold" />构建候选索引</button></div></footer>
-      </section>
-    </div>
-  </main>;
-}
+export default function TeacherPage() { return <TeacherWorkspace />; }
