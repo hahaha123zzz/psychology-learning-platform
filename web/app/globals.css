@@ -24,3 +24,4 @@
 
 .json-summary,.memory-item { overflow:auto; margin:0; padding:12px; color:#3a5868; border-radius:5px; background:#f4f8fa; font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre-wrap; }.memory-item { margin-top:8px; border:1px solid #e2ebef; background:#fff; }
 .full-select { width:100%; padding:10px; border:1px solid #cddbe1; border-radius:5px; background:#fff; }
+.v2-navigation { position:fixed; z-index:20; right:16px; bottom:16px; display:flex; flex-wrap:wrap; justify-content:flex-end; max-width:470px; gap:5px; padding:7px; border:1px solid #cbdce4; border-radius:9px; background:#fffffff2; box-shadow:0 6px 22px #21485c25; }.v2-navigation a { padding:5px 8px; border-radius:4px; color:#456879; font-size:12px; }.v2-navigation a.active,.v2-navigation a:hover { color:white; background:#1777af; }@media (max-width:720px){.v2-navigation{left:8px;right:8px;bottom:8px;max-width:none}.v2-navigation a{font-size:11px}}
