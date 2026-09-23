@@ -3,7 +3,7 @@ import time
 
 from sqlalchemy import select
 
-from app.db.models import Material, MaterialVersion, RetrievalUnit
+from app.db.models import Material, MaterialVersion, ObjectRelation, RetrievalUnit
 from app.db.session import session_factory
 from app.modules.knowledge.service import _has_hash_keyword_anchor, _search_tokens
 from tests.conftest import make_pdf
@@ -19,6 +19,16 @@ TWO_CHAPTER_PDF = make_pdf(
             "Chapter 2 Design",
             "Between subjects design assigns different participants to conditions.",
         ],
+    ]
+)
+
+ADJACENT_PARAGRAPHS_PDF = make_pdf(
+    [
+        [
+            "Chapter 1 Foundations",
+            "Independent variable control improves internal validity in experiments.",
+        ],
+        ["A control group gives researchers a comparison for the intervention."],
     ]
 )
 
@@ -39,9 +49,9 @@ def _parse_and_wait(client, version_id: str, kind: str = "parse", timeout=20.0):
     raise AssertionError("任务超时")
 
 
-def _prepare(client, *, publish: bool):
+def _prepare(client, *, publish: bool, content: bytes = TWO_CHAPTER_PDF):
     course_id, student_id = _setup_course(client)
-    upload = _upload(client, course_id, content=TWO_CHAPTER_PDF)
+    upload = _upload(client, course_id, content=content)
     assert upload.status_code == 201
     version_id = upload.json()["data"]["version_id"]
     job = _parse_and_wait(client, version_id)
@@ -167,6 +177,59 @@ def test_hash_keyword_anchor_requires_two_meaningful_query_terms() -> None:
     assert tokens == ["authentic", "mapo", "tofu"]
     assert not _has_hash_keyword_anchor("An authentic assessment", tokens)
     assert _has_hash_keyword_anchor("A mapo tofu recipe", tokens)
+
+
+def test_search_returns_only_approved_adjacent_evidence_closure(client) -> None:
+    course_id, _, version_id = _prepare(
+        client, publish=False, content=ADJACENT_PARAGRAPHS_PDF
+    )
+    _login(client, "mt@uni.edu")
+    response = client.post(
+        "/api/v1/knowledge/search",
+        json={"course_id": course_id, "query": "independent variable validity"},
+    )
+    assert response.status_code == 200
+    closure = response.json()["data"]["items"][0]["closure"]
+    assert closure
+    assert closure[0]["object_id"]
+    assert closure[0]["relation_type"] == "next"
+    assert closure[0]["physical_page"] == 2
+
+    without_neighbors = client.post(
+        "/api/v1/knowledge/search",
+        json={
+            "course_id": course_id,
+            "query": "independent variable validity",
+            "include_neighbors": False,
+        },
+    )
+    assert without_neighbors.status_code == 200
+    assert without_neighbors.json()["data"]["items"][0]["closure"] == []
+
+    async def reject_relation() -> None:
+        async with session_factory() as db:
+            relation = (
+                await db.execute(
+                    select(ObjectRelation).where(
+                        ObjectRelation.relation_type == "next",
+                        ObjectRelation.source_object_id.in_(
+                            select(RetrievalUnit.source_object_id).where(
+                                RetrievalUnit.material_version_id == version_id
+                            )
+                        ),
+                    )
+                )
+            ).scalar_one()
+            relation.review_status = "rejected"
+            await db.commit()
+
+    asyncio.run(reject_relation())
+    rejected = client.post(
+        "/api/v1/knowledge/search",
+        json={"course_id": course_id, "query": "independent variable validity"},
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["data"]["items"][0]["closure"] == []
 
 
 def test_student_search_cannot_request_non_current_published_version(client) -> None:

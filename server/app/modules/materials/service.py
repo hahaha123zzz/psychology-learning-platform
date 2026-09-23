@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from fastapi import UploadFile
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -16,6 +16,7 @@ from app.db.models import (
     KnowledgeObject,
     Material,
     MaterialVersion,
+    ObjectRelation,
     ParseReviewIssue,
     RetrievalIndexEntry,
     RetrievalUnit,
@@ -241,6 +242,17 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
 
             job.stage = "persist"
             # 重新解析会改变对象边界，旧检索分块不得继续作为可发布证据。
+            version_object_ids = select(KnowledgeObject.id).where(
+                KnowledgeObject.material_version_id == version_id
+            )
+            await session.execute(
+                delete(ObjectRelation).where(
+                    or_(
+                        ObjectRelation.source_object_id.in_(version_object_ids),
+                        ObjectRelation.target_object_id.in_(version_object_ids),
+                    )
+                )
+            )
             await session.execute(
                 delete(KnowledgeChunk).where(
                     KnowledgeChunk.material_version_id == version_id
@@ -289,6 +301,8 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
                 for o in result.objects
             ]
             session.add_all(rows)
+            await session.flush()
+            session.add_all(_sequence_relations(rows))
             blocking_codes = {"no_text_extracted", "parser_unavailable"}
             review_issues = [
                 ParseReviewIssue(
@@ -347,6 +361,39 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
 
 def _pages_with_objects(objects) -> int:
     return len({o.physical_page for o in objects if o.raw_content})
+
+
+def _sequence_relations(objects: list[KnowledgeObject]) -> list[ObjectRelation]:
+    """从确定的阅读顺序构建同章节相邻对象关系，供最小证据闭包使用。"""
+    content_objects = [
+        object for object in sorted(objects, key=lambda item: item.reading_order)
+        if object.type != "chapter"
+    ]
+    relations: list[ObjectRelation] = []
+    for previous, current in zip(content_objects, content_objects[1:], strict=False):
+        if previous.chapter_path != current.chapter_path:
+            continue
+        relations.extend(
+            (
+                ObjectRelation(
+                    source_object_id=previous.id,
+                    target_object_id=current.id,
+                    relation_type="next",
+                    source="parser:reading-order",
+                    confidence=1.0,
+                    review_status="approved",
+                ),
+                ObjectRelation(
+                    source_object_id=current.id,
+                    target_object_id=previous.id,
+                    relation_type="previous",
+                    source="parser:reading-order",
+                    confidence=1.0,
+                    review_status="approved",
+                ),
+            )
+        )
+    return relations
 
 
 def spawn_parse_job(job_id: str, version_id: str) -> None:

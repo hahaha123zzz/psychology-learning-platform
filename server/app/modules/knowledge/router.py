@@ -121,6 +121,7 @@ async def search_knowledge(
         query=body.query,
         top_k=body.top_k,
         staff=staff,
+        include_neighbors=body.include_neighbors,
     )
     await db.commit()
     return ok(

@@ -3,7 +3,7 @@ import hashlib
 import re
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, text
+from sqlalchemy import bindparam, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -28,6 +28,8 @@ RETRIEVAL_VERSION = "hybrid-v2"
 VECTOR_NONEXIST = "对象尚未完成嵌入或嵌入版本不匹配"
 RETRIEVAL_UNIT_BUILD_STRATEGY = "paragraph-child"
 RETRIEVAL_UNIT_BUILD_VERSION = "v1"
+EVIDENCE_CLOSURE_RELATIONS = ("previous", "next", "caption_of", "explains", "references")
+MAX_EVIDENCE_CLOSURE_OBJECTS = 4
 
 TSQ_TOKEN_RE = re.compile(r"[\u4e00-\u9fff]+|[a-zA-Z0-9]+")
 SEARCH_STOPWORDS = frozenset(
@@ -63,6 +65,57 @@ def _has_hash_keyword_anchor(text_content: str, tokens: list[str]) -> bool:
         return False
     normalized = text_content.lower()
     return sum(token in normalized for token in set(tokens)) >= required_matches
+
+
+async def _load_evidence_closure(
+    db: AsyncSession, *, source_object_ids: list[str], version_ids: list[str]
+) -> dict[str, list[dict]]:
+    """只沿已确认关系扩展少量对象；闭包对象不是新的检索命中。"""
+    if not source_object_ids or not version_ids:
+        return {}
+    closure_query = text(
+        "SELECT r.source_object_id, r.relation_type, target.id, target.type, "
+        "target.physical_page, target.reading_order, target.bbox, "
+        "COALESCE(target.normalized_content, target.raw_content) "
+        "FROM object_relations r "
+        "JOIN knowledge_objects target ON target.id = r.target_object_id "
+        "WHERE r.source_object_id IN :source_object_ids "
+        "AND target.material_version_id IN :version_ids "
+        "AND r.relation_type IN :relation_types "
+        "AND r.review_status = 'approved' "
+        "ORDER BY r.source_object_id, target.reading_order"
+    ).bindparams(
+        bindparam("source_object_ids", expanding=True),
+        bindparam("version_ids", expanding=True),
+        bindparam("relation_types", expanding=True),
+    )
+    rows = (
+        await db.execute(
+            closure_query,
+            {
+                "source_object_ids": source_object_ids,
+                "version_ids": version_ids,
+                "relation_types": EVIDENCE_CLOSURE_RELATIONS,
+            },
+        )
+    ).all()
+    closure: dict[str, list[dict]] = {}
+    for row in rows:
+        items = closure.setdefault(row[0], [])
+        if len(items) >= MAX_EVIDENCE_CLOSURE_OBJECTS:
+            continue
+        items.append(
+            {
+                "object_id": row[2],
+                "object_type": row[3],
+                "physical_page": row[4],
+                "anchor": f"p{row[4]}#order{row[5]}",
+                "bbox": row[6],
+                "text": row[7],
+                "relation_type": row[1],
+            }
+        )
+    return closure
 
 
 # ---- 分块构建 ----
@@ -296,6 +349,7 @@ async def hybrid_search(
     query: str,
     top_k: int,
     staff: bool,
+    include_neighbors: bool = True,
 ) -> tuple[list[dict], list[str]]:
     warnings: list[str] = []
     if not version_ids:
@@ -399,6 +453,19 @@ async def hybrid_search(
         }
         for row in meta_rows
     }
+    closure_by_source = (
+        await _load_evidence_closure(
+            db,
+            source_object_ids=[
+                info["source_object_id"]
+                for info in meta.values()
+                if info["source_object_id"]
+            ],
+            version_ids=version_ids,
+        )
+        if include_neighbors
+        else {}
+    )
 
     now = datetime.now(UTC)
     expires = now + timedelta(seconds=600)
@@ -430,6 +497,7 @@ async def hybrid_search(
             "text": info["text"],
             "retrieval_sources": sources,
             "review_status": info["review_status"],
+            "closure": closure_by_source.get(info["source_object_id"], []),
         }
         if staff:
             item["score"] = round(score, 6)
