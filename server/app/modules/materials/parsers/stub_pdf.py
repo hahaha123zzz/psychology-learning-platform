@@ -6,6 +6,7 @@
 import io
 import re
 
+import pymupdf
 import pypdf
 
 from app.modules.materials.parsers.base import ParsedObject, ParserResult
@@ -28,6 +29,7 @@ class StubPdfParser:
 
     def parse(self, data: bytes, content_type: str) -> ParserResult:
         reader = pypdf.PdfReader(io.BytesIO(data))
+        layout_document = pymupdf.open(stream=data, filetype="pdf")
         page_count = len(reader.pages)
         objects: list[ParsedObject] = []
         issues: list[str] = []
@@ -44,6 +46,7 @@ class StubPdfParser:
             total_text += len(text.strip())
             lines = [line.strip() for line in text.splitlines() if line.strip()]
             page_paragraphs: list[str] = []
+            chapter_lines: set[str] = set()
             english_chapter_lines = [line for line in lines if ENGLISH_CHAPTER_RE.match(line)]
             suppress_english_toc = len(english_chapter_lines) > 1
 
@@ -97,10 +100,26 @@ class StubPdfParser:
                                 confidence=0.9,
                             )
                         )
+                    chapter_lines.add(line)
                     continue
                 else:
                     page_paragraphs.append(line)
-            if page_paragraphs:
+            layout_blocks = _page_text_blocks(layout_document[page_index - 1], chapter_lines)
+            if layout_blocks:
+                for block, bbox in layout_blocks:
+                    order += 1
+                    objects.append(
+                        ParsedObject(
+                            type="paragraph",
+                            raw_content=block,
+                            physical_page=page_index,
+                            reading_order=order,
+                            chapter_path=current_path,
+                            bbox=bbox,
+                            confidence=0.9,
+                        )
+                    )
+            elif page_paragraphs:
                 merged = " ".join(page_paragraphs)
                 for block_start in range(0, len(merged), MAX_PARAGRAPH_CHARS):
                     block = merged[block_start : block_start + MAX_PARAGRAPH_CHARS]
@@ -138,6 +157,35 @@ class StubPdfParser:
         return ParserResult(
             page_count=page_count, objects=objects, issues=issues
         )
+
+
+def _page_text_blocks(page: pymupdf.Page, chapter_lines: set[str]) -> list[tuple[str, list[float]]]:
+    """提取原生 PDF 文本块并转换为项目统一的 [left, bottom, right, top] 坐标。"""
+    page_height = float(page.rect.height)
+    blocks: list[tuple[str, list[float]]] = []
+    for block in page.get_text("dict").get("blocks", []):
+        if block.get("type") != 0:
+            continue
+        kept_lines = []
+        for line in block.get("lines", []):
+            content = "".join(span.get("text", "") for span in line.get("spans", [])).strip()
+            if content and content not in chapter_lines:
+                kept_lines.append((content, line["bbox"]))
+        if not kept_lines:
+            continue
+        left = min(float(bbox[0]) for _, bbox in kept_lines)
+        top = min(float(bbox[1]) for _, bbox in kept_lines)
+        right = max(float(bbox[2]) for _, bbox in kept_lines)
+        bottom = max(float(bbox[3]) for _, bbox in kept_lines)
+        if left >= right or top >= bottom:
+            continue
+        blocks.append(
+            (
+                " ".join(content for content, _ in kept_lines),
+                [left, page_height - bottom, right, page_height - top],
+            )
+        )
+    return blocks
 
 
 class UnsupportedTypeParser:

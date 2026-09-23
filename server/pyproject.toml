@@ -23,6 +23,7 @@ dependencies = [
   "minio>=7.2,<8",
   "python-multipart>=0.0.20,<0.1",
   "pypdf>=5.1,<7",
+  "PyMuPDF>=1.26,<2",
 ]
 
 [project.optional-dependencies]
@@ -48,4 +49,3 @@ target-version = "py311"
 select = ["E", "F", "I", "B", "UP"]
 # B008: FastAPI 依赖注入的标准用法即在参数默认值中调用 Depends()
 ignore = ["B008"]
-

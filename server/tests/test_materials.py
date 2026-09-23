@@ -29,6 +29,16 @@ def test_pdf_parser_ignores_contents_chapters_and_detects_outline_boundary() -> 
     ]
 
 
+def test_pdf_parser_emits_real_text_block_bbox() -> None:
+    result = StubPdfParser().parse(MINIMAL_PDF, "application/pdf")
+    paragraph = next(item for item in result.objects if item.type == "paragraph")
+
+    assert paragraph.bbox is not None
+    left, bottom, right, top = paragraph.bbox
+    assert 0 <= left < right
+    assert 0 <= bottom < top
+
+
 def _login(client, email: str, password: str = "correct-password"):
     response = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}

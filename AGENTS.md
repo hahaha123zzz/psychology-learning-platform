@@ -30,6 +30,8 @@ OpenStax《Psychology 2e》首轮本地 `hybrid-v1 + hash-v1` 基线已完成，
 
 `hybrid-v2 + hash-v1` 已完成上述两项最小改造并在同一 OpenStax 本地语料复测，结果见 `docs/v3/2026-09-23-openstax-local-hybrid-v2-baseline.md`：4160 个 Chunk、RetrievalUnit 与来源对象已一一关联；对象 Recall@5 为 0.875、NDCG@5 为 0.718752，教材外问题拒答准确率为 1.0。`hash-v1` 仅要求同段至少两个有效关键词锚点，不影响未来真实外部 Embedding 的语义通道。图题仍只命中图注段落，bbox、视觉、引用与生成指标仍不可评测；下一优先级为对象关系/相邻对象 Evidence Closure 和可验证版面解析。
 
+本地 PyMuPDF 段落 bbox 验证已完成，见 `docs/v3/2026-09-23-local-pdf-layout-bbox.md`：同一 OpenStax PDF 的 11,293 个原生文本段落均取得 PDF 用户空间坐标。该能力只覆盖原生文本段落，仍不产生图片、表格、公式对象或视觉检索结果；重解析后必须重建索引并重新评测。
+
 教师教材发布工作台与学生教材阅读/AI 学习空间的首轮生图提示词位于 `docs/design-prompts/2026-09-21-teacher-student-ui-image-prompts.md`；用户已于 2026-09-22 提供图稿。能力驱动的前端接入范围与明确不展示项见 `docs/superpowers/plans/2026-09-22-capability-driven-frontend.md`；不得绕过发布、权限、证据和质量门禁。
 
 ## 2. 事实来源与冲突处理
