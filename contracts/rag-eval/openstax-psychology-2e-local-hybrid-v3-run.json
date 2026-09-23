@@ -1,0 +1,179 @@
+{
+  "dataset_id": "openstax-psychology-2e-local-v2",
+  "schema_version": "rag-eval/v3-run",
+  "run_id": "openstax-psychology-2e-local-v2-local-hybrid-v3-hash-v1",
+  "retrieval_version": "hybrid-v3",
+  "embedding_version": "hash-v1",
+  "material_version_id": "01M33P6ACK2GAFPF6FCP95Z0YZ",
+  "matching_note": "本地 hash-v1 自动运行；同页 text_anchor 命中时映射评测对象，否则保留真实来源对象 ID。",
+  "results": [
+    {
+      "case_id": "case-independent-dependent-variable",
+      "retrieved_object_ids": [
+        "openstax-p066-variables",
+        "01M34JDZAXCJVWVNS5V6QW7NT8",
+        "01M34JDZAX1SDE5QD0ACPDNABX",
+        "01M34JDZAX4RB233ESS3PNZQ1N",
+        "01M34JDZAX72WNP17VD9JNQF6D",
+        "01M34JDZB0QVR5NQ8ZJFQYDE72",
+        "01M34JDZAX92NJ1MM65ZZQ5Q7Q",
+        "01M34JDZAX7Y9BC9FNY2ME0GRM"
+      ],
+      "retrieved_pages": [
+        66,
+        66,
+        75,
+        66,
+        80,
+        158,
+        68,
+        75
+      ],
+      "predicted_page": 66,
+      "predicted_bbox": null,
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": true,
+      "refused": false,
+      "latency_ms": 25.635
+    },
+    {
+      "case_id": "case-quasi-experimental-causality",
+      "retrieved_object_ids": [
+        "01M34JDZAX7W8KSMD97MP7AFHN",
+        "01M34JDZAXZ0J3M2T9EMY66GJD",
+        "01M34JDZB71RP6PX3E4F9QV9AQ",
+        "01M34JDZAXZ3TWC2N3ABF0A69G",
+        "01M34JDZBNV2F7HC0S3QSY2H5S",
+        "01M34JDZAWRN6V1A65FZ4AKSG4",
+        "01M34JDZB4YP7RHTT02WN9HGCJ",
+        "01M34JDZAXVTBMCQEK8CFS555F"
+      ],
+      "retrieved_pages": [
+        81,
+        68,
+        330,
+        75,
+        552,
+        54,
+        253,
+        77
+      ],
+      "predicted_page": 81,
+      "predicted_bbox": null,
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": true,
+      "refused": false,
+      "latency_ms": 18.061
+    },
+    {
+      "case_id": "case-classical-conditioning-sequence",
+      "retrieved_object_ids": [
+        "01M34JDZB1RS11TAQWEY09Q7BG",
+        "01M34JDZB1DSPF6P18VHQDX2SB",
+        "01M34JDZB1ZHSHZK9B5MKQSVDE",
+        "01M34JDZB24ENA9M4XGG40ZTDN",
+        "01M34JDZB24JBSTX0ZJ9FAYQR3",
+        "01M34JDZB6AJ1BRA4EGTNJ4NVD",
+        "01M34JDZB18JZZ9J28MERQCT6W",
+        "01M34JDZB1PQVCGFJPPDNJTJQR"
+      ],
+      "retrieved_pages": [
+        197,
+        200,
+        204,
+        219,
+        221,
+        320,
+        195,
+        201
+      ],
+      "predicted_page": 197,
+      "predicted_bbox": null,
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": false,
+      "refused": false,
+      "latency_ms": 25.401
+    },
+    {
+      "case_id": "case-memory-three-stages",
+      "retrieved_object_ids": [
+        "01M34JDZB4GKWC5764KQR7WDS6",
+        "openstax-p262-memory-model",
+        "01M34JDZB5J8YVX7CH48T0KQGP",
+        "01M34JDZB4SCJ586WVVC2DXJBP",
+        "openstax-p263-rehearsal-transfer",
+        "01M34JDZB5KVGD1KWZ9CSFSTDF",
+        "01M34JDZB4GP5JPQGP88DNGMA5",
+        "01M34JDZB413TYPF514NAGWCZ9"
+      ],
+      "retrieved_pages": [
+        262,
+        262,
+        286,
+        263,
+        263,
+        285,
+        264,
+        271
+      ],
+      "predicted_page": 262,
+      "predicted_bbox": null,
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": true,
+      "refused": false,
+      "latency_ms": 25.292
+    },
+    {
+      "case_id": "case-active-rehearsal",
+      "retrieved_object_ids": [
+        "openstax-p263-rehearsal-transfer",
+        "01M34JDZB5J8YVX7CH48T0KQGP",
+        "01M34JDZB5D0CKG9QJ8EY32D0R",
+        "01M34JDZB4SCJ586WVVC2DXJBP",
+        "01M34JDZB5NS0CH27AS146ZX8T",
+        "01M34JDZB55R2BTXNCPVZS3571",
+        "openstax-p263-rehearsal-practice",
+        "01M34JDZB581KBC3A090ZCFSQ5"
+      ],
+      "retrieved_pages": [
+        263,
+        286,
+        286,
+        263,
+        285,
+        285,
+        263,
+        281
+      ],
+      "predicted_page": 263,
+      "predicted_bbox": null,
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": true,
+      "refused": false,
+      "latency_ms": 13.792
+    },
+    {
+      "case_id": "case-out-of-scope-szechuan-cooking",
+      "retrieved_object_ids": [],
+      "retrieved_pages": [],
+      "predicted_page": null,
+      "predicted_bbox": null,
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": true,
+      "refused": true,
+      "latency_ms": 1.112
+    }
+  ]
+}
