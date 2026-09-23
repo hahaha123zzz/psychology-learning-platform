@@ -184,6 +184,27 @@ def test_search_applies_chapter_and_object_type_before_ranking(client) -> None:
     assert unsupported_type.json()["data"]["items"] == []
 
 
+def test_visual_query_reports_text_only_weighted_fusion(client) -> None:
+    course_id, _, _ = _prepare(client, publish=False)
+    _login(client, "mt@uni.edu")
+
+    response = client.post(
+        "/api/v1/knowledge/search",
+        json={
+            "course_id": course_id,
+            "query": "图 1 independent variable validity",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["fusion"] == {
+        "strategy": "weighted_rrf-v1",
+        "text_channel_weights": {"dense": 2 / 3, "sparse": 1 / 3},
+    }
+    assert any("visual" in warning and "文本检索" in warning for warning in data["warnings"])
+
+
 def test_embed_persists_one_retrieval_unit_per_source_object(client) -> None:
     _, _, version_id = _prepare(client, publish=False)
 

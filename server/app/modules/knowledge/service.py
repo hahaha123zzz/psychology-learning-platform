@@ -19,13 +19,14 @@ from app.db.models import (
 )
 from app.db.session import session_factory
 from app.modules.knowledge.adaptive import adaptive_cutoff
+from app.modules.knowledge.fusion import text_channel_weights, unavailable_modalities
 
 BACKGROUND_TASKS: set[asyncio.Task] = set()
 
 MAX_CHUNK_CHARS = 800
 EMBED_BATCH = 32
 RRF_K = 60
-RETRIEVAL_VERSION = "hybrid-v2"
+RETRIEVAL_VERSION = "hybrid-v3"
 VECTOR_NONEXIST = "对象尚未完成嵌入或嵌入版本不匹配"
 RETRIEVAL_UNIT_BUILD_STRATEGY = "paragraph-child"
 RETRIEVAL_UNIT_BUILD_VERSION = "v1"
@@ -327,15 +328,19 @@ async def resolve_searchable_versions(
 
 
 def _rrf_fuse(
-    bm25_hits: list[tuple[str, float]], vector_hits: list[tuple[str, float]]
+    bm25_hits: list[tuple[str, float]],
+    vector_hits: list[tuple[str, float]],
+    *,
+    channel_priors: dict[str, float] | None = None,
 ) -> list[tuple[str, float, list[str]]]:
+    weights = text_channel_weights(channel_priors)
     scores: dict[str, float] = {}
     sources: dict[str, list[str]] = {}
     for rank, (chunk_id, _) in enumerate(bm25_hits, start=1):
-        scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (RRF_K + rank)
+        scores[chunk_id] = scores.get(chunk_id, 0.0) + weights["sparse"] / (RRF_K + rank)
         sources.setdefault(chunk_id, []).append("bm25")
     for rank, (chunk_id, _) in enumerate(vector_hits, start=1):
-        scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (RRF_K + rank)
+        scores[chunk_id] = scores.get(chunk_id, 0.0) + weights["dense"] / (RRF_K + rank)
         sources.setdefault(chunk_id, []).append("vector")
     ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
     return [(cid, score, sources[cid]) for cid, score in ranked]
@@ -353,12 +358,18 @@ async def hybrid_search(
     include_neighbors: bool = True,
     chapter_scope: list[str] | None = None,
     object_types: list[str] | None = None,
+    channel_priors: dict[str, float] | None = None,
 ) -> tuple[list[dict], list[str]]:
     warnings: list[str] = []
     if not version_ids:
         return [], ["当前课程没有可检索的已解析资料"]
 
     client = get_embedding_client()
+    unavailable = unavailable_modalities(channel_priors)
+    if unavailable:
+        warnings.append(
+            f"查询计划请求的{'、'.join(unavailable)}通道尚未建立，当前仅使用文本检索"
+        )
     version_list = ", ".join(f"'{v}'" for v in version_ids)
     scope_join = ""
     scope_clauses: list[str] = []
@@ -443,7 +454,9 @@ async def hybrid_search(
     except Exception:  # noqa: BLE001 外部向量服务失败时保留 BM25 可用性
         warnings.append("语义检索暂时不可用，已降级为关键词检索")
 
-    cutoff = adaptive_cutoff(_rrf_fuse(bm25_hits, vector_hits), max_items=top_k)
+    cutoff = adaptive_cutoff(
+        _rrf_fuse(bm25_hits, vector_hits, channel_priors=channel_priors), max_items=top_k
+    )
     fused = list(cutoff.items)
     if cutoff.reason == "score_gap":
         warnings.append("检索已在相关性明显下降处停止，未纳入更弱的候选结果")

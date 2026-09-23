@@ -127,6 +127,7 @@ async def search_knowledge(
         include_neighbors=body.include_neighbors,
         chapter_scope=body.chapter_scope,
         object_types=body.object_types,
+        channel_priors=plan.channel_priors,
     )
     await db.commit()
     return ok(
@@ -138,6 +139,12 @@ async def search_knowledge(
                 "requested_top_k": body.top_k,
                 "plan_top_k": plan.retrieval_budget,
                 "effective_top_k": effective_top_k,
+            },
+            "fusion": {
+                "strategy": "weighted_rrf-v1",
+                "text_channel_weights": knowledge_service.text_channel_weights(
+                    plan.channel_priors
+                ),
             },
             "retrieval_version": knowledge_service.RETRIEVAL_VERSION,
             "warnings": warnings,

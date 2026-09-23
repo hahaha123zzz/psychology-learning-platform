@@ -19,6 +19,7 @@ from app.db.base import new_ulid
 from app.db.models import ChatTurn, LearningSession
 from app.modules.knowledge import service as knowledge_service
 from app.modules.knowledge.context import GenerationUnit, assemble_generation_units
+from app.modules.knowledge.query import analyze_query
 
 SENTENCE_RE = re.compile(r"[^。！？.!?]+[。！？]?")
 TOKEN_RE = re.compile(r"[\u4e00-\u9fff]|[a-zA-Z0-9]+")
@@ -216,6 +217,7 @@ async def run_turn_stream(
         return
 
     try:
+        plan = analyze_query(content)
         items, warnings = await knowledge_service.hybrid_search(
             db,
             user_id=session_row.user_id,
@@ -227,8 +229,9 @@ async def run_turn_stream(
                 staff=False,
             ),
             query=content,
-            top_k=8,
+            top_k=min(8, plan.retrieval_budget),
             staff=False,
+            channel_priors=plan.channel_priors,
         )
         await db.commit()
     except Exception as exc:  # noqa: BLE001
