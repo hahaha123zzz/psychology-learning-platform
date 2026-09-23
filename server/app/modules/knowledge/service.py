@@ -18,6 +18,7 @@ from app.db.models import (
     RetrievalUnit,
 )
 from app.db.session import session_factory
+from app.modules.knowledge.adaptive import adaptive_cutoff
 
 BACKGROUND_TASKS: set[asyncio.Task] = set()
 
@@ -415,7 +416,10 @@ async def hybrid_search(
     except Exception:  # noqa: BLE001 外部向量服务失败时保留 BM25 可用性
         warnings.append("语义检索暂时不可用，已降级为关键词检索")
 
-    fused = _rrf_fuse(bm25_hits, vector_hits)[:top_k]
+    cutoff = adaptive_cutoff(_rrf_fuse(bm25_hits, vector_hits), max_items=top_k)
+    fused = list(cutoff.items)
+    if cutoff.reason == "score_gap":
+        warnings.append("检索已在相关性明显下降处停止，未纳入更弱的候选结果")
 
     items: list[dict] = []
     if not fused:

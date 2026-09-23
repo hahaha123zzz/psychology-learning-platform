@@ -98,6 +98,11 @@ def test_teacher_search_returns_evidence_with_scores(client) -> None:
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["retrieval_version"]
+    assert data["retrieval_budget"] == {
+        "requested_top_k": 8,
+        "plan_top_k": 8,
+        "effective_top_k": 8,
+    }
     assert len(data["items"]) >= 1
     first = data["items"][0]
     assert "score" in first

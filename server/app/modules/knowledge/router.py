@@ -114,13 +114,15 @@ async def search_knowledge(
         requested_version_ids=body.material_version_ids or [],
         staff=staff,
     )
+    plan = analyze_query(body.query)
+    effective_top_k = min(body.top_k, plan.retrieval_budget)
     items, warnings = await knowledge_service.hybrid_search(
         db,
         user_id=user.id,
         course_id=body.course_id,
         version_ids=version_ids,
         query=body.query,
-        top_k=body.top_k,
+        top_k=effective_top_k,
         staff=staff,
         include_neighbors=body.include_neighbors,
     )
@@ -129,7 +131,12 @@ async def search_knowledge(
         request,
         {
             "items": items,
-            "query_plan": analyze_query(body.query).as_dict(),
+            "query_plan": plan.as_dict(),
+            "retrieval_budget": {
+                "requested_top_k": body.top_k,
+                "plan_top_k": plan.retrieval_budget,
+                "effective_top_k": effective_top_k,
+            },
             "retrieval_version": knowledge_service.RETRIEVAL_VERSION,
             "warnings": warnings,
         },
