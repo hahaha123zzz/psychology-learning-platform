@@ -18,6 +18,7 @@ from app.core.providers.llm import OpenAICompatibleLLM
 from app.db.base import new_ulid
 from app.db.models import ChatTurn, LearningSession
 from app.modules.knowledge import service as knowledge_service
+from app.modules.knowledge.context import GenerationUnit, assemble_generation_units
 
 SENTENCE_RE = re.compile(r"[^。！？.!?]+[。！？]?")
 TOKEN_RE = re.compile(r"[\u4e00-\u9fff]|[a-zA-Z0-9]+")
@@ -37,11 +38,12 @@ class EvidencePackage:
     query: str
     retrieval_version: str
     items: list[dict] = field(default_factory=list)
+    generation_units: list[GenerationUnit] = field(default_factory=list)
     context_budget_chars: int = 12000
     created_at: str = ""
 
     def evidence_text(self) -> str:
-        return "\n".join(item["text"] for item in self.items)
+        return "\n".join(unit.text for unit in self.generation_units)
 
 
 # ---- 证据包 ----
@@ -56,12 +58,11 @@ def build_evidence_package(
         retrieval_version=knowledge_service.RETRIEVAL_VERSION,
         created_at=datetime.now(UTC).isoformat(),
     )
-    budget = package.context_budget_chars
-    for item in items[:TOP_EVIDENCE]:
-        if budget - len(item["text"]) < 0:
-            break
-        budget -= len(item["text"])
-        package.items.append(item)
+    package.generation_units = assemble_generation_units(
+        items, context_budget_chars=package.context_budget_chars, max_units=TOP_EVIDENCE
+    )
+    selected_evidence_ids = {unit.evidence_id for unit in package.generation_units}
+    package.items = [item for item in items if item["evidence_id"] in selected_evidence_ids]
     return package
 
 
