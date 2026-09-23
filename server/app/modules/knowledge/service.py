@@ -351,6 +351,8 @@ async def hybrid_search(
     top_k: int,
     staff: bool,
     include_neighbors: bool = True,
+    chapter_scope: list[str] | None = None,
+    object_types: list[str] | None = None,
 ) -> tuple[list[dict], list[str]]:
     warnings: list[str] = []
     if not version_ids:
@@ -358,19 +360,38 @@ async def hybrid_search(
 
     client = get_embedding_client()
     version_list = ", ".join(f"'{v}'" for v in version_ids)
+    scope_join = ""
+    scope_clauses: list[str] = []
+    scope_params: dict[str, object] = {}
+    scope_bindparams = []
+    if chapter_scope:
+        scope_clauses.append("AND kc.chapter_object_id IN :chapter_scope")
+        scope_params["chapter_scope"] = chapter_scope
+        scope_bindparams.append(bindparam("chapter_scope", expanding=True))
+    if object_types:
+        scope_join = "JOIN knowledge_objects scope_object ON scope_object.id = kc.source_object_id "
+        scope_clauses.append("AND scope_object.type IN :object_types")
+        scope_params["object_types"] = object_types
+        scope_bindparams.append(bindparam("object_types", expanding=True))
+    scope_sql = " ".join(scope_clauses)
 
     tokens = _search_tokens(query)
     tsq = _or_tsquery(query)
+    bm25_statement = text(
+        "SELECT kc.id, ts_rank(kc.text_tsv, to_tsquery('simple', :tsq)) AS rank, kc.text "
+        "FROM knowledge_chunks kc "
+        f"{scope_join}"
+        f"WHERE kc.material_version_id IN ({version_list}) "
+        "AND kc.text_tsv @@ to_tsquery('simple', :tsq) "
+        f"{scope_sql} "
+        "ORDER BY rank DESC LIMIT 50"
+    )
+    if scope_bindparams:
+        bm25_statement = bm25_statement.bindparams(*scope_bindparams)
     bm25_rows = (
         await db.execute(
-            text(
-                "SELECT id, ts_rank(text_tsv, to_tsquery('simple', :tsq)) AS rank, text "
-                "FROM knowledge_chunks "
-                f"WHERE material_version_id IN ({version_list}) "
-                "AND text_tsv @@ to_tsquery('simple', :tsq) "
-                "ORDER BY rank DESC LIMIT 50"
-            ),
-            {"tsq": tsq},
+            bm25_statement,
+            {"tsq": tsq, **scope_params},
         )
     ).all()
     if client.version == "hash-v1":
@@ -395,20 +416,26 @@ async def hybrid_search(
         query_vector = (await client.embed([query]))[0]
         vector_literal = "[" + ",".join(f"{v:.6f}" for v in query_vector) + "]"
         min_similarity = get_settings().retrieval_min_vector_similarity
+        vector_statement = text(
+            "SELECT kc.id, 1 - (kc.embedding <=> CAST(:vec AS vector)) AS cosine "
+            "FROM knowledge_chunks kc "
+            f"{scope_join}"
+            f"WHERE kc.material_version_id IN ({version_list}) "
+            "AND kc.embedding_version = :ev AND kc.embedding IS NOT NULL "
+            "AND 1 - (kc.embedding <=> CAST(:vec AS vector)) >= :min_similarity "
+            f"{scope_sql} "
+            "ORDER BY kc.embedding <=> CAST(:vec AS vector) LIMIT 50"
+        )
+        if scope_bindparams:
+            vector_statement = vector_statement.bindparams(*scope_bindparams)
         vector_rows = (
             await db.execute(
-                text(
-                    "SELECT id, 1 - (embedding <=> CAST(:vec AS vector)) AS cosine "
-                    "FROM knowledge_chunks "
-                    f"WHERE material_version_id IN ({version_list}) "
-                    "AND embedding_version = :ev AND embedding IS NOT NULL "
-                    "AND 1 - (embedding <=> CAST(:vec AS vector)) >= :min_similarity "
-                    "ORDER BY embedding <=> CAST(:vec AS vector) LIMIT 50"
-                ),
+                vector_statement,
                 {
                     "vec": vector_literal,
                     "ev": client.version,
                     "min_similarity": min_similarity,
+                    **scope_params,
                 },
             )
         ).all()

@@ -3,7 +3,7 @@ import time
 
 from sqlalchemy import select
 
-from app.db.models import Material, MaterialVersion, ObjectRelation, RetrievalUnit
+from app.db.models import KnowledgeObject, Material, MaterialVersion, ObjectRelation, RetrievalUnit
 from app.db.session import session_factory
 from app.modules.knowledge.service import _has_hash_keyword_anchor, _search_tokens
 from tests.conftest import make_pdf
@@ -139,6 +139,49 @@ def test_student_search_after_publish_has_no_score(client) -> None:
     assert "score" not in items[0]
     assert items[0]["evidence_id"]
     assert "vector" in items[0]["retrieval_sources"]
+
+
+def test_search_applies_chapter_and_object_type_before_ranking(client) -> None:
+    course_id, _, version_id = _prepare(client, publish=False)
+
+    async def load_chapter_id() -> str:
+        async with session_factory() as db:
+            result = await db.execute(
+                select(KnowledgeObject.id).where(
+                    KnowledgeObject.material_version_id == version_id,
+                    KnowledgeObject.type == "chapter",
+                    KnowledgeObject.chapter_path == "2",
+                )
+            )
+            return result.scalar_one()
+
+    chapter_id = asyncio.run(load_chapter_id())
+    _login(client, "mt@uni.edu")
+    scoped = client.post(
+        "/api/v1/knowledge/search",
+        json={
+            "course_id": course_id,
+            "query": "participants conditions",
+            "chapter_scope": [chapter_id],
+            "object_types": ["paragraph"],
+        },
+    )
+    assert scoped.status_code == 200
+    assert scoped.json()["data"]["items"]
+    assert all(
+        item["chapter_path"] == "2" for item in scoped.json()["data"]["items"]
+    )
+
+    unsupported_type = client.post(
+        "/api/v1/knowledge/search",
+        json={
+            "course_id": course_id,
+            "query": "participants conditions",
+            "object_types": ["figure"],
+        },
+    )
+    assert unsupported_type.status_code == 200
+    assert unsupported_type.json()["data"]["items"] == []
 
 
 def test_embed_persists_one_retrieval_unit_per_source_object(client) -> None:

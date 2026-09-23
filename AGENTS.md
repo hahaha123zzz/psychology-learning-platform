@@ -32,6 +32,8 @@ OpenStax《Psychology 2e》首轮本地 `hybrid-v1 + hash-v1` 基线已完成，
 
 检索接口现有确定性 Query Analyzer 与自适应截断：问题类型仅用于声明通道先验和候选预算；实际结果始终受调用方 `top_k` 限制，并只在 RRF 分数出现明确断层时提前停止。该策略不构成视觉检索，也不以 RRF 分数替代教材证据或生成可信度。
 
+`/knowledge/search` 的章节和对象类型过滤已在候选查询、RRF 排序之前生效：章节范围使用稳定的章节对象 ID；当前只对 `paragraph-child` 建索引，因此请求图片、表格或公式不会伪装为段落命中，而是诚实返回空结果，直至相应对象表示真正建成。
+
 本地 PyMuPDF 段落 bbox 验证已完成，见 `docs/v3/2026-09-23-local-pdf-layout-bbox.md`：同一 OpenStax PDF 的 11,293 个原生文本段落均取得 PDF 用户空间坐标。该能力只覆盖原生文本段落，仍不产生图片、表格、公式对象或视觉检索结果；重解析后必须重建索引并重新评测。
 
 教师教材发布工作台与学生教材阅读/AI 学习空间的首轮生图提示词位于 `docs/design-prompts/2026-09-21-teacher-student-ui-image-prompts.md`；用户已于 2026-09-22 提供图稿。能力驱动的前端接入范围与明确不展示项见 `docs/superpowers/plans/2026-09-22-capability-driven-frontend.md`；不得绕过发布、权限、证据和质量门禁。

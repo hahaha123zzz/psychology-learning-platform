@@ -125,6 +125,8 @@ async def search_knowledge(
         top_k=effective_top_k,
         staff=staff,
         include_neighbors=body.include_neighbors,
+        chapter_scope=body.chapter_scope,
+        object_types=body.object_types,
     )
     await db.commit()
     return ok(
