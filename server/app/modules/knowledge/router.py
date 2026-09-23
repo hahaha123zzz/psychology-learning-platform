@@ -12,6 +12,7 @@ from app.db.session import get_db_session
 from app.modules.auth.dependencies import get_current_user, require_course_role
 from app.modules.courses import service as course_service
 from app.modules.knowledge import service as knowledge_service
+from app.modules.knowledge.query import analyze_query
 from app.modules.materials import service as materials_service
 
 router = APIRouter()
@@ -128,6 +129,7 @@ async def search_knowledge(
         request,
         {
             "items": items,
+            "query_plan": analyze_query(body.query).as_dict(),
             "retrieval_version": knowledge_service.RETRIEVAL_VERSION,
             "warnings": warnings,
         },
