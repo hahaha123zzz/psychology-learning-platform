@@ -103,6 +103,8 @@ class KnowledgeChunk(Base):
             "material_version_id",
             "reading_order",
         ),
+        Index("ix_knowledge_chunks_source_object", "source_object_id"),
+        Index("ix_knowledge_chunks_retrieval_unit", "retrieval_unit_id"),
         {"info": {"skip_autogenerate": True}},
     )
 
@@ -111,6 +113,13 @@ class KnowledgeChunk(Base):
         String(26), ForeignKey("material_versions.id"), nullable=False
     )
     course_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    # 新索引可回溯到唯一教材对象与 V3 RetrievalUnit；旧索引迁移期允许为空。
+    source_object_id: Mapped[str | None] = mapped_column(
+        String(26), ForeignKey("knowledge_objects.id")
+    )
+    retrieval_unit_id: Mapped[str | None] = mapped_column(
+        String(26), ForeignKey("retrieval_units.id")
+    )
     chapter_object_id: Mapped[str | None] = mapped_column(String(26))
     chapter_path: Mapped[str] = mapped_column(String(100), nullable=False, server_default="")
     physical_page: Mapped[int] = mapped_column(Integer, nullable=False)

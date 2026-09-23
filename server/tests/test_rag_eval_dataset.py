@@ -17,6 +17,10 @@ OPENSTAX_DATASET_PATH = ROOT / "contracts" / "rag-eval" / "openstax-psychology-2
 OPENSTAX_RUN_PATH = (
     ROOT / "contracts" / "rag-eval" / "openstax-psychology-2e-local-hybrid-v1-run.json"
 )
+OPENSTAX_V2_DATASET_PATH = ROOT / "contracts" / "rag-eval" / "openstax-psychology-2e-local-v2.json"
+OPENSTAX_V2_RUN_PATH = (
+    ROOT / "contracts" / "rag-eval" / "openstax-psychology-2e-local-hybrid-v2-run.json"
+)
 
 
 def _load(path: Path) -> dict:
@@ -51,6 +55,20 @@ def test_openstax_local_retrieval_baseline_is_reproducibly_scored() -> None:
     assert report["aggregate"]["page_accuracy"] == 0.8
     assert report["aggregate"]["refusal_accuracy"] == 0.833333
     assert report["aggregate"]["bbox_iou"] is None
+
+
+def test_openstax_v2_object_mapping_and_refusal_baseline_is_reproducibly_scored() -> None:
+    dataset = _load(OPENSTAX_V2_DATASET_PATH)
+    run = _load(OPENSTAX_V2_RUN_PATH)
+
+    validate_run(dataset, run)
+    report = score_run(dataset, run, k=5)
+
+    assert report["aggregate"]["recall_at_k"] == 0.875
+    assert report["aggregate"]["ndcg_at_k"] == 0.718752
+    assert report["aggregate"]["refusal_accuracy"] == 1.0
+    assert report["aggregate"]["object_mapping_evaluable_case_count"] == 4
+    assert report["cases"][2]["recall_at_k"] is None
 
 
 def test_score_run_reports_per_case_and_aggregate_metrics() -> None:

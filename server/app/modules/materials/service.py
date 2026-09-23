@@ -17,6 +17,8 @@ from app.db.models import (
     Material,
     MaterialVersion,
     ParseReviewIssue,
+    RetrievalIndexEntry,
+    RetrievalUnit,
 )
 from app.db.session import session_factory
 
@@ -242,6 +244,20 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
             await session.execute(
                 delete(KnowledgeChunk).where(
                     KnowledgeChunk.material_version_id == version_id
+                )
+            )
+            await session.execute(
+                delete(RetrievalIndexEntry).where(
+                    RetrievalIndexEntry.retrieval_unit_id.in_(
+                        select(RetrievalUnit.id).where(
+                            RetrievalUnit.material_version_id == version_id
+                        )
+                    )
+                )
+            )
+            await session.execute(
+                delete(RetrievalUnit).where(
+                    RetrievalUnit.material_version_id == version_id
                 )
             )
             await session.execute(

@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import re
 from datetime import UTC, datetime, timedelta
 
@@ -14,6 +15,7 @@ from app.db.models import (
     KnowledgeObject,
     Material,
     MaterialVersion,
+    RetrievalUnit,
 )
 from app.db.session import session_factory
 
@@ -22,71 +24,81 @@ BACKGROUND_TASKS: set[asyncio.Task] = set()
 MAX_CHUNK_CHARS = 800
 EMBED_BATCH = 32
 RRF_K = 60
-RETRIEVAL_VERSION = "hybrid-v1"
+RETRIEVAL_VERSION = "hybrid-v2"
 VECTOR_NONEXIST = "对象尚未完成嵌入或嵌入版本不匹配"
+RETRIEVAL_UNIT_BUILD_STRATEGY = "paragraph-child"
+RETRIEVAL_UNIT_BUILD_VERSION = "v1"
 
 TSQ_TOKEN_RE = re.compile(r"[\u4e00-\u9fff]+|[a-zA-Z0-9]+")
+SEARCH_STOPWORDS = frozenset(
+    {
+        "a", "an", "and", "are", "as", "at", "be", "by", "do", "does",
+        "for", "from", "how", "i", "in", "is", "it", "make", "of", "on",
+        "or", "the", "to", "what", "when", "where", "why", "with", "you",
+    }
+)
+
+
+def _search_tokens(query: str) -> list[str]:
+    return [
+        token
+        for token in TSQ_TOKEN_RE.findall(query.lower())
+        if token and (len(token) > 1 or "\u4e00" <= token <= "\u9fff")
+        and token not in SEARCH_STOPWORDS
+    ]
 
 
 def _or_tsquery(query: str) -> str:
     """把查询词转为 OR 连接的tsquery字面量，避免AND语义导致整句不匹配。"""
-    tokens = [t for t in TSQ_TOKEN_RE.findall(query.lower()) if t]
+    tokens = _search_tokens(query)
     if not tokens:
-        tokens = [query.strip().lower() or "x"]
+        tokens = ["__no_search_terms__"]
     return " | ".join(t.replace("&", "").replace("|", "").replace("!", "") for t in tokens)
+
+
+def _has_hash_keyword_anchor(text_content: str, tokens: list[str]) -> bool:
+    """hash-v1 的确定性降级必须至少命中两个有效词，避免单个泛词误召回。"""
+    required_matches = min(2, len(tokens))
+    if required_matches == 0:
+        return False
+    normalized = text_content.lower()
+    return sum(token in normalized for token in set(tokens)) >= required_matches
 
 
 # ---- 分块构建 ----
 
 def build_chunk_rows(objects: list[KnowledgeObject]) -> list[dict]:
-    """章节感知分块：同章节内连续段落合并，超长截断为新块，保留父子关系。"""
+    """按段落对象切分 RetrievalUnit，保证每个召回单元可回溯到唯一教材对象。"""
     chapters = {o.chapter_path: o for o in objects if o.type == "chapter"}
     chunks: list[dict] = []
-    current: dict | None = None
-
-    def flush() -> None:
-        nonlocal current
-        if current and current["parts"]:
-            chunks.append(current)
-        current = None
 
     for object in sorted(objects, key=lambda o: o.reading_order):
-        if object.type == "chapter":
-            flush()
-            continue
         content = (object.normalized_content or object.raw_content).strip()
         if object.type != "paragraph" or not content:
             continue
-        if current is None or current["chapter_path"] != object.chapter_path:
-            flush()
-            chapter = chapters.get(object.chapter_path)
-            current = {
-                "chapter_object_id": chapter.id if chapter else None,
-                "chapter_path": object.chapter_path,
-                "chapter_title": (chapter.title if chapter else "") or "",
-                "physical_page": object.physical_page,
-                "reading_order": object.reading_order,
-                "parts": [],
-            }
-        current["parts"].append(content)
-        if sum(len(p) for p in current["parts"]) >= MAX_CHUNK_CHARS:
-            flush()
-    flush()
-    rows = []
-    for chunk in chunks:
-        title = chunk["chapter_title"]
-        body = "\n".join(chunk["parts"])
-        rows.append(
-            {
-                "id": new_ulid(),
-                "chapter_object_id": chunk["chapter_object_id"],
-                "chapter_path": chunk["chapter_path"],
-                "physical_page": chunk["physical_page"],
-                "reading_order": chunk["reading_order"],
-                "text": f"{title}\n{body}" if title else body,
-            }
-        )
-    return rows
+        chapter = chapters.get(object.chapter_path)
+        chapter_title = (chapter.title if chapter else "") or ""
+        for char_start in range(0, len(content), MAX_CHUNK_CHARS):
+            body = content[char_start : char_start + MAX_CHUNK_CHARS]
+            text_content = f"{chapter_title}\n{body}" if chapter_title else body
+            chunks.append(
+                {
+                    "id": new_ulid(),
+                    "retrieval_unit_id": new_ulid(),
+                    "source_object_id": object.id,
+                    "parent_object_id": chapter.id if chapter else None,
+                    "chapter_object_id": chapter.id if chapter else None,
+                    "chapter_path": object.chapter_path,
+                    "physical_page": object.physical_page,
+                    "reading_order": object.reading_order,
+                    "char_start": char_start,
+                    "char_end": char_start + len(body),
+                    "unit_text": body,
+                    "content_hash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                    "text": text_content,
+                }
+            )
+    return chunks
 
 
 # ---- 嵌入任务 ----
@@ -138,23 +150,59 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
 
             # 先完整取得新向量，再在一个事务中替换旧索引；外部调用失败不会破坏旧索引。
             await session.execute(
+                text(
+                    "DELETE FROM retrieval_index_entries WHERE retrieval_unit_id IN "
+                    "(SELECT id FROM retrieval_units WHERE material_version_id = :v)"
+                ),
+                {"v": version_id},
+            )
+            await session.execute(
                 text("DELETE FROM knowledge_chunks WHERE material_version_id = :v"),
                 {"v": version_id},
             )
+            await session.execute(
+                text("DELETE FROM retrieval_units WHERE material_version_id = :v"),
+                {"v": version_id},
+            )
+            session.add_all(
+                [
+                    RetrievalUnit(
+                        id=row["retrieval_unit_id"],
+                        material_version_id=version_id,
+                        source_object_id=row["source_object_id"],
+                        parent_object_id=row["parent_object_id"],
+                        unit_type="text_child",
+                        channel_hint="dense",
+                        char_start=row["char_start"],
+                        char_end=row["char_end"],
+                        text_content=row["unit_text"],
+                        content_hash=row["content_hash"],
+                        build_strategy=RETRIEVAL_UNIT_BUILD_STRATEGY,
+                        build_version=RETRIEVAL_UNIT_BUILD_VERSION,
+                        status="ready",
+                    )
+                    for row in rows
+                ]
+            )
+            await session.flush()
             for row in rows:
                 await session.execute(
                     text(
                         "INSERT INTO knowledge_chunks "
-                        "(id, material_version_id, course_id, chapter_object_id, "
+                        "(id, material_version_id, course_id, source_object_id, "
+                        " retrieval_unit_id, chapter_object_id, "
                         " chapter_path, physical_page, reading_order, text, "
                         " embedding, embedding_version) "
-                        "VALUES (:id, :version, :course, :chapter, :path, "
+                        "VALUES (:id, :version, :course, :source_object, "
+                        " :retrieval_unit, :chapter, :path, "
                         " :page, :order, :text, CAST(:embedding AS vector), :ev)"
                     ),
                     {
                         "id": row["id"],
                         "version": version_id,
                         "course": material.course_id,
+                        "source_object": row["source_object_id"],
+                        "retrieval_unit": row["retrieval_unit_id"],
                         "chapter": row["chapter_object_id"],
                         "path": row["chapter_path"],
                         "page": row["physical_page"],
@@ -256,11 +304,12 @@ async def hybrid_search(
     client = get_embedding_client()
     version_list = ", ".join(f"'{v}'" for v in version_ids)
 
+    tokens = _search_tokens(query)
     tsq = _or_tsquery(query)
     bm25_rows = (
         await db.execute(
             text(
-                "SELECT id, ts_rank(text_tsv, to_tsquery('simple', :tsq)) AS rank "
+                "SELECT id, ts_rank(text_tsv, to_tsquery('simple', :tsq)) AS rank, text "
                 "FROM knowledge_chunks "
                 f"WHERE material_version_id IN ({version_list}) "
                 "AND text_tsv @@ to_tsquery('simple', :tsq) "
@@ -269,7 +318,22 @@ async def hybrid_search(
             {"tsq": tsq},
         )
     ).all()
-    bm25_hits = [(row[0], float(row[1])) for row in bm25_rows]
+    if client.version == "hash-v1":
+        bm25_hits = [
+            (row[0], float(row[1]))
+            for row in bm25_rows
+            if _has_hash_keyword_anchor(row[2], tokens)
+        ]
+    else:
+        bm25_hits = [(row[0], float(row[1])) for row in bm25_rows]
+
+    # hash-v1 只适合离线确定性测试，不具备语义泛化能力；没有多词关键词锚点时禁止
+    # 它以随机哈希相似度伪造教材证据。外部语义模型仍可仅靠向量通道召回。
+    if client.version == "hash-v1" and not bm25_hits:
+        return [], [
+            *warnings,
+            "当前教材中未找到与问题直接对应的关键词证据，已拒绝基于无关内容作答",
+        ]
 
     vector_hits: list[tuple[str, float]] = []
     try:
@@ -308,10 +372,12 @@ async def hybrid_search(
         await db.execute(
             text(
                 "SELECT kc.id, kc.material_version_id, kc.chapter_path, "
-                "kc.physical_page, kc.reading_order, kc.text, m.title, m.id "
+                "kc.physical_page, kc.reading_order, kc.text, m.title, m.id, "
+                "kc.source_object_id, kc.retrieval_unit_id, ko.type, ko.bbox, ko.review_status "
                 "FROM knowledge_chunks kc "
                 "JOIN material_versions mv ON mv.id = kc.material_version_id "
                 "JOIN materials m ON m.id = mv.material_id "
+                "LEFT JOIN knowledge_objects ko ON ko.id = kc.source_object_id "
                 f"WHERE kc.id IN ({id_list})"
             )
         )
@@ -325,6 +391,11 @@ async def hybrid_search(
             "text": row[5],
             "material_title": row[6],
             "material_id": row[7],
+            "source_object_id": row[8],
+            "retrieval_unit_id": row[9],
+            "object_type": row[10] or "paragraph",
+            "bbox": row[11],
+            "review_status": row[12] or "pending",
         }
         for row in meta_rows
     }
@@ -347,16 +418,18 @@ async def hybrid_search(
             "evidence_id": ticket.id,
             "material_id": info["material_id"],
             "material_version_id": info["material_version_id"],
+            "source_object_id": info["source_object_id"],
+            "retrieval_unit_id": info["retrieval_unit_id"],
             "title": info["material_title"],
             "chapter_path": info["chapter_path"],
             "physical_page": info["physical_page"],
             "printed_page": None,
             "anchor": f"p{info['physical_page']}#order{info['reading_order']}",
-            "bbox": None,
-            "object_type": "paragraph",
+            "bbox": info["bbox"],
+            "object_type": info["object_type"],
             "text": info["text"],
             "retrieval_sources": sources,
-            "review_status": "pending",
+            "review_status": info["review_status"],
         }
         if staff:
             item["score"] = round(score, 6)

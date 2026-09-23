@@ -165,10 +165,12 @@ async def get_evidence(
             text(
                 "SELECT kc.text, kc.chapter_path, kc.physical_page, "
                 "kc.reading_order, mv.object_key, mv.id, m.title, m.id, "
-                "m.visibility, m.status, m.current_version_id "
+                "m.visibility, m.status, m.current_version_id, kc.source_object_id, "
+                "kc.retrieval_unit_id, ko.type, ko.bbox "
                 "FROM knowledge_chunks kc "
                 "JOIN material_versions mv ON mv.id = kc.material_version_id "
                 "JOIN materials m ON m.id = mv.material_id "
+                "LEFT JOIN knowledge_objects ko ON ko.id = kc.source_object_id "
                 "WHERE kc.id = :chunk_id"
             ),
             {"chunk_id": ticket.chunk_id},
@@ -204,6 +206,10 @@ async def get_evidence(
             "material_title": row[6],
             "material_id": row[7],
             "material_version_id": row[5],
+            "source_object_id": row[11],
+            "retrieval_unit_id": row[12],
+            "object_type": row[13] or "paragraph",
+            "bbox": row[14],
             "preview_url": preview_url,
             "expires_at": ticket.expires_at.isoformat(),
         },

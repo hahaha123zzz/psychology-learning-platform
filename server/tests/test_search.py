@@ -1,8 +1,11 @@
 import asyncio
 import time
 
-from app.db.models import Material, MaterialVersion
+from sqlalchemy import select
+
+from app.db.models import Material, MaterialVersion, RetrievalUnit
 from app.db.session import session_factory
+from app.modules.knowledge.service import _has_hash_keyword_anchor, _search_tokens
 from tests.conftest import make_pdf
 from tests.test_materials import _login, _setup_course, _upload
 
@@ -91,6 +94,9 @@ def test_teacher_search_returns_evidence_with_scores(client) -> None:
     assert first["retrieval_sources"]
     assert first["physical_page"] in (1, 2)
     assert first["text"]
+    assert first["source_object_id"]
+    assert first["retrieval_unit_id"]
+    assert first["object_type"] == "paragraph"
 
 
 def test_student_search_filtered_until_published(client) -> None:
@@ -118,6 +124,49 @@ def test_student_search_after_publish_has_no_score(client) -> None:
     assert "score" not in items[0]
     assert items[0]["evidence_id"]
     assert "vector" in items[0]["retrieval_sources"]
+
+
+def test_embed_persists_one_retrieval_unit_per_source_object(client) -> None:
+    _, _, version_id = _prepare(client, publish=False)
+
+    async def load_units() -> list[RetrievalUnit]:
+        async with session_factory() as db:
+            return list(
+                (
+                    await db.execute(
+                        select(RetrievalUnit).where(
+                            RetrievalUnit.material_version_id == version_id
+                        )
+                    )
+                ).scalars()
+            )
+
+    units = asyncio.run(load_units())
+    assert units
+    assert all(unit.source_object_id for unit in units)
+    assert all(unit.unit_type == "text_child" for unit in units)
+
+
+def test_hash_embedding_rejects_question_without_textbook_keyword_anchor(client) -> None:
+    course_id, _, _ = _prepare(client, publish=False)
+    _login(client, "mt@uni.edu")
+
+    response = client.post(
+        "/api/v1/knowledge/search",
+        json={"course_id": course_id, "query": "How do I make authentic mapo tofu?"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["items"] == []
+    assert "已拒绝" in response.json()["data"]["warnings"][0]
+
+
+def test_hash_keyword_anchor_requires_two_meaningful_query_terms() -> None:
+    tokens = _search_tokens("How do I make authentic mapo tofu?")
+
+    assert tokens == ["authentic", "mapo", "tofu"]
+    assert not _has_hash_keyword_anchor("An authentic assessment", tokens)
+    assert _has_hash_keyword_anchor("A mapo tofu recipe", tokens)
 
 
 def test_student_search_cannot_request_non_current_published_version(client) -> None:
