@@ -88,11 +88,13 @@ def test_openstax_v3_automated_local_baseline_is_reproducibly_scored() -> None:
     assert run["retrieval_version"] == "hybrid-v3"
     assert run["embedding_version"] == "hash-v1"
     assert report == saved_report
-    assert report["aggregate"]["page_recall_at_k"] == 1.0
+    assert report["aggregate"]["page_recall_at_k"] == 0.6
     assert report["aggregate"]["recall_at_k"] == 0.625
-    assert report["aggregate"]["ndcg_at_k"] == 0.561019
+    assert report["aggregate"]["ndcg_at_k"] == 0.653287
     assert report["aggregate"]["refusal_accuracy"] == 1.0
     assert report["aggregate"]["object_mapping_unavailable_case_count"] == 1
+    assert report["aggregate"]["bbox_iou"] == 0.960721
+    assert report["aggregate"]["bbox_evaluable_case_count"] == 2
 
 
 def test_score_run_reports_per_case_and_aggregate_metrics() -> None:

@@ -2,11 +2,11 @@
   "dataset_id": "openstax-psychology-2e-local-v2",
   "k": 5,
   "aggregate": {
-    "page_recall_at_k": 1.0,
-    "page_ndcg_at_k": 0.926186,
-    "page_accuracy": 0.8,
+    "page_recall_at_k": 0.6,
+    "page_ndcg_at_k": 0.6,
+    "page_accuracy": 0.6,
     "recall_at_k": 0.625,
-    "ndcg_at_k": 0.561019,
+    "ndcg_at_k": 0.653287,
     "object_mapping_evaluable_case_count": 4,
     "object_mapping_unavailable_case_count": 1,
     "citation_precision": null,
@@ -14,12 +14,12 @@
     "claim_support_rate": null,
     "generation_evaluable_case_count": 0,
     "generation_unavailable_case_count": 5,
-    "bbox_iou": null,
-    "bbox_evaluable_case_count": 0,
-    "bbox_unavailable_case_count": 5,
+    "bbox_iou": 0.960721,
+    "bbox_evaluable_case_count": 2,
+    "bbox_unavailable_case_count": 3,
     "answerable_case_count": 5,
     "refusal_accuracy": 1.0,
-    "mean_latency_ms": 18.216
+    "mean_latency_ms": 18.853
   },
   "cases": [
     {
@@ -30,22 +30,22 @@
       "page_recall_at_k": 1.0,
       "page_ndcg_at_k": 1.0,
       "page_accuracy": 1.0,
-      "bbox_iou": null,
+      "bbox_iou": 0.9601195205580694,
       "citation_precision": null,
       "citation_recall": null,
       "claim_support_rate": null,
       "generation_evaluated": false,
       "refused": false,
       "expected_refusal": false,
-      "latency_ms": 25.635
+      "latency_ms": 36.803
     },
     {
       "case_id": "case-quasi-experimental-causality",
       "recall_at_k": 0.0,
       "ndcg_at_k": 0.0,
       "object_mapping_evaluated": true,
-      "page_recall_at_k": 1.0,
-      "page_ndcg_at_k": 0.6309297535714575,
+      "page_recall_at_k": 0.0,
+      "page_ndcg_at_k": 0.0,
       "page_accuracy": 0.0,
       "bbox_iou": null,
       "citation_precision": null,
@@ -54,16 +54,16 @@
       "generation_evaluated": false,
       "refused": false,
       "expected_refusal": false,
-      "latency_ms": 18.061
+      "latency_ms": 28.52
     },
     {
       "case_id": "case-classical-conditioning-sequence",
       "recall_at_k": null,
       "ndcg_at_k": null,
       "object_mapping_evaluated": false,
-      "page_recall_at_k": 1.0,
-      "page_ndcg_at_k": 1.0,
-      "page_accuracy": 1.0,
+      "page_recall_at_k": 0.0,
+      "page_ndcg_at_k": 0.0,
+      "page_accuracy": 0.0,
       "bbox_iou": null,
       "citation_precision": null,
       "citation_recall": null,
@@ -71,24 +71,24 @@
       "generation_evaluated": false,
       "refused": false,
       "expected_refusal": false,
-      "latency_ms": 25.401
+      "latency_ms": 12.439
     },
     {
       "case_id": "case-memory-three-stages",
       "recall_at_k": 1.0,
-      "ndcg_at_k": 0.6309297535714575,
+      "ndcg_at_k": 1.0,
       "object_mapping_evaluated": true,
       "page_recall_at_k": 1.0,
       "page_ndcg_at_k": 1.0,
       "page_accuracy": 1.0,
-      "bbox_iou": null,
+      "bbox_iou": 0.9613228357674961,
       "citation_precision": null,
       "citation_recall": null,
       "claim_support_rate": null,
       "generation_evaluated": false,
       "refused": false,
       "expected_refusal": false,
-      "latency_ms": 25.292
+      "latency_ms": 23.717
     },
     {
       "case_id": "case-active-rehearsal",
@@ -105,7 +105,7 @@
       "generation_evaluated": false,
       "refused": false,
       "expected_refusal": false,
-      "latency_ms": 13.792
+      "latency_ms": 10.61
     },
     {
       "case_id": "case-out-of-scope-szechuan-cooking",
@@ -122,7 +122,7 @@
       "generation_evaluated": false,
       "refused": true,
       "expected_refusal": true,
-      "latency_ms": 1.112
+      "latency_ms": 1.027
     }
   ]
 }

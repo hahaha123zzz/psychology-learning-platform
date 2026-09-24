@@ -17,7 +17,9 @@
       "object_type": "paragraph",
       "page": 66,
       "chapter_path": "2.3",
-      "text_anchor": "An independent variable is manipulated or controlled"
+      "text_anchor": "An independent variable is manipulated or controlled",
+      "bbox": [71.0, 639.0, 540.0, 735.0],
+      "bbox_annotation": "manual-render-v1"
     },
     {
       "id": "openstax-p068-quasi-experiment",
@@ -41,7 +43,9 @@
       "object_type": "paragraph",
       "page": 262,
       "chapter_path": "8.2",
-      "text_anchor": "Sensory Memory, Short-Term Memory, and finally Long-Term Memory"
+      "text_anchor": "Sensory Memory, Short-Term Memory, and finally Long-Term Memory",
+      "bbox": [71.0, 580.0, 534.0, 648.0],
+      "bbox_annotation": "manual-render-v1"
     },
     {
       "id": "openstax-p263-rehearsal-transfer",

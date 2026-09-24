@@ -11,156 +11,171 @@
       "case_id": "case-independent-dependent-variable",
       "retrieved_object_ids": [
         "openstax-p066-variables",
-        "01M34JDZAXCJVWVNS5V6QW7NT8",
-        "01M34JDZAX1SDE5QD0ACPDNABX",
-        "01M34JDZAX4RB233ESS3PNZQ1N",
-        "01M34JDZAX72WNP17VD9JNQF6D",
-        "01M34JDZB0QVR5NQ8ZJFQYDE72",
-        "01M34JDZAX92NJ1MM65ZZQ5Q7Q",
-        "01M34JDZAX7Y9BC9FNY2ME0GRM"
+        "01M37CJD4C584YKWG9R9YJ7WNA",
+        "01M37CJD4C6EFV00WGAQJ4AK6F",
+        "01M37CJD4DWCPF0DS34SJHHKER",
+        "01M37CJD4C5BCTECJA9R6960A1",
+        "01M37CJD4CG98RF3YEWWT6P5S0",
+        "01M37CJD4DW6ZG2KZAB2Y8885E",
+        "01M37CJD4C99Z566W0CZQDYECD"
       ],
       "retrieved_pages": [
         66,
         66,
         75,
-        66,
         80,
-        158,
-        68,
-        75
+        75,
+        75,
+        80,
+        68
       ],
       "predicted_page": 66,
-      "predicted_bbox": null,
+      "predicted_bbox": [
+        72.0,
+        640.8000183105469,
+        538.3259887695312,
+        733.5000228881836
+      ],
       "cited_object_ids": [],
       "claim_support_levels": [],
       "generation_evaluated": false,
       "object_mapping_evaluated": true,
       "refused": false,
-      "latency_ms": 25.635
+      "latency_ms": 36.803
     },
     {
       "case_id": "case-quasi-experimental-causality",
       "retrieved_object_ids": [
-        "01M34JDZAX7W8KSMD97MP7AFHN",
-        "01M34JDZAXZ0J3M2T9EMY66GJD",
-        "01M34JDZB71RP6PX3E4F9QV9AQ",
-        "01M34JDZAXZ3TWC2N3ABF0A69G",
-        "01M34JDZBNV2F7HC0S3QSY2H5S",
-        "01M34JDZAWRN6V1A65FZ4AKSG4",
-        "01M34JDZB4YP7RHTT02WN9HGCJ",
-        "01M34JDZAXVTBMCQEK8CFS555F"
+        "01M37CJD4M7HN2876S6B8GJXYH",
+        "01M37CJD4TGNT54M9KCVQZJ2XQ",
+        "01M37CJD4BSRB7C43KG0EG46JQ"
       ],
       "retrieved_pages": [
-        81,
-        68,
-        330,
-        75,
-        552,
-        54,
-        253,
-        77
+        319,
+        499,
+        35
       ],
-      "predicted_page": 81,
-      "predicted_bbox": null,
+      "predicted_page": 319,
+      "predicted_bbox": [
+        72.0,
+        127.11602783203125,
+        541.3860473632812,
+        219.81597900390625
+      ],
       "cited_object_ids": [],
       "claim_support_levels": [],
       "generation_evaluated": false,
       "object_mapping_evaluated": true,
       "refused": false,
-      "latency_ms": 18.061
+      "latency_ms": 28.52
     },
     {
       "case_id": "case-classical-conditioning-sequence",
       "retrieved_object_ids": [
-        "01M34JDZB1RS11TAQWEY09Q7BG",
-        "01M34JDZB1DSPF6P18VHQDX2SB",
-        "01M34JDZB1ZHSHZK9B5MKQSVDE",
-        "01M34JDZB24ENA9M4XGG40ZTDN",
-        "01M34JDZB24JBSTX0ZJ9FAYQR3",
-        "01M34JDZB6AJ1BRA4EGTNJ4NVD",
-        "01M34JDZB18JZZ9J28MERQCT6W",
-        "01M34JDZB1PQVCGFJPPDNJTJQR"
+        "01M37CJD4HAAXB6ZE48BF6CGMB",
+        "01M37CJD4GEQH9FGS9T3FJZB6F",
+        "01M37CJD4GW67G25EGNH1Z1PY5",
+        "01M37CJD4H9AR4WK4KG9SRD3YS",
+        "01M37CJD4G705T4Y4CM3315E7D",
+        "01M37CJD4XG20NPQN6E6VEB0V1",
+        "01M37CJD4YEWPNJJPFXW52BJNN",
+        "01M37CJD4HW322MK02WHJRBKMH"
       ],
       "retrieved_pages": [
-        197,
-        200,
-        204,
         219,
-        221,
-        320,
         195,
-        201
+        200,
+        221,
+        203,
+        619,
+        640,
+        204
       ],
-      "predicted_page": 197,
-      "predicted_bbox": null,
+      "predicted_page": 219,
+      "predicted_bbox": [
+        72.0,
+        634.4999694824219,
+        537.4319458007812,
+        659.6999816894531
+      ],
       "cited_object_ids": [],
       "claim_support_levels": [],
       "generation_evaluated": false,
       "object_mapping_evaluated": false,
       "refused": false,
-      "latency_ms": 25.401
+      "latency_ms": 12.439
     },
     {
       "case_id": "case-memory-three-stages",
       "retrieved_object_ids": [
-        "01M34JDZB4GKWC5764KQR7WDS6",
         "openstax-p262-memory-model",
-        "01M34JDZB5J8YVX7CH48T0KQGP",
-        "01M34JDZB4SCJ586WVVC2DXJBP",
-        "openstax-p263-rehearsal-transfer",
-        "01M34JDZB5KVGD1KWZ9CSFSTDF",
-        "01M34JDZB4GP5JPQGP88DNGMA5",
-        "01M34JDZB413TYPF514NAGWCZ9"
+        "01M37CJD4K7C36FT897BX0CT0W",
+        "01M37CJD4JN5S5J3243F4QGC0R",
+        "01M37CJD4JRJB04GBP00ET0V0C",
+        "01M37CJD4J7CCTDFA2K8GWRWZD",
+        "01M37CJD4JWDHYC295DG7Y4G9S",
+        "01M37CJD4KT9DHFKPFHR7B6CVY",
+        "01M37CJD4KR9QBCKV9S40V0VJG"
       ],
       "retrieved_pages": [
-        262,
         262,
         286,
         263,
         263,
-        285,
         264,
-        271
+        262,
+        268,
+        287
       ],
       "predicted_page": 262,
-      "predicted_bbox": null,
+      "predicted_bbox": [
+        72.0,
+        581.3999938964844,
+        532.6740112304688,
+        647.1000061035156
+      ],
       "cited_object_ids": [],
       "claim_support_levels": [],
       "generation_evaluated": false,
       "object_mapping_evaluated": true,
       "refused": false,
-      "latency_ms": 25.292
+      "latency_ms": 23.717
     },
     {
       "case_id": "case-active-rehearsal",
       "retrieved_object_ids": [
         "openstax-p263-rehearsal-transfer",
-        "01M34JDZB5J8YVX7CH48T0KQGP",
-        "01M34JDZB5D0CKG9QJ8EY32D0R",
-        "01M34JDZB4SCJ586WVVC2DXJBP",
-        "01M34JDZB5NS0CH27AS146ZX8T",
-        "01M34JDZB55R2BTXNCPVZS3571",
-        "openstax-p263-rehearsal-practice",
-        "01M34JDZB581KBC3A090ZCFSQ5"
+        "01M37CJD4KE3ASXZQEVNJQN91R",
+        "01M37CJD4KGQ3SP9E9CZW1EZWF",
+        "01M37CJD4K7C36FT897BX0CT0W",
+        "01M37CJD4JWDHYC295DG7Y4G9S",
+        "01M37CJD4K2APFQAH5CYM1DT3N",
+        "01M37CJD4JRJB04GBP00ET0V0C",
+        "01M37CJD4KQ2M6Q7TBQ54554HY"
       ],
       "retrieved_pages": [
         263,
         286,
+        281,
         286,
-        263,
+        262,
         285,
-        285,
         263,
-        281
+        285
       ],
       "predicted_page": 263,
-      "predicted_bbox": null,
+      "predicted_bbox": [
+        72.0,
+        512.9999694824219,
+        540.6210327148438,
+        659.6999816894531
+      ],
       "cited_object_ids": [],
       "claim_support_levels": [],
       "generation_evaluated": false,
       "object_mapping_evaluated": true,
       "refused": false,
-      "latency_ms": 13.792
+      "latency_ms": 10.61
     },
     {
       "case_id": "case-out-of-scope-szechuan-cooking",
@@ -173,7 +188,7 @@
       "generation_evaluated": false,
       "object_mapping_evaluated": true,
       "refused": true,
-      "latency_ms": 1.112
+      "latency_ms": 1.027
     }
   ]
 }
