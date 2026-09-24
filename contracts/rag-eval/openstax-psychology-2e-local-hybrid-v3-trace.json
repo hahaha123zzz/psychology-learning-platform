@@ -1,0 +1,6485 @@
+{
+  "dataset_id": "openstax-psychology-2e-local-v2",
+  "material_version_id": "01M33P6ACK2GAFPF6FCP95Z0YZ",
+  "embedding_version": "hash-v1",
+  "traces": [
+    {
+      "case_id": "case-independent-dependent-variable",
+      "query": "In an experiment, what is the difference between an independent variable and a dependent variable?",
+      "query_plan": {
+        "question_type": "comparison",
+        "target_pages": [],
+        "target_chapters": [],
+        "modalities": [
+          "text"
+        ],
+        "channel_priors": {
+          "dense": 0.5,
+          "sparse": 0.5,
+          "visual": 0.0
+        },
+        "retrieval_budget": 12,
+        "analyzer_version": "deterministic-v1"
+      },
+      "trace": {
+        "bm25": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDFT5ZS8TCCQ34C0K13Z",
+            "physical_page": 77,
+            "score": 0.06585877388715744
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDFSQ0TRXMXS07ZXWSM1",
+            "physical_page": 66,
+            "score": 0.06436067819595337
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDFS3DZJ9HBWD0PF8GT6",
+            "physical_page": 66,
+            "score": 0.0540914386510849
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDFTNHXBKRX4XS3BF51A",
+            "physical_page": 75,
+            "score": 0.05066059157252312
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDFS1SB7HEPCS4BT2DVJ",
+            "physical_page": 67,
+            "score": 0.049253348261117935
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDFTZBHJDHDKSPQK4K9D",
+            "physical_page": 75,
+            "score": 0.04784611240029335
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDFS2S62JW3R5HABF5V9",
+            "physical_page": 68,
+            "score": 0.04672032222151756
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDFT1FDSKJ24V114PH5X",
+            "physical_page": 68,
+            "score": 0.04559452831745148
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDFS2HQSPZMQ399CPWM6",
+            "physical_page": 60,
+            "score": 0.04418729245662689
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDFVQGRH3BZRGGW63QDJ",
+            "physical_page": 80,
+            "score": 0.03975449129939079
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDFSD64D9PC1ANG71BA5",
+            "physical_page": 64,
+            "score": 0.03546241298317909
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDFTP2C1CSHJDB1BT2JX",
+            "physical_page": 75,
+            "score": 0.03292938694357872
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDJTQ25C7CXW5KMRN14B",
+            "physical_page": 748,
+            "score": 0.03292938694357872
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDFVPTGEBRAZWSVVJDQH",
+            "physical_page": 80,
+            "score": 0.03292938321828842
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDFT2A26KSJXRAM1V355",
+            "physical_page": 75,
+            "score": 0.03292938321828842
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDFS6GZ81AZFPHFMF1D5",
+            "physical_page": 68,
+            "score": 0.03292938321828842
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDFSBA961ASK1TJM6GHR",
+            "physical_page": 66,
+            "score": 0.0303963553160429
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDGAM8V72R6GQ96ZXPFV",
+            "physical_page": 213,
+            "score": 0.0303963553160429
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDGA169Q4A6ZXFPV95KT",
+            "physical_page": 210,
+            "score": 0.02708934247493744
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDFXJ9ZB6BJGYYGCEPMB",
+            "physical_page": 96,
+            "score": 0.026456085965037346
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDFSNXP9E1PKXAAZQEH8",
+            "physical_page": 62,
+            "score": 0.02533029578626156
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDG7KQG60DHVGMGS1AFV",
+            "physical_page": 184,
+            "score": 0.024961600080132484
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDG3N92E8K9M0QNGAJ11",
+            "physical_page": 158,
+            "score": 0.024961600080132484
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDG67NZ8PM8QRDVHYV8Q",
+            "physical_page": 174,
+            "score": 0.023923056200146675
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDFS6AMDDD8VCEZ7D3VE",
+            "physical_page": 63,
+            "score": 0.023923056200146675
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDFT8DDV755BJN9C5NAA",
+            "physical_page": 75,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDG3DX6V827XSRX7YS27",
+            "physical_page": 158,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDG9XJEDHH66PGPYAKT9",
+            "physical_page": 204,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDFSXB1W7QG3BQAFJG7X",
+            "physical_page": 61,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDGEZ319DAYN1RYJ91W7",
+            "physical_page": 249,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDGC4VCA0A56YG6XZM5Q",
+            "physical_page": 231,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDGMF9JC1W9AXC91QQDT",
+            "physical_page": 302,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDFR5VQN9R66YTV68C14",
+            "physical_page": 54,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDFSNHJBPYE4C2XGSKZ6",
+            "physical_page": 62,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDFS6V2M4GV49EATGM7N",
+            "physical_page": 62,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDFTJ6ZN4ZWK6EMGPH5X",
+            "physical_page": 77,
+            "score": 0.020264236256480217
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDFR91M3KXKH81MWH618",
+            "physical_page": 50,
+            "score": 0.020264236256480217
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDGBD88MP2043GNZJD1K",
+            "physical_page": 223,
+            "score": 0.020264236256480217
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDFW1YNX53X0WREPFD5P",
+            "physical_page": 86,
+            "score": 0.020264236256480217
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDFTED94NCYF1B13RBKZ",
+            "physical_page": 76,
+            "score": 0.020264236256480217
+          },
+          {
+            "rank": 41,
+            "chunk_id": "01M37CPDGB6KDWAX05QFS0BNQC",
+            "physical_page": 223,
+            "score": 0.020264236256480217
+          },
+          {
+            "rank": 42,
+            "chunk_id": "01M37CPDGBPK622CK5QQ5BD41E",
+            "physical_page": 226,
+            "score": 0.020264236256480217
+          },
+          {
+            "rank": 43,
+            "chunk_id": "01M37CPDGDYQ16VHW7H98HDF65",
+            "physical_page": 240,
+            "score": 0.020264236256480217
+          },
+          {
+            "rank": 44,
+            "chunk_id": "01M37CPDFSTFGVMTX822KV6FZY",
+            "physical_page": 61,
+            "score": 0.020264236256480217
+          },
+          {
+            "rank": 45,
+            "chunk_id": "01M37CPDG35ZGKP8NP4AFVFGHP",
+            "physical_page": 158,
+            "score": 0.020264236256480217
+          },
+          {
+            "rank": 46,
+            "chunk_id": "01M37CPDGAG8NFS0GFHK5DFJVV",
+            "physical_page": 212,
+            "score": 0.020264236256480217
+          },
+          {
+            "rank": 47,
+            "chunk_id": "01M37CPDFTKVG30V4JWJM3P7N8",
+            "physical_page": 75,
+            "score": 0.020264236256480217
+          },
+          {
+            "rank": 48,
+            "chunk_id": "01M37CPDGB9J77Y643T9J25T0D",
+            "physical_page": 222,
+            "score": 0.020264236256480217
+          },
+          {
+            "rank": 49,
+            "chunk_id": "01M37CPDFSGZSATDRGW8AV31VA",
+            "physical_page": 66,
+            "score": 0.020264236256480217
+          },
+          {
+            "rank": 50,
+            "chunk_id": "01M37CPDFS9385AVZXB2A3GA71",
+            "physical_page": 65,
+            "score": 0.020264236256480217
+          }
+        ],
+        "vector": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDFSQ0TRXMXS07ZXWSM1",
+            "physical_page": 66,
+            "score": 0.6105264456650795
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDFS3DZJ9HBWD0PF8GT6",
+            "physical_page": 66,
+            "score": 0.6059813319634687
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDFVQGRH3BZRGGW63QDJ",
+            "physical_page": 80,
+            "score": 0.5538185137944973
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDFT2A26KSJXRAM1V355",
+            "physical_page": 75,
+            "score": 0.4955951075863756
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDFVPTGEBRAZWSVVJDQH",
+            "physical_page": 80,
+            "score": 0.4842001152636417
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDFTNHXBKRX4XS3BF51A",
+            "physical_page": 75,
+            "score": 0.4787900606808555
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDFTZBHJDHDKSPQK4K9D",
+            "physical_page": 75,
+            "score": 0.4588315252013293
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDFSBA961ASK1TJM6GHR",
+            "physical_page": 66,
+            "score": 0.4532470619525206
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDH0TD9B4Z6P36Y9024T",
+            "physical_page": 413,
+            "score": 0.4498948751633176
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDFS6AMDDD8VCEZ7D3VE",
+            "physical_page": 63,
+            "score": 0.44659401462580406
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDFT1FDSKJ24V114PH5X",
+            "physical_page": 68,
+            "score": 0.4393740675596578
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDG3N92E8K9M0QNGAJ11",
+            "physical_page": 158,
+            "score": 0.43610507896784045
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDH1T081Q5GJJH15DRJ9",
+            "physical_page": 421,
+            "score": 0.4341004435365039
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDGJW697W1EGX2PSP74N",
+            "physical_page": 287,
+            "score": 0.4335550349023096
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDH6ZP2MHNADK3K38YR3",
+            "physical_page": 463,
+            "score": 0.43201648496306044
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDH40RJ49NREKTYN3174",
+            "physical_page": 449,
+            "score": 0.42961748639113173
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDGERRPPC02XD7H8GWGD",
+            "physical_page": 254,
+            "score": 0.4250463441265081
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDG25B3VZ5TCDNBKMHMG",
+            "physical_page": 146,
+            "score": 0.4171490863332399
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDFQH1D9JDPDBFNSPHPE",
+            "physical_page": 44,
+            "score": 0.41294850994385224
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDGP74NGGS0AJ4C50W37",
+            "physical_page": 325,
+            "score": 0.412827223835982
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDH2WXZS4R11B6ND58W9",
+            "physical_page": 429,
+            "score": 0.41039147578103363
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDH77FTQXGM238WA292T",
+            "physical_page": 472,
+            "score": 0.4103912587271086
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDH93CS4WRS3Z3PDF17C",
+            "physical_page": 484,
+            "score": 0.4098454093381674
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDH041EENGXDR6SQM5GM",
+            "physical_page": 415,
+            "score": 0.4078503309568313
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDFSBPB6P78BPFRC7KPD",
+            "physical_page": 61,
+            "score": 0.40545673955854655
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDHRN6HD2FMFV40R5ZDW",
+            "physical_page": 630,
+            "score": 0.40226150858969323
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDFQG22XGRFCAMJ2S490",
+            "physical_page": 41,
+            "score": 0.40009112973007643
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDH9MXAET17PF56BZ6FK",
+            "physical_page": 486,
+            "score": 0.3992601512981351
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDGBR4D8FX8XB5XKPXNC",
+            "physical_page": 221,
+            "score": 0.39735963110513384
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDFTS91QXMCRBATMABRD",
+            "physical_page": 75,
+            "score": 0.3947368075973887
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDG763NSNA14WEMW1Z06",
+            "physical_page": 180,
+            "score": 0.3920351747923637
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDHGVJH9ECE4Q0DA2HP1",
+            "physical_page": 552,
+            "score": 0.3902691355280776
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDH5FGHG9S8BQ5NGAZEV",
+            "physical_page": 452,
+            "score": 0.3893958862997664
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDFSNXP9E1PKXAAZQEH8",
+            "physical_page": 62,
+            "score": 0.3873995096690339
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDH0M7TXG8G0K6QEX9GH",
+            "physical_page": 412,
+            "score": 0.38327789804998713
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDH224G5CXV4MSWHHCK7",
+            "physical_page": 428,
+            "score": 0.3826917939460278
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDHH8BG1CJQ0VQ8C7VS9",
+            "physical_page": 566,
+            "score": 0.38252276101114413
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDHM3KZH4KBRTJKQR1A2",
+            "physical_page": 591,
+            "score": 0.38117336665801727
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDFSB9GF5HZVCFZ5GDEC",
+            "physical_page": 65,
+            "score": 0.3793669692097479
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDGPMC6GS2EBHPCPTRPQ",
+            "physical_page": 322,
+            "score": 0.378867917915672
+          }
+        ],
+        "fused": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDFSQ0TRXMXS07ZXWSM1",
+            "physical_page": 66,
+            "score": 0.01626123744050767,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDFS3DZJ9HBWD0PF8GT6",
+            "physical_page": 66,
+            "score": 0.016001024065540194,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDFTNHXBKRX4XS3BF51A",
+            "physical_page": 75,
+            "score": 0.015388257575757576,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDFVQGRH3BZRGGW63QDJ",
+            "physical_page": 80,
+            "score": 0.015079365079365078,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDFTZBHJDHDKSPQK4K9D",
+            "physical_page": 75,
+            "score": 0.015038444142921756,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDFT2A26KSJXRAM1V355",
+            "physical_page": 75,
+            "score": 0.014479166666666668,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDFVPTGEBRAZWSVVJDQH",
+            "physical_page": 80,
+            "score": 0.01444906444906445,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDFT1FDSKJ24V114PH5X",
+            "physical_page": 68,
+            "score": 0.014395194697597348,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDFSBA961ASK1TJM6GHR",
+            "physical_page": 66,
+            "score": 0.013846447669977082,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDFS6AMDDD8VCEZ7D3VE",
+            "physical_page": 63,
+            "score": 0.013025210084033612,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDG3N92E8K9M0QNGAJ11",
+            "physical_page": 158,
+            "score": 0.012968540829986613,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDFSNXP9E1PKXAAZQEH8",
+            "physical_page": 62,
+            "score": 0.011491988442343053,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDFT5ZS8TCCQ34C0K13Z",
+            "physical_page": 77,
+            "score": 0.00819672131147541,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDFS1SB7HEPCS4BT2DVJ",
+            "physical_page": 67,
+            "score": 0.007692307692307693,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDFS2S62JW3R5HABF5V9",
+            "physical_page": 68,
+            "score": 0.007462686567164179,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDFS2HQSPZMQ399CPWM6",
+            "physical_page": 60,
+            "score": 0.007246376811594203,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDH0TD9B4Z6P36Y9024T",
+            "physical_page": 413,
+            "score": 0.007246376811594203,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDFSD64D9PC1ANG71BA5",
+            "physical_page": 64,
+            "score": 0.007042253521126761,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDFTP2C1CSHJDB1BT2JX",
+            "physical_page": 75,
+            "score": 0.006944444444444444,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDJTQ25C7CXW5KMRN14B",
+            "physical_page": 748,
+            "score": 0.00684931506849315,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDH1T081Q5GJJH15DRJ9",
+            "physical_page": 421,
+            "score": 0.00684931506849315,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDGJW697W1EGX2PSP74N",
+            "physical_page": 287,
+            "score": 0.006756756756756757,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDH6ZP2MHNADK3K38YR3",
+            "physical_page": 463,
+            "score": 0.006666666666666667,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDFS6GZ81AZFPHFMF1D5",
+            "physical_page": 68,
+            "score": 0.006578947368421052,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDH40RJ49NREKTYN3174",
+            "physical_page": 449,
+            "score": 0.006578947368421052,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDGERRPPC02XD7H8GWGD",
+            "physical_page": 254,
+            "score": 0.006493506493506494,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDGAM8V72R6GQ96ZXPFV",
+            "physical_page": 213,
+            "score": 0.00641025641025641,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDG25B3VZ5TCDNBKMHMG",
+            "physical_page": 146,
+            "score": 0.00641025641025641,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDGA169Q4A6ZXFPV95KT",
+            "physical_page": 210,
+            "score": 0.006329113924050633,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDFQH1D9JDPDBFNSPHPE",
+            "physical_page": 44,
+            "score": 0.006329113924050633,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDFXJ9ZB6BJGYYGCEPMB",
+            "physical_page": 96,
+            "score": 0.00625,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDGP74NGGS0AJ4C50W37",
+            "physical_page": 325,
+            "score": 0.00625,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDH2WXZS4R11B6ND58W9",
+            "physical_page": 429,
+            "score": 0.006172839506172839,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDG7KQG60DHVGMGS1AFV",
+            "physical_page": 184,
+            "score": 0.006097560975609756,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDH77FTQXGM238WA292T",
+            "physical_page": 472,
+            "score": 0.006097560975609756,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDH93CS4WRS3Z3PDF17C",
+            "physical_page": 484,
+            "score": 0.006024096385542169,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDG67NZ8PM8QRDVHYV8Q",
+            "physical_page": 174,
+            "score": 0.005952380952380952,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDH041EENGXDR6SQM5GM",
+            "physical_page": 415,
+            "score": 0.005952380952380952,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDFSBPB6P78BPFRC7KPD",
+            "physical_page": 61,
+            "score": 0.0058823529411764705,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDFT8DDV755BJN9C5NAA",
+            "physical_page": 75,
+            "score": 0.005813953488372093,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 41,
+            "chunk_id": "01M37CPDHRN6HD2FMFV40R5ZDW",
+            "physical_page": 630,
+            "score": 0.005813953488372093,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 42,
+            "chunk_id": "01M37CPDG3DX6V827XSRX7YS27",
+            "physical_page": 158,
+            "score": 0.005747126436781609,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 43,
+            "chunk_id": "01M37CPDFQG22XGRFCAMJ2S490",
+            "physical_page": 41,
+            "score": 0.005747126436781609,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 44,
+            "chunk_id": "01M37CPDG9XJEDHH66PGPYAKT9",
+            "physical_page": 204,
+            "score": 0.005681818181818182,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 45,
+            "chunk_id": "01M37CPDH9MXAET17PF56BZ6FK",
+            "physical_page": 486,
+            "score": 0.005681818181818182,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 46,
+            "chunk_id": "01M37CPDFSXB1W7QG3BQAFJG7X",
+            "physical_page": 61,
+            "score": 0.0056179775280898875,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 47,
+            "chunk_id": "01M37CPDGBR4D8FX8XB5XKPXNC",
+            "physical_page": 221,
+            "score": 0.0056179775280898875,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 48,
+            "chunk_id": "01M37CPDGEZ319DAYN1RYJ91W7",
+            "physical_page": 249,
+            "score": 0.005555555555555556,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 49,
+            "chunk_id": "01M37CPDFTS91QXMCRBATMABRD",
+            "physical_page": 75,
+            "score": 0.005555555555555556,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 50,
+            "chunk_id": "01M37CPDGC4VCA0A56YG6XZM5Q",
+            "physical_page": 231,
+            "score": 0.005494505494505495,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 51,
+            "chunk_id": "01M37CPDG763NSNA14WEMW1Z06",
+            "physical_page": 180,
+            "score": 0.005494505494505495,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 52,
+            "chunk_id": "01M37CPDGMF9JC1W9AXC91QQDT",
+            "physical_page": 302,
+            "score": 0.005434782608695652,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 53,
+            "chunk_id": "01M37CPDHGVJH9ECE4Q0DA2HP1",
+            "physical_page": 552,
+            "score": 0.005434782608695652,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 54,
+            "chunk_id": "01M37CPDFR5VQN9R66YTV68C14",
+            "physical_page": 54,
+            "score": 0.005376344086021506,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 55,
+            "chunk_id": "01M37CPDH5FGHG9S8BQ5NGAZEV",
+            "physical_page": 452,
+            "score": 0.005376344086021506,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 56,
+            "chunk_id": "01M37CPDFSNHJBPYE4C2XGSKZ6",
+            "physical_page": 62,
+            "score": 0.005319148936170213,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 57,
+            "chunk_id": "01M37CPDFS6V2M4GV49EATGM7N",
+            "physical_page": 62,
+            "score": 0.005263157894736842,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 58,
+            "chunk_id": "01M37CPDH0M7TXG8G0K6QEX9GH",
+            "physical_page": 412,
+            "score": 0.005263157894736842,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 59,
+            "chunk_id": "01M37CPDFTJ6ZN4ZWK6EMGPH5X",
+            "physical_page": 77,
+            "score": 0.005208333333333333,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 60,
+            "chunk_id": "01M37CPDH224G5CXV4MSWHHCK7",
+            "physical_page": 428,
+            "score": 0.005208333333333333,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 61,
+            "chunk_id": "01M37CPDFR91M3KXKH81MWH618",
+            "physical_page": 50,
+            "score": 0.005154639175257732,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 62,
+            "chunk_id": "01M37CPDHH8BG1CJQ0VQ8C7VS9",
+            "physical_page": 566,
+            "score": 0.005154639175257732,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 63,
+            "chunk_id": "01M37CPDGBD88MP2043GNZJD1K",
+            "physical_page": 223,
+            "score": 0.00510204081632653,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 64,
+            "chunk_id": "01M37CPDHM3KZH4KBRTJKQR1A2",
+            "physical_page": 591,
+            "score": 0.00510204081632653,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 65,
+            "chunk_id": "01M37CPDFW1YNX53X0WREPFD5P",
+            "physical_page": 86,
+            "score": 0.005050505050505051,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 66,
+            "chunk_id": "01M37CPDFSB9GF5HZVCFZ5GDEC",
+            "physical_page": 65,
+            "score": 0.005050505050505051,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 67,
+            "chunk_id": "01M37CPDFTED94NCYF1B13RBKZ",
+            "physical_page": 76,
+            "score": 0.005,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 68,
+            "chunk_id": "01M37CPDGPMC6GS2EBHPCPTRPQ",
+            "physical_page": 322,
+            "score": 0.005,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 69,
+            "chunk_id": "01M37CPDGB6KDWAX05QFS0BNQC",
+            "physical_page": 223,
+            "score": 0.0049504950495049506,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 70,
+            "chunk_id": "01M37CPDGBPK622CK5QQ5BD41E",
+            "physical_page": 226,
+            "score": 0.004901960784313725,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 71,
+            "chunk_id": "01M37CPDGDYQ16VHW7H98HDF65",
+            "physical_page": 240,
+            "score": 0.0048543689320388345,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 72,
+            "chunk_id": "01M37CPDFSTFGVMTX822KV6FZY",
+            "physical_page": 61,
+            "score": 0.004807692307692308,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 73,
+            "chunk_id": "01M37CPDG35ZGKP8NP4AFVFGHP",
+            "physical_page": 158,
+            "score": 0.004761904761904762,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 74,
+            "chunk_id": "01M37CPDGAG8NFS0GFHK5DFJVV",
+            "physical_page": 212,
+            "score": 0.0047169811320754715,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 75,
+            "chunk_id": "01M37CPDFTKVG30V4JWJM3P7N8",
+            "physical_page": 75,
+            "score": 0.004672897196261682,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 76,
+            "chunk_id": "01M37CPDGB9J77Y643T9J25T0D",
+            "physical_page": 222,
+            "score": 0.004629629629629629,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 77,
+            "chunk_id": "01M37CPDFSGZSATDRGW8AV31VA",
+            "physical_page": 66,
+            "score": 0.0045871559633027525,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 78,
+            "chunk_id": "01M37CPDFS9385AVZXB2A3GA71",
+            "physical_page": 65,
+            "score": 0.004545454545454545,
+            "sources": [
+              "bm25"
+            ]
+          }
+        ],
+        "cutoff": {
+          "reason": "budget_exhausted",
+          "chunk_ids": [
+            "01M37CPDFSQ0TRXMXS07ZXWSM1",
+            "01M37CPDFS3DZJ9HBWD0PF8GT6",
+            "01M37CPDFTNHXBKRX4XS3BF51A",
+            "01M37CPDFVQGRH3BZRGGW63QDJ",
+            "01M37CPDFTZBHJDHDKSPQK4K9D",
+            "01M37CPDFT2A26KSJXRAM1V355",
+            "01M37CPDFVPTGEBRAZWSVVJDQH",
+            "01M37CPDFT1FDSKJ24V114PH5X"
+          ],
+          "pages": [
+            66,
+            66,
+            75,
+            80,
+            75,
+            75,
+            80,
+            68
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "case-quasi-experimental-causality",
+      "query": "Why can a quasi-experimental study of sex and spatial memory not make a cause-and-effect claim?",
+      "query_plan": {
+        "question_type": "general",
+        "target_pages": [],
+        "target_chapters": [],
+        "modalities": [
+          "text"
+        ],
+        "channel_priors": {
+          "dense": 0.5,
+          "sparse": 0.5,
+          "visual": 0.0
+        },
+        "retrieval_budget": 8,
+        "analyzer_version": "deterministic-v1"
+      },
+      "trace": {
+        "bm25": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDFS2S62JW3R5HABF5V9",
+            "physical_page": 68,
+            "score": 0.05112114176154137
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDFR5VQN9R66YTV68C14",
+            "physical_page": 54,
+            "score": 0.031010424718260765
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDGJZN7BZZ5FF5TDGQK0",
+            "physical_page": 283,
+            "score": 0.02901470474898815
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDFTHR0B0JZW4DM7EB8F",
+            "physical_page": 72,
+            "score": 0.02486974559724331
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDGGKGT3G669BRJE117C",
+            "physical_page": 266,
+            "score": 0.02486974559724331
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDHDNRW20CYF0QNAXZM6",
+            "physical_page": 526,
+            "score": 0.02486974559724331
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDFPAWATPGXKZ5NJP77M",
+            "physical_page": 35,
+            "score": 0.024102158844470978
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDFTWHMYF9XTADT5A5TQ",
+            "physical_page": 75,
+            "score": 0.02348809316754341
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDFS2HQSPZMQ399CPWM6",
+            "physical_page": 60,
+            "score": 0.023488091304898262
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDGGXPEWT7Z5KPNW30TT",
+            "physical_page": 264,
+            "score": 0.022171637043356895
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDHKBNAD401YA1X7SQM5",
+            "physical_page": 585,
+            "score": 0.022106440737843513
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDFSNHJBPYE4C2XGSKZ6",
+            "physical_page": 62,
+            "score": 0.022106440737843513
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDGH2S6BRD4E8FW2V5KS",
+            "physical_page": 272,
+            "score": 0.022106440737843513
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDFTW4CVFJTD4R9P9CPT",
+            "physical_page": 77,
+            "score": 0.022106440737843513
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDH8AR1TP5KF714JB8V7",
+            "physical_page": 484,
+            "score": 0.021905332803726196
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDFSB9GF5HZVCFZ5GDEC",
+            "physical_page": 65,
+            "score": 0.020724786445498466
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDFSQ0TRXMXS07ZXWSM1",
+            "physical_page": 66,
+            "score": 0.020571269094944
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDGHP25PEP1BHTG6QHAY",
+            "physical_page": 272,
+            "score": 0.019957201555371284
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDFSW37BSYTBFH2GF8KT",
+            "physical_page": 58,
+            "score": 0.019957201555371284
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDGPHAMVKMY9PHTWVNPC",
+            "physical_page": 319,
+            "score": 0.019957201555371284
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDGGZWJ9DSMFNQ814GCX",
+            "physical_page": 266,
+            "score": 0.019957201555371284
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDGHCBFNZP2S9XV95RMW",
+            "physical_page": 280,
+            "score": 0.019957201555371284
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDH5YYGQ0CXTC4NTHGFX",
+            "physical_page": 451,
+            "score": 0.019957201555371284
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDFSD64D9PC1ANG71BA5",
+            "physical_page": 64,
+            "score": 0.019494686275720596
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDGGW7B4W05CFZ7QDXVC",
+            "physical_page": 267,
+            "score": 0.019343135878443718
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDFS8T97GXDG44HAJC1B",
+            "physical_page": 59,
+            "score": 0.019343135878443718
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDGGGJ5BZ9063ZDHD53F",
+            "physical_page": 267,
+            "score": 0.019343135878443718
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDH28G1WR9QZRT26TKEM",
+            "physical_page": 429,
+            "score": 0.019343135878443718
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDH8NBZ579TM5EQVEJP3",
+            "physical_page": 484,
+            "score": 0.019343135878443718
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDGFBNP4C89G4B3YFWR1",
+            "physical_page": 262,
+            "score": 0.019295545294880867
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDHAE4TM60YG8Y6G24CJ",
+            "physical_page": 499,
+            "score": 0.018920963630080223
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDHDFFFD5WTTD2J1PDFA",
+            "physical_page": 524,
+            "score": 0.018920963630080223
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDG4MEKX0TSJXE1QY5CP",
+            "physical_page": 164,
+            "score": 0.018575550988316536
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDGG4YNV162948DDFKYM",
+            "physical_page": 265,
+            "score": 0.018575550988316536
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDHKFRWBY2S0PMGY385P",
+            "physical_page": 585,
+            "score": 0.018575550988316536
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDHMVKCX5G0Z0JEBTDTR",
+            "physical_page": 592,
+            "score": 0.018575550988316536
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDGGHAGF5WWCAAPMA2N9",
+            "physical_page": 269,
+            "score": 0.01796148344874382
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDH1NX1VZ12WK7JDMRHF",
+            "physical_page": 422,
+            "score": 0.01796148344874382
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDG8F4C6CFXZ1SKVEE46",
+            "physical_page": 194,
+            "score": 0.01796148344874382
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDGBK9GBN6KY1NHQ4H6H",
+            "physical_page": 226,
+            "score": 0.01796148344874382
+          },
+          {
+            "rank": 41,
+            "chunk_id": "01M37CPDGGCBEVR9Q0PX3ZFTQF",
+            "physical_page": 270,
+            "score": 0.01796148344874382
+          },
+          {
+            "rank": 42,
+            "chunk_id": "01M37CPDGXMSGB2N6K7B2R7QKF",
+            "physical_page": 386,
+            "score": 0.01796148344874382
+          },
+          {
+            "rank": 43,
+            "chunk_id": "01M37CPDFXTT4J6585S8C4BHJS",
+            "physical_page": 104,
+            "score": 0.01796148344874382
+          },
+          {
+            "rank": 44,
+            "chunk_id": "01M37CPDG0P0BPQ5XZHHT1R0J4",
+            "physical_page": 128,
+            "score": 0.01796148344874382
+          },
+          {
+            "rank": 45,
+            "chunk_id": "01M37CPDGJVG3BPKF04BWA5MQ8",
+            "physical_page": 287,
+            "score": 0.01796148344874382
+          },
+          {
+            "rank": 46,
+            "chunk_id": "01M37CPDGMF96GJBGR7SP5TV3V",
+            "physical_page": 307,
+            "score": 0.01796148344874382
+          },
+          {
+            "rank": 47,
+            "chunk_id": "01M37CPDGQEGFRK2DTDEWTQYKS",
+            "physical_page": 329,
+            "score": 0.01796148344874382
+          },
+          {
+            "rank": 48,
+            "chunk_id": "01M37CPDFWENPZGQF0QSHCQ19J",
+            "physical_page": 89,
+            "score": 0.01796148344874382
+          },
+          {
+            "rank": 49,
+            "chunk_id": "01M37CPDFVYDKJ287R4BTXFTBR",
+            "physical_page": 81,
+            "score": 0.01796148344874382
+          },
+          {
+            "rank": 50,
+            "chunk_id": "01M37CPDFS8X30WSP7VZ2VKTMW",
+            "physical_page": 65,
+            "score": 0.01796148344874382
+          }
+        ],
+        "vector": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDJ8BDFRPPCF672PBRKM",
+            "physical_page": 689,
+            "score": 0.46819131064576336
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDHGVJH9ECE4Q0DA2HP1",
+            "physical_page": 552,
+            "score": 0.4514177230451488
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDHN1JASF13GKYPWTXFN",
+            "physical_page": 602,
+            "score": 0.4433940418494253
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDGQT1EENBQK9D47RD87",
+            "physical_page": 330,
+            "score": 0.44038549203200916
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDH5VRDNYEDC0DC3G12Y",
+            "physical_page": 451,
+            "score": 0.4403524141584598
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDHGW97BA04HMS28AVC5",
+            "physical_page": 557,
+            "score": 0.43189605120006613
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDGPHAMVKMY9PHTWVNPC",
+            "physical_page": 319,
+            "score": 0.4263338465299902
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDHAE4TM60YG8Y6G24CJ",
+            "physical_page": 499,
+            "score": 0.4208126162519006
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDGERRPPC02XD7H8GWGD",
+            "physical_page": 254,
+            "score": 0.41256888593567376
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDHXR0NFVRGC550RK6F8",
+            "physical_page": 653,
+            "score": 0.40824827496606586
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDGESDKGTTJMMCG3X58Y",
+            "physical_page": 247,
+            "score": 0.40752157896050556
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDGYN9TVQQ5X5WWZPPYK",
+            "physical_page": 398,
+            "score": 0.4074536165097674
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDFY19TVTPQXH52HR3EA",
+            "physical_page": 114,
+            "score": 0.40509932709844376
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDGSP69S89628H0DGV9M",
+            "physical_page": 344,
+            "score": 0.40147706147065265
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDJKKX6WMWMHPHJ07VTZ",
+            "physical_page": 723,
+            "score": 0.4003204052167848
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDH96XC58ED3JDCYAR3C",
+            "physical_page": 486,
+            "score": 0.400009810930517
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDJQS66YD6W25QKWQD32",
+            "physical_page": 736,
+            "score": 0.3960590037817353
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDH2QS5ZTND68B06PWAE",
+            "physical_page": 431,
+            "score": 0.3931933621150876
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDFVYV3A3VEMX5ZAF6YY",
+            "physical_page": 79,
+            "score": 0.3922324514499036
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDJAJF4HBSBBPF29ET76",
+            "physical_page": 694,
+            "score": 0.3916744783511803
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDFQE71H0W4CAHDDDTRB",
+            "physical_page": 42,
+            "score": 0.39041793917620526
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDHEPAXS78ZX8ZRR3SBM",
+            "physical_page": 540,
+            "score": 0.3904174603029784
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDHJ76T6TK0QDZKDCN98",
+            "physical_page": 573,
+            "score": 0.38807543448232207
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDHFYM0HZ4XTVBY6W67X",
+            "physical_page": 548,
+            "score": 0.3857583953682948
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDFQWRXE2F50HVDNN00T",
+            "physical_page": 40,
+            "score": 0.3853373210453077
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDGE18ZSTVNPF8QF1HEP",
+            "physical_page": 253,
+            "score": 0.38507704112187646
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDGFFKMT2FM98EV9RRQZ",
+            "physical_page": 256,
+            "score": 0.38507674274145787
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDJ8SKT9FFKMDHRV3NRJ",
+            "physical_page": 687,
+            "score": 0.38306572288501073
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDH08M4BWK1E6954KKKJ",
+            "physical_page": 412,
+            "score": 0.3824938309134259
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDHS7J7K23W0M0Y2AGKX",
+            "physical_page": 634,
+            "score": 0.3822547776096952
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDGEFK8S4238WKQS6KH1",
+            "physical_page": 253,
+            "score": 0.38089865446129667
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDHS05C00AWBKS4SRT4S",
+            "physical_page": 634,
+            "score": 0.3789638500759547
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDGC6DEB1YFX5FVQ0CN5",
+            "physical_page": 235,
+            "score": 0.37774159042054223
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDJ187BDF3NG78P8DKB2",
+            "physical_page": 666,
+            "score": 0.3746340870861071
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDGPMC6GS2EBHPCPTRPQ",
+            "physical_page": 322,
+            "score": 0.37081007880042516
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDGBC7R3NF1YMEH8XQ5S",
+            "physical_page": 225,
+            "score": 0.3707334820829026
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDFPAWATPGXKZ5NJP77M",
+            "physical_page": 35,
+            "score": 0.3702179359616229
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDHD5APS4YGH7RWW4J66",
+            "physical_page": 531,
+            "score": 0.36979949350371255
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDGYVWB3TPKSHVMW8Y7N",
+            "physical_page": 398,
+            "score": 0.36810506633722495
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDGSW4VSRXR06M7RXDC6",
+            "physical_page": 348,
+            "score": 0.36793912021283437
+          }
+        ],
+        "fused": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDGPHAMVKMY9PHTWVNPC",
+            "physical_page": 319,
+            "score": 0.013712686567164178,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDHAE4TM60YG8Y6G24CJ",
+            "physical_page": 499,
+            "score": 0.012847446670976082,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDFPAWATPGXKZ5NJP77M",
+            "physical_page": 35,
+            "score": 0.01261732574242191,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDFS2S62JW3R5HABF5V9",
+            "physical_page": 68,
+            "score": 0.00819672131147541,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDJ8BDFRPPCF672PBRKM",
+            "physical_page": 689,
+            "score": 0.00819672131147541,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDFR5VQN9R66YTV68C14",
+            "physical_page": 54,
+            "score": 0.008064516129032258,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDHGVJH9ECE4Q0DA2HP1",
+            "physical_page": 552,
+            "score": 0.008064516129032258,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDGJZN7BZZ5FF5TDGQK0",
+            "physical_page": 283,
+            "score": 0.007936507936507936,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDHN1JASF13GKYPWTXFN",
+            "physical_page": 602,
+            "score": 0.007936507936507936,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDFTHR0B0JZW4DM7EB8F",
+            "physical_page": 72,
+            "score": 0.0078125,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDGQT1EENBQK9D47RD87",
+            "physical_page": 330,
+            "score": 0.0078125,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDGGKGT3G669BRJE117C",
+            "physical_page": 266,
+            "score": 0.007692307692307693,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDH5VRDNYEDC0DC3G12Y",
+            "physical_page": 451,
+            "score": 0.007692307692307693,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDHDNRW20CYF0QNAXZM6",
+            "physical_page": 526,
+            "score": 0.007575757575757576,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDHGW97BA04HMS28AVC5",
+            "physical_page": 557,
+            "score": 0.007575757575757576,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDFTWHMYF9XTADT5A5TQ",
+            "physical_page": 75,
+            "score": 0.007352941176470588,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDFS2HQSPZMQ399CPWM6",
+            "physical_page": 60,
+            "score": 0.007246376811594203,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDGERRPPC02XD7H8GWGD",
+            "physical_page": 254,
+            "score": 0.007246376811594203,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDGGXPEWT7Z5KPNW30TT",
+            "physical_page": 264,
+            "score": 0.007142857142857143,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDHXR0NFVRGC550RK6F8",
+            "physical_page": 653,
+            "score": 0.007142857142857143,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDHKBNAD401YA1X7SQM5",
+            "physical_page": 585,
+            "score": 0.007042253521126761,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDGESDKGTTJMMCG3X58Y",
+            "physical_page": 247,
+            "score": 0.007042253521126761,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDFSNHJBPYE4C2XGSKZ6",
+            "physical_page": 62,
+            "score": 0.006944444444444444,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDGYN9TVQQ5X5WWZPPYK",
+            "physical_page": 398,
+            "score": 0.006944444444444444,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDGH2S6BRD4E8FW2V5KS",
+            "physical_page": 272,
+            "score": 0.00684931506849315,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDFY19TVTPQXH52HR3EA",
+            "physical_page": 114,
+            "score": 0.00684931506849315,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDFTW4CVFJTD4R9P9CPT",
+            "physical_page": 77,
+            "score": 0.006756756756756757,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDGSP69S89628H0DGV9M",
+            "physical_page": 344,
+            "score": 0.006756756756756757,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDH8AR1TP5KF714JB8V7",
+            "physical_page": 484,
+            "score": 0.006666666666666667,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDJKKX6WMWMHPHJ07VTZ",
+            "physical_page": 723,
+            "score": 0.006666666666666667,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDFSB9GF5HZVCFZ5GDEC",
+            "physical_page": 65,
+            "score": 0.006578947368421052,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDH96XC58ED3JDCYAR3C",
+            "physical_page": 486,
+            "score": 0.006578947368421052,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDFSQ0TRXMXS07ZXWSM1",
+            "physical_page": 66,
+            "score": 0.006493506493506494,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDJQS66YD6W25QKWQD32",
+            "physical_page": 736,
+            "score": 0.006493506493506494,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDGHP25PEP1BHTG6QHAY",
+            "physical_page": 272,
+            "score": 0.00641025641025641,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDH2QS5ZTND68B06PWAE",
+            "physical_page": 431,
+            "score": 0.00641025641025641,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDFSW37BSYTBFH2GF8KT",
+            "physical_page": 58,
+            "score": 0.006329113924050633,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDFVYV3A3VEMX5ZAF6YY",
+            "physical_page": 79,
+            "score": 0.006329113924050633,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDJAJF4HBSBBPF29ET76",
+            "physical_page": 694,
+            "score": 0.00625,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDGGZWJ9DSMFNQ814GCX",
+            "physical_page": 266,
+            "score": 0.006172839506172839,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 41,
+            "chunk_id": "01M37CPDFQE71H0W4CAHDDDTRB",
+            "physical_page": 42,
+            "score": 0.006172839506172839,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 42,
+            "chunk_id": "01M37CPDGHCBFNZP2S9XV95RMW",
+            "physical_page": 280,
+            "score": 0.006097560975609756,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 43,
+            "chunk_id": "01M37CPDHEPAXS78ZX8ZRR3SBM",
+            "physical_page": 540,
+            "score": 0.006097560975609756,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 44,
+            "chunk_id": "01M37CPDH5YYGQ0CXTC4NTHGFX",
+            "physical_page": 451,
+            "score": 0.006024096385542169,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 45,
+            "chunk_id": "01M37CPDHJ76T6TK0QDZKDCN98",
+            "physical_page": 573,
+            "score": 0.006024096385542169,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 46,
+            "chunk_id": "01M37CPDFSD64D9PC1ANG71BA5",
+            "physical_page": 64,
+            "score": 0.005952380952380952,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 47,
+            "chunk_id": "01M37CPDHFYM0HZ4XTVBY6W67X",
+            "physical_page": 548,
+            "score": 0.005952380952380952,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 48,
+            "chunk_id": "01M37CPDGGW7B4W05CFZ7QDXVC",
+            "physical_page": 267,
+            "score": 0.0058823529411764705,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 49,
+            "chunk_id": "01M37CPDFQWRXE2F50HVDNN00T",
+            "physical_page": 40,
+            "score": 0.0058823529411764705,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 50,
+            "chunk_id": "01M37CPDFS8T97GXDG44HAJC1B",
+            "physical_page": 59,
+            "score": 0.005813953488372093,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 51,
+            "chunk_id": "01M37CPDGE18ZSTVNPF8QF1HEP",
+            "physical_page": 253,
+            "score": 0.005813953488372093,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 52,
+            "chunk_id": "01M37CPDGGGJ5BZ9063ZDHD53F",
+            "physical_page": 267,
+            "score": 0.005747126436781609,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 53,
+            "chunk_id": "01M37CPDGFFKMT2FM98EV9RRQZ",
+            "physical_page": 256,
+            "score": 0.005747126436781609,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 54,
+            "chunk_id": "01M37CPDH28G1WR9QZRT26TKEM",
+            "physical_page": 429,
+            "score": 0.005681818181818182,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 55,
+            "chunk_id": "01M37CPDJ8SKT9FFKMDHRV3NRJ",
+            "physical_page": 687,
+            "score": 0.005681818181818182,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 56,
+            "chunk_id": "01M37CPDH8NBZ579TM5EQVEJP3",
+            "physical_page": 484,
+            "score": 0.0056179775280898875,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 57,
+            "chunk_id": "01M37CPDH08M4BWK1E6954KKKJ",
+            "physical_page": 412,
+            "score": 0.0056179775280898875,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 58,
+            "chunk_id": "01M37CPDGFBNP4C89G4B3YFWR1",
+            "physical_page": 262,
+            "score": 0.005555555555555556,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 59,
+            "chunk_id": "01M37CPDHS7J7K23W0M0Y2AGKX",
+            "physical_page": 634,
+            "score": 0.005555555555555556,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 60,
+            "chunk_id": "01M37CPDGEFK8S4238WKQS6KH1",
+            "physical_page": 253,
+            "score": 0.005494505494505495,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 61,
+            "chunk_id": "01M37CPDHDFFFD5WTTD2J1PDFA",
+            "physical_page": 524,
+            "score": 0.005434782608695652,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 62,
+            "chunk_id": "01M37CPDHS05C00AWBKS4SRT4S",
+            "physical_page": 634,
+            "score": 0.005434782608695652,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 63,
+            "chunk_id": "01M37CPDG4MEKX0TSJXE1QY5CP",
+            "physical_page": 164,
+            "score": 0.005376344086021506,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 64,
+            "chunk_id": "01M37CPDGC6DEB1YFX5FVQ0CN5",
+            "physical_page": 235,
+            "score": 0.005376344086021506,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 65,
+            "chunk_id": "01M37CPDGG4YNV162948DDFKYM",
+            "physical_page": 265,
+            "score": 0.005319148936170213,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 66,
+            "chunk_id": "01M37CPDJ187BDF3NG78P8DKB2",
+            "physical_page": 666,
+            "score": 0.005319148936170213,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 67,
+            "chunk_id": "01M37CPDHKFRWBY2S0PMGY385P",
+            "physical_page": 585,
+            "score": 0.005263157894736842,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 68,
+            "chunk_id": "01M37CPDGPMC6GS2EBHPCPTRPQ",
+            "physical_page": 322,
+            "score": 0.005263157894736842,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 69,
+            "chunk_id": "01M37CPDHMVKCX5G0Z0JEBTDTR",
+            "physical_page": 592,
+            "score": 0.005208333333333333,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 70,
+            "chunk_id": "01M37CPDGBC7R3NF1YMEH8XQ5S",
+            "physical_page": 225,
+            "score": 0.005208333333333333,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 71,
+            "chunk_id": "01M37CPDGGHAGF5WWCAAPMA2N9",
+            "physical_page": 269,
+            "score": 0.005154639175257732,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 72,
+            "chunk_id": "01M37CPDH1NX1VZ12WK7JDMRHF",
+            "physical_page": 422,
+            "score": 0.00510204081632653,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 73,
+            "chunk_id": "01M37CPDHD5APS4YGH7RWW4J66",
+            "physical_page": 531,
+            "score": 0.00510204081632653,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 74,
+            "chunk_id": "01M37CPDG8F4C6CFXZ1SKVEE46",
+            "physical_page": 194,
+            "score": 0.005050505050505051,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 75,
+            "chunk_id": "01M37CPDGYVWB3TPKSHVMW8Y7N",
+            "physical_page": 398,
+            "score": 0.005050505050505051,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 76,
+            "chunk_id": "01M37CPDGBK9GBN6KY1NHQ4H6H",
+            "physical_page": 226,
+            "score": 0.005,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 77,
+            "chunk_id": "01M37CPDGSW4VSRXR06M7RXDC6",
+            "physical_page": 348,
+            "score": 0.005,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 78,
+            "chunk_id": "01M37CPDGGCBEVR9Q0PX3ZFTQF",
+            "physical_page": 270,
+            "score": 0.0049504950495049506,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 79,
+            "chunk_id": "01M37CPDGXMSGB2N6K7B2R7QKF",
+            "physical_page": 386,
+            "score": 0.004901960784313725,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 80,
+            "chunk_id": "01M37CPDFXTT4J6585S8C4BHJS",
+            "physical_page": 104,
+            "score": 0.0048543689320388345,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 81,
+            "chunk_id": "01M37CPDG0P0BPQ5XZHHT1R0J4",
+            "physical_page": 128,
+            "score": 0.004807692307692308,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 82,
+            "chunk_id": "01M37CPDGJVG3BPKF04BWA5MQ8",
+            "physical_page": 287,
+            "score": 0.004761904761904762,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 83,
+            "chunk_id": "01M37CPDGMF96GJBGR7SP5TV3V",
+            "physical_page": 307,
+            "score": 0.0047169811320754715,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 84,
+            "chunk_id": "01M37CPDGQEGFRK2DTDEWTQYKS",
+            "physical_page": 329,
+            "score": 0.004672897196261682,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 85,
+            "chunk_id": "01M37CPDFWENPZGQF0QSHCQ19J",
+            "physical_page": 89,
+            "score": 0.004629629629629629,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 86,
+            "chunk_id": "01M37CPDFVYDKJ287R4BTXFTBR",
+            "physical_page": 81,
+            "score": 0.0045871559633027525,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 87,
+            "chunk_id": "01M37CPDFS8X30WSP7VZ2VKTMW",
+            "physical_page": 65,
+            "score": 0.004545454545454545,
+            "sources": [
+              "bm25"
+            ]
+          }
+        ],
+        "cutoff": {
+          "reason": "score_gap",
+          "chunk_ids": [
+            "01M37CPDGPHAMVKMY9PHTWVNPC",
+            "01M37CPDHAE4TM60YG8Y6G24CJ",
+            "01M37CPDFPAWATPGXKZ5NJP77M"
+          ],
+          "pages": [
+            319,
+            499,
+            35
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "case-classical-conditioning-sequence",
+      "query": "According to the classical conditioning diagram, what happens before, during, and after conditioning?",
+      "query_plan": {
+        "question_type": "general",
+        "target_pages": [],
+        "target_chapters": [],
+        "modalities": [
+          "text"
+        ],
+        "channel_priors": {
+          "dense": 0.5,
+          "sparse": 0.5,
+          "visual": 0.0
+        },
+        "retrieval_budget": 8,
+        "analyzer_version": "deterministic-v1"
+      },
+      "trace": {
+        "bm25": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDGAPM0SN7HXAZDS22FK",
+            "physical_page": 211,
+            "score": 0.0303963553160429
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDG95W91R60871AZSTFB",
+            "physical_page": 200,
+            "score": 0.027441153302788734
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDG8HYCPMJPMDQQCJ8PA",
+            "physical_page": 197,
+            "score": 0.026596810668706894
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDGBX9J81YQET948K79J",
+            "physical_page": 220,
+            "score": 0.026596810668706894
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDGBTC7EST2BSMH89EAG",
+            "physical_page": 219,
+            "score": 0.026596810668706894
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDG8ZDV30Z2YM6W335NN",
+            "physical_page": 195,
+            "score": 0.026596810668706894
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDG8F4C6CFXZ1SKVEE46",
+            "physical_page": 194,
+            "score": 0.025541381910443306
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDG8RXYNMN4T11Q60TMV",
+            "physical_page": 197,
+            "score": 0.025541381910443306
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDHQVTJAKM3ER58KEW3S",
+            "physical_page": 619,
+            "score": 0.025541381910443306
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDHETEJY6BDY8MFBFMFW",
+            "physical_page": 535,
+            "score": 0.024697039276361465
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDG8Y8CGKKKEDMJYKMYR",
+            "physical_page": 196,
+            "score": 0.024697037413716316
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDHHPWXCF6NVRT54M3R2",
+            "physical_page": 563,
+            "score": 0.024697037413716316
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDGB3JNT7KF82CPJYPN1",
+            "physical_page": 219,
+            "score": 0.024697037413716316
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDG93QPC0ZKCG2MRHJHA",
+            "physical_page": 202,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDG91S2CB0VBRWBHNZX4",
+            "physical_page": 203,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDGM8XKT87HKNARE04GE",
+            "physical_page": 303,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDG9T8GZ54CXP57Q87W4",
+            "physical_page": 202,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDG9Y30KMXNND1P0ECSV",
+            "physical_page": 204,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDGBBGX3JZMDWFCVXYA6",
+            "physical_page": 219,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDGPNM71YT0N8X9K54B8",
+            "physical_page": 320,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDGMQNNQGE130YZ4TFN5",
+            "physical_page": 300,
+            "score": 0.022797266021370888
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDGBTBZF1FV9QPEYB97B",
+            "physical_page": 220,
+            "score": 0.02116135135293007
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDHHR6X04C41TQ2X8MCB",
+            "physical_page": 567,
+            "score": 0.02031700685620308
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDGBWDNKYHK1Y0P3SD6C",
+            "physical_page": 221,
+            "score": 0.02031700685620308
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDG9R3NAS2F8BGBD9PYV",
+            "physical_page": 204,
+            "score": 0.02031700685620308
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDGG979WBY1WWBD8GCF4",
+            "physical_page": 263,
+            "score": 0.019842064008116722
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDGBGSRCZVQ8Q3GM4Z0C",
+            "physical_page": 220,
+            "score": 0.019842064008116722
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDG8SAT3SY0QY5BVZ4GB",
+            "physical_page": 195,
+            "score": 0.01899772137403488
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDGG5AT8D809K3ERHM8P",
+            "physical_page": 269,
+            "score": 0.01899772137403488
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDHH08107RBY0RN9GYDN",
+            "physical_page": 559,
+            "score": 0.01899772137403488
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDHT885P8X9YJBFDXYW6",
+            "physical_page": 640,
+            "score": 0.017942292615771294
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDHQZT9DPY5ZXAGTCW7B",
+            "physical_page": 621,
+            "score": 0.017942292615771294
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDHQNPTWHCNQQ00WABZB",
+            "physical_page": 619,
+            "score": 0.017942292615771294
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDGCVNMBBXMKE1ZV0S9B",
+            "physical_page": 232,
+            "score": 0.017942292615771294
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDGKVZN0HHW214VHNX9G",
+            "physical_page": 296,
+            "score": 0.017942292615771294
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDG8W44Z7XCRWR8W6CAQ",
+            "physical_page": 194,
+            "score": 0.017097949981689453
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDG8BDH1BKVS195SJNF5",
+            "physical_page": 193,
+            "score": 0.017097949981689453
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDG844CSZXKVXBZ5VYYC",
+            "physical_page": 193,
+            "score": 0.017097949981689453
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDH3R3KPAPE599XPVYZE",
+            "physical_page": 439,
+            "score": 0.017097949981689453
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDH7C7ZEHQR9NYYJ3BXA",
+            "physical_page": 469,
+            "score": 0.017097949981689453
+          },
+          {
+            "rank": 41,
+            "chunk_id": "01M37CPDGB5MEKCYKK38Q6XPB4",
+            "physical_page": 221,
+            "score": 0.017097949981689453
+          },
+          {
+            "rank": 42,
+            "chunk_id": "01M37CPDGB14E4492JB8PAS697",
+            "physical_page": 223,
+            "score": 0.017097949981689453
+          },
+          {
+            "rank": 43,
+            "chunk_id": "01M37CPDG8679MHYJ814SKDACA",
+            "physical_page": 197,
+            "score": 0.017097949981689453
+          },
+          {
+            "rank": 44,
+            "chunk_id": "01M37CPDG966940839HWYZ2B7B",
+            "physical_page": 204,
+            "score": 0.017097949981689453
+          },
+          {
+            "rank": 45,
+            "chunk_id": "01M37CPDG93CMNRCAWK5ACMY86",
+            "physical_page": 203,
+            "score": 0.017097949981689453
+          },
+          {
+            "rank": 46,
+            "chunk_id": "01M37CPDFMGAFBQPRZ1X342PEB",
+            "physical_page": 8,
+            "score": 0.017097949981689453
+          },
+          {
+            "rank": 47,
+            "chunk_id": "01M37CPDG80KRZ76H216PTXT3C",
+            "physical_page": 196,
+            "score": 0.01519817765802145
+          },
+          {
+            "rank": 48,
+            "chunk_id": "01M37CPDG8324CGQYJ9CQN8RM2",
+            "physical_page": 195,
+            "score": 0.01519817765802145
+          },
+          {
+            "rank": 49,
+            "chunk_id": "01M37CPDG82E5BSQQYEECSQ1AB",
+            "physical_page": 197,
+            "score": 0.01519817765802145
+          },
+          {
+            "rank": 50,
+            "chunk_id": "01M37CPDG81A9CK2RD30BX3J62",
+            "physical_page": 195,
+            "score": 0.01519817765802145
+          }
+        ],
+        "vector": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDGBTC7EST2BSMH89EAG",
+            "physical_page": 219,
+            "score": 0.5313684808329175
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDGBWDNKYHK1Y0P3SD6C",
+            "physical_page": 221,
+            "score": 0.4800791286856344
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDG966940839HWYZ2B7B",
+            "physical_page": 204,
+            "score": 0.4564356531839018
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDG8ZDV30Z2YM6W335NN",
+            "physical_page": 195,
+            "score": 0.4140394804813762
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDG93EFRNDRYCQMX0KB7",
+            "physical_page": 204,
+            "score": 0.39036001383485264
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDHT885P8X9YJBFDXYW6",
+            "physical_page": 640,
+            "score": 0.38297082706220076
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDG8ENYT4Q2S6CNWNM79",
+            "physical_page": 198,
+            "score": 0.3810319517198839
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDFQ3VEDHN3ZK4RPFTRT",
+            "physical_page": 44,
+            "score": 0.3768675116032848
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDGB6KDWAX05QFS0BNQC",
+            "physical_page": 223,
+            "score": 0.3726779596402967
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDHTXD30777J8AA1RZQQ",
+            "physical_page": 642,
+            "score": 0.3706726956260977
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDGTQHXNV7QQFG2E3DQ0",
+            "physical_page": 360,
+            "score": 0.3690061196429717
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDGM9PFH3P9RN6MX24XF",
+            "physical_page": 305,
+            "score": 0.3684383662241717
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDG91S2CB0VBRWBHNZX4",
+            "physical_page": 203,
+            "score": 0.36514838726231647
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDFKE07798V7FNXYV24Y",
+            "physical_page": 5,
+            "score": 0.3651483805818052
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDHR5BGQP2T0VSBJRG14",
+            "physical_page": 628,
+            "score": 0.35162502066849
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDG9PKGVMN861M4N6N01",
+            "physical_page": 200,
+            "score": 0.35146746451174304
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDGW6W1E52MEX28STK54",
+            "physical_page": 379,
+            "score": 0.3485953526552388
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDJ8K05KGNSRMBDHTA7T",
+            "physical_page": 689,
+            "score": 0.3478327989579828
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDFXBP6A79MWWT2G6SBW",
+            "physical_page": 106,
+            "score": 0.34593167901054855
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDGPYYQRV9KQ91HV5SG0",
+            "physical_page": 324,
+            "score": 0.3429281318454045
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDHQXBE7RTN13CJBHSBP",
+            "physical_page": 621,
+            "score": 0.34258008251277583
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDHQVTJAKM3ER58KEW3S",
+            "physical_page": 619,
+            "score": 0.34068626983501815
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDG95W91R60871AZSTFB",
+            "physical_page": 200,
+            "score": 0.3394860389912113
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDG9R3NAS2F8BGBD9PYV",
+            "physical_page": 204,
+            "score": 0.33755994296613956
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDH0WDHZCXFKBD4SRND4",
+            "physical_page": 412,
+            "score": 0.33717052609195663
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDG75JFV47YAGAAR7JKF",
+            "physical_page": 184,
+            "score": 0.33709972827454937
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDGQ6P96KVJBF5814C8H",
+            "physical_page": 328,
+            "score": 0.33565856902194546
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDH6VEDGZ5CVH0PKP8C7",
+            "physical_page": 460,
+            "score": 0.3333335916207283
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDGQB037D86ZSYQ9MXGJ",
+            "physical_page": 329,
+            "score": 0.332347264010156
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDHS05C00AWBKS4SRT4S",
+            "physical_page": 634,
+            "score": 0.33059020673684647
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDHJ5P324TCMZW82492K",
+            "physical_page": 570,
+            "score": 0.32991459502109954
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDH24K7VQ9CST044FCX5",
+            "physical_page": 430,
+            "score": 0.3289070365012603
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDGBTBZF1FV9QPEYB97B",
+            "physical_page": 220,
+            "score": 0.3256077967404385
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDFXAWG48XMX5RPTHH8V",
+            "physical_page": 98,
+            "score": 0.3253000475557246
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDGBK9GBN6KY1NHQ4H6H",
+            "physical_page": 226,
+            "score": 0.3241828512914293
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDG81A9CK2RD30BX3J62",
+            "physical_page": 195,
+            "score": 0.32274862635204826
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDHFMRR6SSNBCEEBC9Z0",
+            "physical_page": 548,
+            "score": 0.3222516987024835
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDHHR6X04C41TQ2X8MCB",
+            "physical_page": 567,
+            "score": 0.32174698373657906
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDG8SAT3SY0QY5BVZ4GB",
+            "physical_page": 195,
+            "score": 0.32158744965275665
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDH3WHGZ3EXCJ5WA7QEZ",
+            "physical_page": 440,
+            "score": 0.32148015825740495
+          }
+        ],
+        "fused": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDGBTC7EST2BSMH89EAG",
+            "physical_page": 219,
+            "score": 0.015889029003783105,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDG8ZDV30Z2YM6W335NN",
+            "physical_page": 195,
+            "score": 0.015388257575757576,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDG95W91R60871AZSTFB",
+            "physical_page": 200,
+            "score": 0.014088612514574427,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDGBWDNKYHK1Y0P3SD6C",
+            "physical_page": 221,
+            "score": 0.01401689708141321,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDG91S2CB0VBRWBHNZX4",
+            "physical_page": 203,
+            "score": 0.013515981735159818,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDHQVTJAKM3ER58KEW3S",
+            "physical_page": 619,
+            "score": 0.013343937787203958,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDHT885P8X9YJBFDXYW6",
+            "physical_page": 640,
+            "score": 0.013070263070263072,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDG966940839HWYZ2B7B",
+            "physical_page": 204,
+            "score": 0.012744200244200244,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDG9R3NAS2F8BGBD9PYV",
+            "physical_page": 204,
+            "score": 0.011834733893557423,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDGBTBZF1FV9QPEYB97B",
+            "physical_page": 220,
+            "score": 0.011473905061631262,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDHHR6X04C41TQ2X8MCB",
+            "physical_page": 567,
+            "score": 0.0111261372018687,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDG8SAT3SY0QY5BVZ4GB",
+            "physical_page": 195,
+            "score": 0.010732323232323232,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDG81A9CK2RD30BX3J62",
+            "physical_page": 195,
+            "score": 0.00975378787878788,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDGAPM0SN7HXAZDS22FK",
+            "physical_page": 211,
+            "score": 0.00819672131147541,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDG8HYCPMJPMDQQCJ8PA",
+            "physical_page": 197,
+            "score": 0.007936507936507936,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDGBX9J81YQET948K79J",
+            "physical_page": 220,
+            "score": 0.0078125,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDG93EFRNDRYCQMX0KB7",
+            "physical_page": 204,
+            "score": 0.007692307692307693,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDG8F4C6CFXZ1SKVEE46",
+            "physical_page": 194,
+            "score": 0.007462686567164179,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDG8ENYT4Q2S6CNWNM79",
+            "physical_page": 198,
+            "score": 0.007462686567164179,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDG8RXYNMN4T11Q60TMV",
+            "physical_page": 197,
+            "score": 0.007352941176470588,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDFQ3VEDHN3ZK4RPFTRT",
+            "physical_page": 44,
+            "score": 0.007352941176470588,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDGB6KDWAX05QFS0BNQC",
+            "physical_page": 223,
+            "score": 0.007246376811594203,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDHETEJY6BDY8MFBFMFW",
+            "physical_page": 535,
+            "score": 0.007142857142857143,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDHTXD30777J8AA1RZQQ",
+            "physical_page": 642,
+            "score": 0.007142857142857143,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDG8Y8CGKKKEDMJYKMYR",
+            "physical_page": 196,
+            "score": 0.007042253521126761,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDGTQHXNV7QQFG2E3DQ0",
+            "physical_page": 360,
+            "score": 0.007042253521126761,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDHHPWXCF6NVRT54M3R2",
+            "physical_page": 563,
+            "score": 0.006944444444444444,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDGM9PFH3P9RN6MX24XF",
+            "physical_page": 305,
+            "score": 0.006944444444444444,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDGB3JNT7KF82CPJYPN1",
+            "physical_page": 219,
+            "score": 0.00684931506849315,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDG93QPC0ZKCG2MRHJHA",
+            "physical_page": 202,
+            "score": 0.006756756756756757,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDFKE07798V7FNXYV24Y",
+            "physical_page": 5,
+            "score": 0.006756756756756757,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDHR5BGQP2T0VSBJRG14",
+            "physical_page": 628,
+            "score": 0.006666666666666667,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDGM8XKT87HKNARE04GE",
+            "physical_page": 303,
+            "score": 0.006578947368421052,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDG9PKGVMN861M4N6N01",
+            "physical_page": 200,
+            "score": 0.006578947368421052,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDG9T8GZ54CXP57Q87W4",
+            "physical_page": 202,
+            "score": 0.006493506493506494,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDGW6W1E52MEX28STK54",
+            "physical_page": 379,
+            "score": 0.006493506493506494,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDG9Y30KMXNND1P0ECSV",
+            "physical_page": 204,
+            "score": 0.00641025641025641,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDJ8K05KGNSRMBDHTA7T",
+            "physical_page": 689,
+            "score": 0.00641025641025641,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDGBBGX3JZMDWFCVXYA6",
+            "physical_page": 219,
+            "score": 0.006329113924050633,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDFXBP6A79MWWT2G6SBW",
+            "physical_page": 106,
+            "score": 0.006329113924050633,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 41,
+            "chunk_id": "01M37CPDGPNM71YT0N8X9K54B8",
+            "physical_page": 320,
+            "score": 0.00625,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 42,
+            "chunk_id": "01M37CPDGPYYQRV9KQ91HV5SG0",
+            "physical_page": 324,
+            "score": 0.00625,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 43,
+            "chunk_id": "01M37CPDGMQNNQGE130YZ4TFN5",
+            "physical_page": 300,
+            "score": 0.006172839506172839,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 44,
+            "chunk_id": "01M37CPDHQXBE7RTN13CJBHSBP",
+            "physical_page": 621,
+            "score": 0.006172839506172839,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 45,
+            "chunk_id": "01M37CPDH0WDHZCXFKBD4SRND4",
+            "physical_page": 412,
+            "score": 0.0058823529411764705,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 46,
+            "chunk_id": "01M37CPDGG979WBY1WWBD8GCF4",
+            "physical_page": 263,
+            "score": 0.005813953488372093,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 47,
+            "chunk_id": "01M37CPDG75JFV47YAGAAR7JKF",
+            "physical_page": 184,
+            "score": 0.005813953488372093,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 48,
+            "chunk_id": "01M37CPDGBGSRCZVQ8Q3GM4Z0C",
+            "physical_page": 220,
+            "score": 0.005747126436781609,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 49,
+            "chunk_id": "01M37CPDGQ6P96KVJBF5814C8H",
+            "physical_page": 328,
+            "score": 0.005747126436781609,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 50,
+            "chunk_id": "01M37CPDH6VEDGZ5CVH0PKP8C7",
+            "physical_page": 460,
+            "score": 0.005681818181818182,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 51,
+            "chunk_id": "01M37CPDGG5AT8D809K3ERHM8P",
+            "physical_page": 269,
+            "score": 0.0056179775280898875,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 52,
+            "chunk_id": "01M37CPDGQB037D86ZSYQ9MXGJ",
+            "physical_page": 329,
+            "score": 0.0056179775280898875,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 53,
+            "chunk_id": "01M37CPDHH08107RBY0RN9GYDN",
+            "physical_page": 559,
+            "score": 0.005555555555555556,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 54,
+            "chunk_id": "01M37CPDHS05C00AWBKS4SRT4S",
+            "physical_page": 634,
+            "score": 0.005555555555555556,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 55,
+            "chunk_id": "01M37CPDHJ5P324TCMZW82492K",
+            "physical_page": 570,
+            "score": 0.005494505494505495,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 56,
+            "chunk_id": "01M37CPDHQZT9DPY5ZXAGTCW7B",
+            "physical_page": 621,
+            "score": 0.005434782608695652,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 57,
+            "chunk_id": "01M37CPDH24K7VQ9CST044FCX5",
+            "physical_page": 430,
+            "score": 0.005434782608695652,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 58,
+            "chunk_id": "01M37CPDHQNPTWHCNQQ00WABZB",
+            "physical_page": 619,
+            "score": 0.005376344086021506,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 59,
+            "chunk_id": "01M37CPDGCVNMBBXMKE1ZV0S9B",
+            "physical_page": 232,
+            "score": 0.005319148936170213,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 60,
+            "chunk_id": "01M37CPDFXAWG48XMX5RPTHH8V",
+            "physical_page": 98,
+            "score": 0.005319148936170213,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 61,
+            "chunk_id": "01M37CPDGKVZN0HHW214VHNX9G",
+            "physical_page": 296,
+            "score": 0.005263157894736842,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 62,
+            "chunk_id": "01M37CPDGBK9GBN6KY1NHQ4H6H",
+            "physical_page": 226,
+            "score": 0.005263157894736842,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 63,
+            "chunk_id": "01M37CPDG8W44Z7XCRWR8W6CAQ",
+            "physical_page": 194,
+            "score": 0.005208333333333333,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 64,
+            "chunk_id": "01M37CPDG8BDH1BKVS195SJNF5",
+            "physical_page": 193,
+            "score": 0.005154639175257732,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 65,
+            "chunk_id": "01M37CPDHFMRR6SSNBCEEBC9Z0",
+            "physical_page": 548,
+            "score": 0.005154639175257732,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 66,
+            "chunk_id": "01M37CPDG844CSZXKVXBZ5VYYC",
+            "physical_page": 193,
+            "score": 0.00510204081632653,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 67,
+            "chunk_id": "01M37CPDH3R3KPAPE599XPVYZE",
+            "physical_page": 439,
+            "score": 0.005050505050505051,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 68,
+            "chunk_id": "01M37CPDH7C7ZEHQR9NYYJ3BXA",
+            "physical_page": 469,
+            "score": 0.005,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 69,
+            "chunk_id": "01M37CPDH3WHGZ3EXCJ5WA7QEZ",
+            "physical_page": 440,
+            "score": 0.005,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 70,
+            "chunk_id": "01M37CPDGB5MEKCYKK38Q6XPB4",
+            "physical_page": 221,
+            "score": 0.0049504950495049506,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 71,
+            "chunk_id": "01M37CPDGB14E4492JB8PAS697",
+            "physical_page": 223,
+            "score": 0.004901960784313725,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 72,
+            "chunk_id": "01M37CPDG8679MHYJ814SKDACA",
+            "physical_page": 197,
+            "score": 0.0048543689320388345,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 73,
+            "chunk_id": "01M37CPDG93CMNRCAWK5ACMY86",
+            "physical_page": 203,
+            "score": 0.004761904761904762,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 74,
+            "chunk_id": "01M37CPDFMGAFBQPRZ1X342PEB",
+            "physical_page": 8,
+            "score": 0.0047169811320754715,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 75,
+            "chunk_id": "01M37CPDG80KRZ76H216PTXT3C",
+            "physical_page": 196,
+            "score": 0.004672897196261682,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 76,
+            "chunk_id": "01M37CPDG8324CGQYJ9CQN8RM2",
+            "physical_page": 195,
+            "score": 0.004629629629629629,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 77,
+            "chunk_id": "01M37CPDG82E5BSQQYEECSQ1AB",
+            "physical_page": 197,
+            "score": 0.0045871559633027525,
+            "sources": [
+              "bm25"
+            ]
+          }
+        ],
+        "cutoff": {
+          "reason": "budget_exhausted",
+          "chunk_ids": [
+            "01M37CPDGBTC7EST2BSMH89EAG",
+            "01M37CPDG8ZDV30Z2YM6W335NN",
+            "01M37CPDG95W91R60871AZSTFB",
+            "01M37CPDGBWDNKYHK1Y0P3SD6C",
+            "01M37CPDG91S2CB0VBRWBHNZX4",
+            "01M37CPDHQVTJAKM3ER58KEW3S",
+            "01M37CPDHT885P8X9YJBFDXYW6",
+            "01M37CPDG966940839HWYZ2B7B"
+          ],
+          "pages": [
+            219,
+            195,
+            200,
+            221,
+            203,
+            619,
+            640,
+            204
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "case-memory-three-stages",
+      "query": "What are the three stages that information passes through before it is stored in long-term memory?",
+      "query_plan": {
+        "question_type": "general",
+        "target_pages": [],
+        "target_chapters": [],
+        "modalities": [
+          "text"
+        ],
+        "channel_priors": {
+          "dense": 0.5,
+          "sparse": 0.5,
+          "visual": 0.0
+        },
+        "retrieval_budget": 8,
+        "analyzer_version": "deterministic-v1"
+      },
+      "trace": {
+        "bm25": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDGFMYEMGYE4QZ29PRM4",
+            "physical_page": 262,
+            "score": 0.05306927114725113
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDGJQSE3EH8H1YDERTDR",
+            "physical_page": 286,
+            "score": 0.050371166318655014
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDGG3HNYXKAJ8Y51KPTE",
+            "physical_page": 271,
+            "score": 0.040067922323942184
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDGJA71ZR4CTBZBV0F5H",
+            "physical_page": 283,
+            "score": 0.03853275254368782
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDGG75V3W1576V8CPPN0",
+            "physical_page": 263,
+            "score": 0.03847595304250717
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDGJ1KX6Z0BP94ATQ29W",
+            "physical_page": 285,
+            "score": 0.037841927260160446
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDGGW7B4W05CFZ7QDXVC",
+            "physical_page": 267,
+            "score": 0.03653703257441521
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDGG7DBXSQSAPRER4Y5D",
+            "physical_page": 263,
+            "score": 0.035721857100725174
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDGG979WBY1WWBD8GCF4",
+            "physical_page": 263,
+            "score": 0.0350310318171978
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDGJPBAWF0YXJZT05BA5",
+            "physical_page": 286,
+            "score": 0.034798406064510345
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDGFBNP4C89G4B3YFWR1",
+            "physical_page": 262,
+            "score": 0.03468561917543411
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDGJHK3CMNT356845RSK",
+            "physical_page": 284,
+            "score": 0.03454131260514259
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDGG2GPXWHT5VEQEVXT2",
+            "physical_page": 263,
+            "score": 0.03431103751063347
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDGFS8EFY7N3A4G996DD",
+            "physical_page": 262,
+            "score": 0.033159658312797546
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDGG7GRMH6T0K77QAK74",
+            "physical_page": 271,
+            "score": 0.03300614282488823
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDGJYN9N4CFECGEX9EKA",
+            "physical_page": 285,
+            "score": 0.03295855224132538
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDGHEC4BS8RHTR9WD3HJ",
+            "physical_page": 281,
+            "score": 0.03273748978972435
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDGGERD85A20RNAYP43Q",
+            "physical_page": 268,
+            "score": 0.03254362568259239
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDGFSD01ZYJKRA3JCDS9",
+            "physical_page": 262,
+            "score": 0.0317780077457428
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDGBK9GBN6KY1NHQ4H6H",
+            "physical_page": 226,
+            "score": 0.0313558354973793
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDGGXPEWT7Z5KPNW30TT",
+            "physical_page": 264,
+            "score": 0.03126751631498337
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDGHACE305AFS645BJSZ",
+            "physical_page": 276,
+            "score": 0.031010420992970467
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDGJX5H16GBW34HQFXSF",
+            "physical_page": 286,
+            "score": 0.029014701023697853
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDGGZXQAMPFSQB6RZRB3",
+            "physical_page": 264,
+            "score": 0.029014701023697853
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDFRT59WP66BZ978F7CQ",
+            "physical_page": 47,
+            "score": 0.029014701023697853
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDGJZVDANKC516QPTK5F",
+            "physical_page": 287,
+            "score": 0.02839142270386219
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDGQ20G58NKM56NJ3V01",
+            "physical_page": 329,
+            "score": 0.028046011924743652
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDGJBC43M7P638NJX1R6",
+            "physical_page": 285,
+            "score": 0.028046010062098503
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDGJB3KN1BJ2XDTE9Y6N",
+            "physical_page": 286,
+            "score": 0.027824943885207176
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDGG16VTH6HNNWZ14EP0",
+            "physical_page": 263,
+            "score": 0.027824943885207176
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDGJ0W968W037R7JYQ84",
+            "physical_page": 285,
+            "score": 0.027633048593997955
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDGN8Y0WBCYKAXRPCT0C",
+            "physical_page": 313,
+            "score": 0.027633048593997955
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDGJRV666M5GGNX1HNYC",
+            "physical_page": 281,
+            "score": 0.02721087820827961
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDGGE7WRD8KMQ8BSAPJM",
+            "physical_page": 263,
+            "score": 0.026865463703870773
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDGG33PK346YBTAXTA94",
+            "physical_page": 267,
+            "score": 0.026251398026943207
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDGGP1NDSWS535H7KD30",
+            "physical_page": 267,
+            "score": 0.02609788067638874
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDGJAXYB5F49QNR5W1CB",
+            "physical_page": 285,
+            "score": 0.02605029195547104
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDGWSB30DY8BMZGNTS6Y",
+            "physical_page": 381,
+            "score": 0.02605028823018074
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDGGADRER0GQQ0FJCNKC",
+            "physical_page": 262,
+            "score": 0.025829225778579712
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDGFF4WBX90ZTVWBPXYN",
+            "physical_page": 261,
+            "score": 0.025829225778579712
+          },
+          {
+            "rank": 41,
+            "chunk_id": "01M37CPDGZF873MVVS1TFZWZSM",
+            "physical_page": 404,
+            "score": 0.025483811274170876
+          },
+          {
+            "rank": 42,
+            "chunk_id": "01M37CPDG7QG7ZPV5MYHJR49BM",
+            "physical_page": 186,
+            "score": 0.025483811274170876
+          },
+          {
+            "rank": 43,
+            "chunk_id": "01M37CPDGHCZQ0M8N4DW16944B",
+            "physical_page": 272,
+            "score": 0.02486974559724331
+          },
+          {
+            "rank": 44,
+            "chunk_id": "01M37CPDGJJ4ZRCXWJPSF3TZY0",
+            "physical_page": 285,
+            "score": 0.02486974559724331
+          },
+          {
+            "rank": 45,
+            "chunk_id": "01M37CPDGJ48YSEWN73GN82J6F",
+            "physical_page": 285,
+            "score": 0.02486974559724331
+          },
+          {
+            "rank": 46,
+            "chunk_id": "01M37CPDGGGJ5BZ9063ZDHD53F",
+            "physical_page": 267,
+            "score": 0.02486974559724331
+          },
+          {
+            "rank": 47,
+            "chunk_id": "01M37CPDGJDGW2VDC27CQD6075",
+            "physical_page": 282,
+            "score": 0.02486974559724331
+          },
+          {
+            "rank": 48,
+            "chunk_id": "01M37CPDGJNF0R6FVX3DCG01MQ",
+            "physical_page": 286,
+            "score": 0.02486974559724331
+          },
+          {
+            "rank": 49,
+            "chunk_id": "01M37CPDFR5R5H3F007FP0WAE7",
+            "physical_page": 49,
+            "score": 0.02486974187195301
+          },
+          {
+            "rank": 50,
+            "chunk_id": "01M37CPDG7KVWS4EVFKB5PSMXC",
+            "physical_page": 185,
+            "score": 0.024447573348879814
+          }
+        ],
+        "vector": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDGG2GPXWHT5VEQEVXT2",
+            "physical_page": 263,
+            "score": 0.519827468540538
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDGGXPEWT7Z5KPNW30TT",
+            "physical_page": 264,
+            "score": 0.47676241044592693
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDGFMYEMGYE4QZ29PRM4",
+            "physical_page": 262,
+            "score": 0.47527073275356724
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDGG8Q9564HR0S32HJSH",
+            "physical_page": 268,
+            "score": 0.4583492130001561
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDGG7DBXSQSAPRER4Y5D",
+            "physical_page": 263,
+            "score": 0.44643927685501694
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDGJQSE3EH8H1YDERTDR",
+            "physical_page": 286,
+            "score": 0.44554373504091016
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDGFDFTHXMM5HS262PSM",
+            "physical_page": 262,
+            "score": 0.4383570012966507
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDG04J42K5G23RMQSE3Y",
+            "physical_page": 127,
+            "score": 0.43738841290729424
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDGFSD01ZYJKRA3JCDS9",
+            "physical_page": 262,
+            "score": 0.43386094138332487
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDGJZVDANKC516QPTK5F",
+            "physical_page": 287,
+            "score": 0.428003908624477
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDGGERD85A20RNAYP43Q",
+            "physical_page": 268,
+            "score": 0.4242994242742206
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDGY2PGJ65DPD4J91FQ7",
+            "physical_page": 396,
+            "score": 0.42162277150816974
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDGJA5063SN2P8YJEBJD",
+            "physical_page": 289,
+            "score": 0.4053394996294718
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDGGN64Y82NYSGVW07CK",
+            "physical_page": 267,
+            "score": 0.4015355850249598
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDHE4XGGARNBCWE65FDS",
+            "physical_page": 537,
+            "score": 0.40053469487788385
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDFTQNHWRM13334T0B3H",
+            "physical_page": 77,
+            "score": 0.39957959121100184
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDGKQTC5E3ZSE8RZ9BRC",
+            "physical_page": 297,
+            "score": 0.397385946520161
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDGG16VTH6HNNWZ14EP0",
+            "physical_page": 263,
+            "score": 0.3960590037817353
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDHGQ0FYTB6TRMJ64B8J",
+            "physical_page": 554,
+            "score": 0.38995542052707366
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDGJ1DGCECE26X2RZMWK",
+            "physical_page": 289,
+            "score": 0.3894903480630546
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDFRFPE8W8GR0ST3RRPR",
+            "physical_page": 54,
+            "score": 0.38836786206912177
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDFT1J6R7C8VA6DJBWZ0",
+            "physical_page": 69,
+            "score": 0.38836197190274824
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDG0M3F87ARKS4KA3HQ6",
+            "physical_page": 131,
+            "score": 0.3880785578941144
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDFWM2JY5YM3Z903WQX1",
+            "physical_page": 92,
+            "score": 0.38616404668202775
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDH0X6YDX121KMZBP788",
+            "physical_page": 414,
+            "score": 0.38586048911538784
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDGBK9GBN6KY1NHQ4H6H",
+            "physical_page": 226,
+            "score": 0.3846528735506807
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDGJNF0R6FVX3DCG01MQ",
+            "physical_page": 286,
+            "score": 0.3825735287282398
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDGG33PK346YBTAXTA94",
+            "physical_page": 267,
+            "score": 0.3806958455841545
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDGK6BPPW0V6QAHHTNH9",
+            "physical_page": 292,
+            "score": 0.3804384528298843
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDGJHK3CMNT356845RSK",
+            "physical_page": 284,
+            "score": 0.3782241709078038
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDFTMQT2STDA9D6JWD6E",
+            "physical_page": 71,
+            "score": 0.37611871664388086
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDGW2205TPMYV36RMZPM",
+            "physical_page": 378,
+            "score": 0.3750080913083673
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDFW467D6SF1YQ7G3G45",
+            "physical_page": 94,
+            "score": 0.3743570685432084
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDGGADRER0GQQ0FJCNKC",
+            "physical_page": 262,
+            "score": 0.37418789056286794
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDH3MJP5BTBJ3R4X1MV0",
+            "physical_page": 439,
+            "score": 0.3740641563179623
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDFT1XXYBJFCQAJZ6HMK",
+            "physical_page": 69,
+            "score": 0.3729815238007107
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDGJAXYB5F49QNR5W1CB",
+            "physical_page": 285,
+            "score": 0.37264203715930855
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDGGEV8M1HYS0T4DFT81",
+            "physical_page": 264,
+            "score": 0.37126599118907255
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDGGG4EBXRTMCAZ4FK2H",
+            "physical_page": 264,
+            "score": 0.3674091161644739
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDG6N4WER2HKA5FSBP4N",
+            "physical_page": 176,
+            "score": 0.3671448969393576
+          }
+        ],
+        "fused": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDGFMYEMGYE4QZ29PRM4",
+            "physical_page": 262,
+            "score": 0.016133229247983348,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDGJQSE3EH8H1YDERTDR",
+            "physical_page": 286,
+            "score": 0.015640273704789834,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDGG2GPXWHT5VEQEVXT2",
+            "physical_page": 263,
+            "score": 0.01504603637996856,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDGG7DBXSQSAPRER4Y5D",
+            "physical_page": 263,
+            "score": 0.015045248868778281,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDGGXPEWT7Z5KPNW30TT",
+            "physical_page": 264,
+            "score": 0.014237355635205097,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDGFSD01ZYJKRA3JCDS9",
+            "physical_page": 262,
+            "score": 0.013575490735644836,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDGGERD85A20RNAYP43Q",
+            "physical_page": 268,
+            "score": 0.01345250993138317,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDGJZVDANKC516QPTK5F",
+            "physical_page": 287,
+            "score": 0.012956810631229235,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDGJHK3CMNT356845RSK",
+            "physical_page": 284,
+            "score": 0.0125,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDGBK9GBN6KY1NHQ4H6H",
+            "physical_page": 226,
+            "score": 0.012063953488372093,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDGG16VTH6HNNWZ14EP0",
+            "physical_page": 263,
+            "score": 0.011965811965811965,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDGG33PK346YBTAXTA94",
+            "physical_page": 267,
+            "score": 0.010944976076555025,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDGJNF0R6FVX3DCG01MQ",
+            "physical_page": 286,
+            "score": 0.010376756066411238,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDGGADRER0GQQ0FJCNKC",
+            "physical_page": 262,
+            "score": 0.010369653986675264,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDGJAXYB5F49QNR5W1CB",
+            "physical_page": 285,
+            "score": 0.010309278350515464,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDGG3HNYXKAJ8Y51KPTE",
+            "physical_page": 271,
+            "score": 0.007936507936507936,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDGJA71ZR4CTBZBV0F5H",
+            "physical_page": 283,
+            "score": 0.0078125,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDGG8Q9564HR0S32HJSH",
+            "physical_page": 268,
+            "score": 0.0078125,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDGG75V3W1576V8CPPN0",
+            "physical_page": 263,
+            "score": 0.007692307692307693,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDGJ1KX6Z0BP94ATQ29W",
+            "physical_page": 285,
+            "score": 0.007575757575757576,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDGGW7B4W05CFZ7QDXVC",
+            "physical_page": 267,
+            "score": 0.007462686567164179,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDGFDFTHXMM5HS262PSM",
+            "physical_page": 262,
+            "score": 0.007462686567164179,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDG04J42K5G23RMQSE3Y",
+            "physical_page": 127,
+            "score": 0.007352941176470588,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDGG979WBY1WWBD8GCF4",
+            "physical_page": 263,
+            "score": 0.007246376811594203,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDGJPBAWF0YXJZT05BA5",
+            "physical_page": 286,
+            "score": 0.007142857142857143,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDGFBNP4C89G4B3YFWR1",
+            "physical_page": 262,
+            "score": 0.007042253521126761,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDGY2PGJ65DPD4J91FQ7",
+            "physical_page": 396,
+            "score": 0.006944444444444444,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDGJA5063SN2P8YJEBJD",
+            "physical_page": 289,
+            "score": 0.00684931506849315,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDGFS8EFY7N3A4G996DD",
+            "physical_page": 262,
+            "score": 0.006756756756756757,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDGGN64Y82NYSGVW07CK",
+            "physical_page": 267,
+            "score": 0.006756756756756757,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDGG7GRMH6T0K77QAK74",
+            "physical_page": 271,
+            "score": 0.006666666666666667,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDHE4XGGARNBCWE65FDS",
+            "physical_page": 537,
+            "score": 0.006666666666666667,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDGJYN9N4CFECGEX9EKA",
+            "physical_page": 285,
+            "score": 0.006578947368421052,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDFTQNHWRM13334T0B3H",
+            "physical_page": 77,
+            "score": 0.006578947368421052,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDGHEC4BS8RHTR9WD3HJ",
+            "physical_page": 281,
+            "score": 0.006493506493506494,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDGKQTC5E3ZSE8RZ9BRC",
+            "physical_page": 297,
+            "score": 0.006493506493506494,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDHGQ0FYTB6TRMJ64B8J",
+            "physical_page": 554,
+            "score": 0.006329113924050633,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDGJ1DGCECE26X2RZMWK",
+            "physical_page": 289,
+            "score": 0.00625,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDFRFPE8W8GR0ST3RRPR",
+            "physical_page": 54,
+            "score": 0.006172839506172839,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDGHACE305AFS645BJSZ",
+            "physical_page": 276,
+            "score": 0.006097560975609756,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 41,
+            "chunk_id": "01M37CPDFT1J6R7C8VA6DJBWZ0",
+            "physical_page": 69,
+            "score": 0.006097560975609756,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 42,
+            "chunk_id": "01M37CPDGJX5H16GBW34HQFXSF",
+            "physical_page": 286,
+            "score": 0.006024096385542169,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 43,
+            "chunk_id": "01M37CPDG0M3F87ARKS4KA3HQ6",
+            "physical_page": 131,
+            "score": 0.006024096385542169,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 44,
+            "chunk_id": "01M37CPDGGZXQAMPFSQB6RZRB3",
+            "physical_page": 264,
+            "score": 0.005952380952380952,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 45,
+            "chunk_id": "01M37CPDFWM2JY5YM3Z903WQX1",
+            "physical_page": 92,
+            "score": 0.005952380952380952,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 46,
+            "chunk_id": "01M37CPDFRT59WP66BZ978F7CQ",
+            "physical_page": 47,
+            "score": 0.0058823529411764705,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 47,
+            "chunk_id": "01M37CPDH0X6YDX121KMZBP788",
+            "physical_page": 414,
+            "score": 0.0058823529411764705,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 48,
+            "chunk_id": "01M37CPDGQ20G58NKM56NJ3V01",
+            "physical_page": 329,
+            "score": 0.005747126436781609,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 49,
+            "chunk_id": "01M37CPDGJBC43M7P638NJX1R6",
+            "physical_page": 285,
+            "score": 0.005681818181818182,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 50,
+            "chunk_id": "01M37CPDGJB3KN1BJ2XDTE9Y6N",
+            "physical_page": 286,
+            "score": 0.0056179775280898875,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 51,
+            "chunk_id": "01M37CPDGK6BPPW0V6QAHHTNH9",
+            "physical_page": 292,
+            "score": 0.0056179775280898875,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 52,
+            "chunk_id": "01M37CPDGJ0W968W037R7JYQ84",
+            "physical_page": 285,
+            "score": 0.005494505494505495,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 53,
+            "chunk_id": "01M37CPDFTMQT2STDA9D6JWD6E",
+            "physical_page": 71,
+            "score": 0.005494505494505495,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 54,
+            "chunk_id": "01M37CPDGN8Y0WBCYKAXRPCT0C",
+            "physical_page": 313,
+            "score": 0.005434782608695652,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 55,
+            "chunk_id": "01M37CPDGW2205TPMYV36RMZPM",
+            "physical_page": 378,
+            "score": 0.005434782608695652,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 56,
+            "chunk_id": "01M37CPDGJRV666M5GGNX1HNYC",
+            "physical_page": 281,
+            "score": 0.005376344086021506,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 57,
+            "chunk_id": "01M37CPDFW467D6SF1YQ7G3G45",
+            "physical_page": 94,
+            "score": 0.005376344086021506,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 58,
+            "chunk_id": "01M37CPDGGE7WRD8KMQ8BSAPJM",
+            "physical_page": 263,
+            "score": 0.005319148936170213,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 59,
+            "chunk_id": "01M37CPDH3MJP5BTBJ3R4X1MV0",
+            "physical_page": 439,
+            "score": 0.005263157894736842,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 60,
+            "chunk_id": "01M37CPDGGP1NDSWS535H7KD30",
+            "physical_page": 267,
+            "score": 0.005208333333333333,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 61,
+            "chunk_id": "01M37CPDFT1XXYBJFCQAJZ6HMK",
+            "physical_page": 69,
+            "score": 0.005208333333333333,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 62,
+            "chunk_id": "01M37CPDGWSB30DY8BMZGNTS6Y",
+            "physical_page": 381,
+            "score": 0.00510204081632653,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 63,
+            "chunk_id": "01M37CPDGGEV8M1HYS0T4DFT81",
+            "physical_page": 264,
+            "score": 0.00510204081632653,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 64,
+            "chunk_id": "01M37CPDGGG4EBXRTMCAZ4FK2H",
+            "physical_page": 264,
+            "score": 0.005050505050505051,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 65,
+            "chunk_id": "01M37CPDGFF4WBX90ZTVWBPXYN",
+            "physical_page": 261,
+            "score": 0.005,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 66,
+            "chunk_id": "01M37CPDG6N4WER2HKA5FSBP4N",
+            "physical_page": 176,
+            "score": 0.005,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 67,
+            "chunk_id": "01M37CPDGZF873MVVS1TFZWZSM",
+            "physical_page": 404,
+            "score": 0.0049504950495049506,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 68,
+            "chunk_id": "01M37CPDG7QG7ZPV5MYHJR49BM",
+            "physical_page": 186,
+            "score": 0.004901960784313725,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 69,
+            "chunk_id": "01M37CPDGHCZQ0M8N4DW16944B",
+            "physical_page": 272,
+            "score": 0.0048543689320388345,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 70,
+            "chunk_id": "01M37CPDGJJ4ZRCXWJPSF3TZY0",
+            "physical_page": 285,
+            "score": 0.004807692307692308,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 71,
+            "chunk_id": "01M37CPDGJ48YSEWN73GN82J6F",
+            "physical_page": 285,
+            "score": 0.004761904761904762,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 72,
+            "chunk_id": "01M37CPDGGGJ5BZ9063ZDHD53F",
+            "physical_page": 267,
+            "score": 0.0047169811320754715,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 73,
+            "chunk_id": "01M37CPDGJDGW2VDC27CQD6075",
+            "physical_page": 282,
+            "score": 0.004672897196261682,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 74,
+            "chunk_id": "01M37CPDFR5R5H3F007FP0WAE7",
+            "physical_page": 49,
+            "score": 0.0045871559633027525,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 75,
+            "chunk_id": "01M37CPDG7KVWS4EVFKB5PSMXC",
+            "physical_page": 185,
+            "score": 0.004545454545454545,
+            "sources": [
+              "bm25"
+            ]
+          }
+        ],
+        "cutoff": {
+          "reason": "budget_exhausted",
+          "chunk_ids": [
+            "01M37CPDGFMYEMGYE4QZ29PRM4",
+            "01M37CPDGJQSE3EH8H1YDERTDR",
+            "01M37CPDGG2GPXWHT5VEQEVXT2",
+            "01M37CPDGG7DBXSQSAPRER4Y5D",
+            "01M37CPDGGXPEWT7Z5KPNW30TT",
+            "01M37CPDGFSD01ZYJKRA3JCDS9",
+            "01M37CPDGGERD85A20RNAYP43Q",
+            "01M37CPDGJZVDANKC516QPTK5F"
+          ],
+          "pages": [
+            262,
+            286,
+            263,
+            263,
+            264,
+            262,
+            268,
+            287
+          ]
+        }
+      }
+    },
+    {
+      "case_id": "case-active-rehearsal",
+      "query": "How does active rehearsal help information move into long-term memory?",
+      "query_plan": {
+        "question_type": "general",
+        "target_pages": [],
+        "target_chapters": [],
+        "modalities": [
+          "text"
+        ],
+        "channel_priors": {
+          "dense": 0.5,
+          "sparse": 0.5,
+          "visual": 0.0
+        },
+        "retrieval_budget": 8,
+        "analyzer_version": "deterministic-v1"
+      },
+      "trace": {
+        "bm25": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDGG75V3W1576V8CPPN0",
+            "physical_page": 263,
+            "score": 0.07117249816656113
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDGJQSE3EH8H1YDERTDR",
+            "physical_page": 286,
+            "score": 0.05185481160879135
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDGHEC4BS8RHTR9WD3HJ",
+            "physical_page": 281,
+            "score": 0.048455916345119476
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDGJA71ZR4CTBZBV0F5H",
+            "physical_page": 283,
+            "score": 0.047095585614442825
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDGJPBAWF0YXJZT05BA5",
+            "physical_page": 286,
+            "score": 0.0464247465133667
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDGJ1KX6Z0BP94ATQ29W",
+            "physical_page": 285,
+            "score": 0.046251244843006134
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDGGADRER0GQQ0FJCNKC",
+            "physical_page": 262,
+            "score": 0.045078545808792114
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDGFMYEMGYE4QZ29PRM4",
+            "physical_page": 262,
+            "score": 0.041220832616090775
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDGJBC43M7P638NJX1R6",
+            "physical_page": 285,
+            "score": 0.04103320091962814
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDGG16VTH6HNNWZ14EP0",
+            "physical_page": 263,
+            "score": 0.0407630130648613
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDGFSD01ZYJKRA3JCDS9",
+            "physical_page": 262,
+            "score": 0.03883978724479675
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDGGP1NDSWS535H7KD30",
+            "physical_page": 267,
+            "score": 0.03865215554833412
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDGGXPEWT7Z5KPNW30TT",
+            "physical_page": 264,
+            "score": 0.03821585327386856
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDGGW7B4W05CFZ7QDXVC",
+            "physical_page": 267,
+            "score": 0.0379016250371933
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDGGERD85A20RNAYP43Q",
+            "physical_page": 268,
+            "score": 0.037336330860853195
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDGG7DBXSQSAPRER4Y5D",
+            "physical_page": 263,
+            "score": 0.036905303597450256
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDGG8Q9564HR0S32HJSH",
+            "physical_page": 268,
+            "score": 0.03621293976902962
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDGJHK3CMNT356845RSK",
+            "physical_page": 284,
+            "score": 0.03546241670846939
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDGG2GPXWHT5VEQEVXT2",
+            "physical_page": 263,
+            "score": 0.035180967301130295
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDGJB3KN1BJ2XDTE9Y6N",
+            "physical_page": 286,
+            "score": 0.034008268266916275
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDFRT59WP66BZ978F7CQ",
+            "physical_page": 47,
+            "score": 0.03377372771501541
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDGJRV666M5GGNX1HNYC",
+            "physical_page": 281,
+            "score": 0.03325773775577545
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDGJYN9N4CFECGEX9EKA",
+            "physical_page": 285,
+            "score": 0.031839244067668915
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDGG7GRMH6T0K77QAK74",
+            "physical_page": 271,
+            "score": 0.031146880239248276
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDGJ48YSEWN73GN82J6F",
+            "physical_page": 285,
+            "score": 0.0303963553160429
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDGJJ4ZRCXWJPSF3TZY0",
+            "physical_page": 285,
+            "score": 0.0303963553160429
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDGHP25PEP1BHTG6QHAY",
+            "physical_page": 272,
+            "score": 0.0303963515907526
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDGHPGP7FXZR6QX1BDBE",
+            "physical_page": 276,
+            "score": 0.029458194971084595
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDGFBNP4C89G4B3YFWR1",
+            "physical_page": 262,
+            "score": 0.0288840439170599
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDGH3D8D61QZG7ZQPMWM",
+            "physical_page": 276,
+            "score": 0.02870767004787922
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDGG3HNYXKAJ8Y51KPTE",
+            "physical_page": 271,
+            "score": 0.02870766632258892
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDG0P0BPQ5XZHHT1R0J4",
+            "physical_page": 128,
+            "score": 0.02701898291707039
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDG62BYAADWH43C7MEBD",
+            "physical_page": 177,
+            "score": 0.02701898291707039
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDGJ8QMSCDXV9FRN326W",
+            "physical_page": 282,
+            "score": 0.02701898291707039
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDGJZN7BZZ5FF5TDGQK0",
+            "physical_page": 283,
+            "score": 0.02701898291707039
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDGJQG1H7KBPRHX36QDK",
+            "physical_page": 287,
+            "score": 0.02701898291707039
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDGG979WBY1WWBD8GCF4",
+            "physical_page": 263,
+            "score": 0.026444830000400543
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDGGE7WRD8KMQ8BSAPJM",
+            "physical_page": 263,
+            "score": 0.026080822572112083
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDJT3MCSBVP1ZJ38TCV3",
+            "physical_page": 750,
+            "score": 0.02533029578626156
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDGF8HNV8N6XX286GFK9",
+            "physical_page": 260,
+            "score": 0.025272130966186523
+          },
+          {
+            "rank": 41,
+            "chunk_id": "01M37CPDGJAXYB5F49QNR5W1CB",
+            "physical_page": 285,
+            "score": 0.025084499269723892
+          },
+          {
+            "rank": 42,
+            "chunk_id": "01M37CPDGGNZFST5JJ4E7FG8DP",
+            "physical_page": 264,
+            "score": 0.025084499269723892
+          },
+          {
+            "rank": 43,
+            "chunk_id": "01M37CPDGBK9GBN6KY1NHQ4H6H",
+            "physical_page": 226,
+            "score": 0.024814307689666748
+          },
+          {
+            "rank": 44,
+            "chunk_id": "01M37CPDGJB5631VXQR4ZJDGCT",
+            "physical_page": 285,
+            "score": 0.024392135441303253
+          },
+          {
+            "rank": 45,
+            "chunk_id": "01M37CPDGJDGW2VDC27CQD6075",
+            "physical_page": 282,
+            "score": 0.024392135441303253
+          },
+          {
+            "rank": 46,
+            "chunk_id": "01M37CPDGD9PFE60MTYZ64XGTT",
+            "physical_page": 242,
+            "score": 0.024392135441303253
+          },
+          {
+            "rank": 47,
+            "chunk_id": "01M37CPDGC2WEYB6BWKR69CJKB",
+            "physical_page": 235,
+            "score": 0.022703450173139572
+          },
+          {
+            "rank": 48,
+            "chunk_id": "01M37CPDGGPZGFJ7G2TR11GQHV",
+            "physical_page": 263,
+            "score": 0.022703450173139572
+          },
+          {
+            "rank": 49,
+            "chunk_id": "01M37CPDGGBSMJK0BS65WG620Q",
+            "physical_page": 265,
+            "score": 0.021952923387289047
+          },
+          {
+            "rank": 50,
+            "chunk_id": "01M37CPDGJX5H16GBW34HQFXSF",
+            "physical_page": 286,
+            "score": 0.021952923387289047
+          }
+        ],
+        "vector": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDGG75V3W1576V8CPPN0",
+            "physical_page": 263,
+            "score": 0.4205418229115041
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDGJPBAWF0YXJZT05BA5",
+            "physical_page": 286,
+            "score": 0.4167030007491732
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDGG0SMZ0B7MP8NFRSJK",
+            "physical_page": 263,
+            "score": 0.40451989281744927
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDGJ8QMSCDXV9FRN326W",
+            "physical_page": 282,
+            "score": 0.402015136276199
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDGJ48YSEWN73GN82J6F",
+            "physical_page": 285,
+            "score": 0.38138503847763827
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDGG7DBXSQSAPRER4Y5D",
+            "physical_page": 263,
+            "score": 0.36999826073116937
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDGG2GPXWHT5VEQEVXT2",
+            "physical_page": 263,
+            "score": 0.36927445630927713
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDGFSD01ZYJKRA3JCDS9",
+            "physical_page": 262,
+            "score": 0.35957310110681096
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDJ25HSW2X7G5Y926Y0F",
+            "physical_page": 670,
+            "score": 0.34815531374187614
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDGHEC4BS8RHTR9WD3HJ",
+            "physical_page": 281,
+            "score": 0.3368849164645966
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDGJA5063SN2P8YJEBJD",
+            "physical_page": 289,
+            "score": 0.33593550859542787
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDGJQSE3EH8H1YDERTDR",
+            "physical_page": 286,
+            "score": 0.33233021529003703
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDGJJ4ZRCXWJPSF3TZY0",
+            "physical_page": 285,
+            "score": 0.33028912875374083
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDGJBC43M7P638NJX1R6",
+            "physical_page": 285,
+            "score": 0.3289758531879141
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDGJ1KX6Z0BP94ATQ29W",
+            "physical_page": 285,
+            "score": 0.3289297348281137
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDGFMYEMGYE4QZ29PRM4",
+            "physical_page": 262,
+            "score": 0.32003790859055703
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDHS2BQDA0QV0C06H3YH",
+            "physical_page": 635,
+            "score": 0.31434734222569205
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDGJB3KN1BJ2XDTE9Y6N",
+            "physical_page": 286,
+            "score": 0.3092436037651515
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDGJAXYB5F49QNR5W1CB",
+            "physical_page": 285,
+            "score": 0.30883649781663536
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDGG16VTH6HNNWZ14EP0",
+            "physical_page": 263,
+            "score": 0.30772869868987474
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDHP3D0QQB2HESTHD9TC",
+            "physical_page": 612,
+            "score": 0.30151145692465553
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDGG3HNYXKAJ8Y51KPTE",
+            "physical_page": 271,
+            "score": 0.30151135658742634
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDGJB5631VXQR4ZJDGCT",
+            "physical_page": 285,
+            "score": 0.30151120532402453
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDGGXPEWT7Z5KPNW30TT",
+            "physical_page": 264,
+            "score": 0.2963470374628959
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDHTFNZWD2CYSAW04Z3G",
+            "physical_page": 641,
+            "score": 0.2860387863088123
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDJSVH91VGAYG0XM9C88",
+            "physical_page": 742,
+            "score": 0.269679938479076
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDJ4V6XJ8PBABT6Z0KFV",
+            "physical_page": 676,
+            "score": 0.269679938479076
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDGG3PEKB542W0C03HTW",
+            "physical_page": 262,
+            "score": 0.269679938479076
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDJ7N22NSMKK5GPZ9D1W",
+            "physical_page": 686,
+            "score": 0.269679938479076
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDGGZXQAMPFSQB6RZRB3",
+            "physical_page": 264,
+            "score": 0.26650078889806506
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDGG8Q9564HR0S32HJSH",
+            "physical_page": 268,
+            "score": 0.26590801097872485
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDJ3241XXHREE9120868",
+            "physical_page": 671,
+            "score": 0.26318068255033134
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDGG7GRMH6T0K77QAK74",
+            "physical_page": 271,
+            "score": 0.25778152042681846
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDJ31BKTSRGZ4C7P9N0Q",
+            "physical_page": 673,
+            "score": 0.25712975774729263
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDGF2ZKJM8Z2684WEE1D",
+            "physical_page": 260,
+            "score": 0.25712967428935163
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDJ7E426S6BAMY4Q6R89",
+            "physical_page": 686,
+            "score": 0.25147775220733115
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDJ3SQNB376N6QNQ6SE5",
+            "physical_page": 672,
+            "score": 0.24618309326763332
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDJG38PAMB4FFAZ1AP83",
+            "physical_page": 713,
+            "score": 0.24618298577404107
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDHWNAP17ZKARZ4BH1CN",
+            "physical_page": 651,
+            "score": 0.24618298577404107
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDGF7H60G0873KWA66ZC",
+            "physical_page": 259,
+            "score": 0.2449107611079253
+          }
+        ],
+        "fused": [
+          {
+            "rank": 1,
+            "chunk_id": "01M37CPDGG75V3W1576V8CPPN0",
+            "physical_page": 263,
+            "score": 0.01639344262295082,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 2,
+            "chunk_id": "01M37CPDGJPBAWF0YXJZT05BA5",
+            "physical_page": 286,
+            "score": 0.01575682382133995,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 3,
+            "chunk_id": "01M37CPDGHEC4BS8RHTR9WD3HJ",
+            "physical_page": 281,
+            "score": 0.015079365079365078,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 4,
+            "chunk_id": "01M37CPDGJQSE3EH8H1YDERTDR",
+            "physical_page": 286,
+            "score": 0.015008960573476702,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 5,
+            "chunk_id": "01M37CPDGFSD01ZYJKRA3JCDS9",
+            "physical_page": 262,
+            "score": 0.014395194697597348,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 6,
+            "chunk_id": "01M37CPDGJ1KX6Z0BP94ATQ29W",
+            "physical_page": 285,
+            "score": 0.014242424242424244,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 7,
+            "chunk_id": "01M37CPDGG7DBXSQSAPRER4Y5D",
+            "physical_page": 263,
+            "score": 0.014154704944178628,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 8,
+            "chunk_id": "01M37CPDGJBC43M7P638NJX1R6",
+            "physical_page": 285,
+            "score": 0.014003133568350961,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 9,
+            "chunk_id": "01M37CPDGFMYEMGYE4QZ29PRM4",
+            "physical_page": 262,
+            "score": 0.01393188854489164,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 10,
+            "chunk_id": "01M37CPDGG2GPXWHT5VEQEVXT2",
+            "physical_page": 263,
+            "score": 0.013791800491214812,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 11,
+            "chunk_id": "01M37CPDGJ48YSEWN73GN82J6F",
+            "physical_page": 285,
+            "score": 0.013574660633484163,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 12,
+            "chunk_id": "01M37CPDGG16VTH6HNNWZ14EP0",
+            "physical_page": 263,
+            "score": 0.013392857142857144,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 13,
+            "chunk_id": "01M37CPDGJ8QMSCDXV9FRN326W",
+            "physical_page": 282,
+            "score": 0.013131648936170214,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 14,
+            "chunk_id": "01M37CPDGGXPEWT7Z5KPNW30TT",
+            "physical_page": 264,
+            "score": 0.012801696020874102,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 15,
+            "chunk_id": "01M37CPDGJJ4ZRCXWJPSF3TZY0",
+            "physical_page": 285,
+            "score": 0.012663268556865243,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 16,
+            "chunk_id": "01M37CPDGJB3KN1BJ2XDTE9Y6N",
+            "physical_page": 286,
+            "score": 0.01266025641025641,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 17,
+            "chunk_id": "01M37CPDGG8Q9564HR0S32HJSH",
+            "physical_page": 268,
+            "score": 0.011988011988011988,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 18,
+            "chunk_id": "01M37CPDGG3HNYXKAJ8Y51KPTE",
+            "physical_page": 271,
+            "score": 0.01159206647011525,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 19,
+            "chunk_id": "01M37CPDGG7GRMH6T0K77QAK74",
+            "physical_page": 271,
+            "score": 0.011328725038402458,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 20,
+            "chunk_id": "01M37CPDGJAXYB5F49QNR5W1CB",
+            "physical_page": 285,
+            "score": 0.011279608973555583,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 21,
+            "chunk_id": "01M37CPDGJB5631VXQR4ZJDGCT",
+            "physical_page": 285,
+            "score": 0.010831788693234477,
+            "sources": [
+              "bm25",
+              "vector"
+            ]
+          },
+          {
+            "rank": 22,
+            "chunk_id": "01M37CPDGG0SMZ0B7MP8NFRSJK",
+            "physical_page": 263,
+            "score": 0.007936507936507936,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 23,
+            "chunk_id": "01M37CPDGJA71ZR4CTBZBV0F5H",
+            "physical_page": 283,
+            "score": 0.0078125,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 24,
+            "chunk_id": "01M37CPDGGADRER0GQQ0FJCNKC",
+            "physical_page": 262,
+            "score": 0.007462686567164179,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 25,
+            "chunk_id": "01M37CPDJ25HSW2X7G5Y926Y0F",
+            "physical_page": 670,
+            "score": 0.007246376811594203,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 26,
+            "chunk_id": "01M37CPDGJA5063SN2P8YJEBJD",
+            "physical_page": 289,
+            "score": 0.007042253521126761,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 27,
+            "chunk_id": "01M37CPDGGP1NDSWS535H7KD30",
+            "physical_page": 267,
+            "score": 0.006944444444444444,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 28,
+            "chunk_id": "01M37CPDGGW7B4W05CFZ7QDXVC",
+            "physical_page": 267,
+            "score": 0.006756756756756757,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 29,
+            "chunk_id": "01M37CPDGGERD85A20RNAYP43Q",
+            "physical_page": 268,
+            "score": 0.006666666666666667,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 30,
+            "chunk_id": "01M37CPDHS2BQDA0QV0C06H3YH",
+            "physical_page": 635,
+            "score": 0.006493506493506494,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 31,
+            "chunk_id": "01M37CPDGJHK3CMNT356845RSK",
+            "physical_page": 284,
+            "score": 0.00641025641025641,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 32,
+            "chunk_id": "01M37CPDFRT59WP66BZ978F7CQ",
+            "physical_page": 47,
+            "score": 0.006172839506172839,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 33,
+            "chunk_id": "01M37CPDHP3D0QQB2HESTHD9TC",
+            "physical_page": 612,
+            "score": 0.006172839506172839,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 34,
+            "chunk_id": "01M37CPDGJRV666M5GGNX1HNYC",
+            "physical_page": 281,
+            "score": 0.006097560975609756,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 35,
+            "chunk_id": "01M37CPDGJYN9N4CFECGEX9EKA",
+            "physical_page": 285,
+            "score": 0.006024096385542169,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 36,
+            "chunk_id": "01M37CPDHTFNZWD2CYSAW04Z3G",
+            "physical_page": 641,
+            "score": 0.0058823529411764705,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 37,
+            "chunk_id": "01M37CPDJSVH91VGAYG0XM9C88",
+            "physical_page": 742,
+            "score": 0.005813953488372093,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 38,
+            "chunk_id": "01M37CPDGHP25PEP1BHTG6QHAY",
+            "physical_page": 272,
+            "score": 0.005747126436781609,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 39,
+            "chunk_id": "01M37CPDJ4V6XJ8PBABT6Z0KFV",
+            "physical_page": 676,
+            "score": 0.005747126436781609,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 40,
+            "chunk_id": "01M37CPDGHPGP7FXZR6QX1BDBE",
+            "physical_page": 276,
+            "score": 0.005681818181818182,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 41,
+            "chunk_id": "01M37CPDGG3PEKB542W0C03HTW",
+            "physical_page": 262,
+            "score": 0.005681818181818182,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 42,
+            "chunk_id": "01M37CPDGFBNP4C89G4B3YFWR1",
+            "physical_page": 262,
+            "score": 0.0056179775280898875,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 43,
+            "chunk_id": "01M37CPDJ7N22NSMKK5GPZ9D1W",
+            "physical_page": 686,
+            "score": 0.0056179775280898875,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 44,
+            "chunk_id": "01M37CPDGH3D8D61QZG7ZQPMWM",
+            "physical_page": 276,
+            "score": 0.005555555555555556,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 45,
+            "chunk_id": "01M37CPDGGZXQAMPFSQB6RZRB3",
+            "physical_page": 264,
+            "score": 0.005555555555555556,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 46,
+            "chunk_id": "01M37CPDG0P0BPQ5XZHHT1R0J4",
+            "physical_page": 128,
+            "score": 0.005434782608695652,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 47,
+            "chunk_id": "01M37CPDJ3241XXHREE9120868",
+            "physical_page": 671,
+            "score": 0.005434782608695652,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 48,
+            "chunk_id": "01M37CPDG62BYAADWH43C7MEBD",
+            "physical_page": 177,
+            "score": 0.005376344086021506,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 49,
+            "chunk_id": "01M37CPDJ31BKTSRGZ4C7P9N0Q",
+            "physical_page": 673,
+            "score": 0.005319148936170213,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 50,
+            "chunk_id": "01M37CPDGJZN7BZZ5FF5TDGQK0",
+            "physical_page": 283,
+            "score": 0.005263157894736842,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 51,
+            "chunk_id": "01M37CPDGF2ZKJM8Z2684WEE1D",
+            "physical_page": 260,
+            "score": 0.005263157894736842,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 52,
+            "chunk_id": "01M37CPDGJQG1H7KBPRHX36QDK",
+            "physical_page": 287,
+            "score": 0.005208333333333333,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 53,
+            "chunk_id": "01M37CPDJ7E426S6BAMY4Q6R89",
+            "physical_page": 686,
+            "score": 0.005208333333333333,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 54,
+            "chunk_id": "01M37CPDGG979WBY1WWBD8GCF4",
+            "physical_page": 263,
+            "score": 0.005154639175257732,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 55,
+            "chunk_id": "01M37CPDJ3SQNB376N6QNQ6SE5",
+            "physical_page": 672,
+            "score": 0.005154639175257732,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 56,
+            "chunk_id": "01M37CPDGGE7WRD8KMQ8BSAPJM",
+            "physical_page": 263,
+            "score": 0.00510204081632653,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 57,
+            "chunk_id": "01M37CPDJG38PAMB4FFAZ1AP83",
+            "physical_page": 713,
+            "score": 0.00510204081632653,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 58,
+            "chunk_id": "01M37CPDJT3MCSBVP1ZJ38TCV3",
+            "physical_page": 750,
+            "score": 0.005050505050505051,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 59,
+            "chunk_id": "01M37CPDHWNAP17ZKARZ4BH1CN",
+            "physical_page": 651,
+            "score": 0.005050505050505051,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 60,
+            "chunk_id": "01M37CPDGF8HNV8N6XX286GFK9",
+            "physical_page": 260,
+            "score": 0.005,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 61,
+            "chunk_id": "01M37CPDGF7H60G0873KWA66ZC",
+            "physical_page": 259,
+            "score": 0.005,
+            "sources": [
+              "vector"
+            ]
+          },
+          {
+            "rank": 62,
+            "chunk_id": "01M37CPDGGNZFST5JJ4E7FG8DP",
+            "physical_page": 264,
+            "score": 0.004901960784313725,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 63,
+            "chunk_id": "01M37CPDGBK9GBN6KY1NHQ4H6H",
+            "physical_page": 226,
+            "score": 0.0048543689320388345,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 64,
+            "chunk_id": "01M37CPDGJDGW2VDC27CQD6075",
+            "physical_page": 282,
+            "score": 0.004761904761904762,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 65,
+            "chunk_id": "01M37CPDGD9PFE60MTYZ64XGTT",
+            "physical_page": 242,
+            "score": 0.0047169811320754715,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 66,
+            "chunk_id": "01M37CPDGC2WEYB6BWKR69CJKB",
+            "physical_page": 235,
+            "score": 0.004672897196261682,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 67,
+            "chunk_id": "01M37CPDGGPZGFJ7G2TR11GQHV",
+            "physical_page": 263,
+            "score": 0.004629629629629629,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 68,
+            "chunk_id": "01M37CPDGGBSMJK0BS65WG620Q",
+            "physical_page": 265,
+            "score": 0.0045871559633027525,
+            "sources": [
+              "bm25"
+            ]
+          },
+          {
+            "rank": 69,
+            "chunk_id": "01M37CPDGJX5H16GBW34HQFXSF",
+            "physical_page": 286,
+            "score": 0.004545454545454545,
+            "sources": [
+              "bm25"
+            ]
+          }
+        ],
+        "cutoff": {
+          "reason": "budget_exhausted",
+          "chunk_ids": [
+            "01M37CPDGG75V3W1576V8CPPN0",
+            "01M37CPDGJPBAWF0YXJZT05BA5",
+            "01M37CPDGHEC4BS8RHTR9WD3HJ",
+            "01M37CPDGJQSE3EH8H1YDERTDR",
+            "01M37CPDGFSD01ZYJKRA3JCDS9",
+            "01M37CPDGJ1KX6Z0BP94ATQ29W",
+            "01M37CPDGG7DBXSQSAPRER4Y5D",
+            "01M37CPDGJBC43M7P638NJX1R6"
+          ],
+          "pages": [
+            263,
+            286,
+            281,
+            286,
+            262,
+            285,
+            263,
+            285
+          ]
+        }
+      }
+    }
+  ]
+}

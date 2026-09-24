@@ -26,7 +26,7 @@ BACKGROUND_TASKS: set[asyncio.Task] = set()
 MAX_CHUNK_CHARS = 800
 EMBED_BATCH = 32
 RRF_K = 60
-RETRIEVAL_VERSION = "hybrid-v3"
+RETRIEVAL_VERSION = "hybrid-v4"
 VECTOR_NONEXIST = "对象尚未完成嵌入或嵌入版本不匹配"
 RETRIEVAL_UNIT_BUILD_STRATEGY = "paragraph-child"
 RETRIEVAL_UNIT_BUILD_VERSION = "v1"
@@ -36,9 +36,35 @@ MAX_EVIDENCE_CLOSURE_OBJECTS = 4
 TSQ_TOKEN_RE = re.compile(r"[\u4e00-\u9fff]+|[a-zA-Z0-9]+")
 SEARCH_STOPWORDS = frozenset(
     {
-        "a", "an", "and", "are", "as", "at", "be", "by", "do", "does",
-        "for", "from", "how", "i", "in", "is", "it", "make", "of", "on",
-        "or", "the", "to", "what", "when", "where", "why", "with", "you",
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "do",
+        "does",
+        "for",
+        "from",
+        "how",
+        "i",
+        "in",
+        "is",
+        "it",
+        "make",
+        "of",
+        "on",
+        "or",
+        "the",
+        "to",
+        "what",
+        "when",
+        "where",
+        "why",
+        "with",
+        "you",
     }
 )
 
@@ -47,7 +73,8 @@ def _search_tokens(query: str) -> list[str]:
     return [
         token
         for token in TSQ_TOKEN_RE.findall(query.lower())
-        if token and (len(token) > 1 or "\u4e00" <= token <= "\u9fff")
+        if token
+        and (len(token) > 1 or "\u4e00" <= token <= "\u9fff")
         and token not in SEARCH_STOPWORDS
     ]
 
@@ -67,6 +94,19 @@ def _has_hash_keyword_anchor(text_content: str, tokens: list[str]) -> bool:
         return False
     normalized = text_content.lower()
     return sum(token in normalized for token in set(tokens)) >= required_matches
+
+
+def retrieval_fusion_summary(channel_priors: dict[str, float] | None) -> dict:
+    """声明本次实际参与排序的文本通道，避免把 hash 向量伪装成语义检索。"""
+    if get_embedding_client().version == "hash-v1":
+        return {
+            "strategy": "bm25-keyword-anchor-v1",
+            "text_channel_weights": {"sparse": 1.0},
+        }
+    return {
+        "strategy": "weighted_rrf-v1",
+        "text_channel_weights": text_channel_weights(channel_priors),
+    }
 
 
 async def _load_evidence_closure(
@@ -122,6 +162,7 @@ async def _load_evidence_closure(
 
 # ---- 分块构建 ----
 
+
 def build_chunk_rows(objects: list[KnowledgeObject]) -> list[dict]:
     """按段落对象切分 RetrievalUnit，保证每个召回单元可回溯到唯一教材对象。"""
     chapters = {o.chapter_path: o for o in objects if o.type == "chapter"}
@@ -157,6 +198,7 @@ def build_chunk_rows(objects: list[KnowledgeObject]) -> list[dict]:
 
 
 # ---- 嵌入任务 ----
+
 
 async def run_embed_job(job_id: str, version_id: str) -> None:
     client = get_embedding_client()
@@ -304,6 +346,7 @@ async def find_active_embed_job(db: AsyncSession, version_id: str) -> Job | None
 
 # ---- 混合检索 ----
 
+
 async def resolve_searchable_versions(
     db: AsyncSession, *, course_id: str, requested_version_ids: list[str], staff: bool
 ) -> list[str]:
@@ -367,9 +410,7 @@ async def hybrid_search(
     client = get_embedding_client()
     unavailable = unavailable_modalities(channel_priors)
     if unavailable:
-        warnings.append(
-            f"查询计划请求的{'、'.join(unavailable)}通道尚未建立，当前仅使用文本检索"
-        )
+        warnings.append(f"查询计划请求的{'、'.join(unavailable)}通道尚未建立，当前仅使用文本检索")
     version_list = ", ".join(f"'{v}'" for v in version_ids)
     scope_join = ""
     scope_clauses: list[str] = []
@@ -407,9 +448,7 @@ async def hybrid_search(
     ).all()
     if client.version == "hash-v1":
         bm25_hits = [
-            (row[0], float(row[1]))
-            for row in bm25_rows
-            if _has_hash_keyword_anchor(row[2], tokens)
+            (row[0], float(row[1])) for row in bm25_rows if _has_hash_keyword_anchor(row[2], tokens)
         ]
     else:
         bm25_hits = [(row[0], float(row[1])) for row in bm25_rows]
@@ -423,36 +462,39 @@ async def hybrid_search(
         ]
 
     vector_hits: list[tuple[str, float]] = []
-    try:
-        query_vector = (await client.embed([query]))[0]
-        vector_literal = "[" + ",".join(f"{v:.6f}" for v in query_vector) + "]"
-        min_similarity = get_settings().retrieval_min_vector_similarity
-        vector_statement = text(
-            "SELECT kc.id, 1 - (kc.embedding <=> CAST(:vec AS vector)) AS cosine "
-            "FROM knowledge_chunks kc "
-            f"{scope_join}"
-            f"WHERE kc.material_version_id IN ({version_list}) "
-            "AND kc.embedding_version = :ev AND kc.embedding IS NOT NULL "
-            "AND 1 - (kc.embedding <=> CAST(:vec AS vector)) >= :min_similarity "
-            f"{scope_sql} "
-            "ORDER BY kc.embedding <=> CAST(:vec AS vector) LIMIT 50"
-        )
-        if scope_bindparams:
-            vector_statement = vector_statement.bindparams(*scope_bindparams)
-        vector_rows = (
-            await db.execute(
-                vector_statement,
-                {
-                    "vec": vector_literal,
-                    "ev": client.version,
-                    "min_similarity": min_similarity,
-                    **scope_params,
-                },
+    if client.version == "hash-v1":
+        warnings.append("当前为本地 hash-v1 基线，仅使用关键词锚点检索")
+    else:
+        try:
+            query_vector = (await client.embed([query]))[0]
+            vector_literal = "[" + ",".join(f"{v:.6f}" for v in query_vector) + "]"
+            min_similarity = get_settings().retrieval_min_vector_similarity
+            vector_statement = text(
+                "SELECT kc.id, 1 - (kc.embedding <=> CAST(:vec AS vector)) AS cosine "
+                "FROM knowledge_chunks kc "
+                f"{scope_join}"
+                f"WHERE kc.material_version_id IN ({version_list}) "
+                "AND kc.embedding_version = :ev AND kc.embedding IS NOT NULL "
+                "AND 1 - (kc.embedding <=> CAST(:vec AS vector)) >= :min_similarity "
+                f"{scope_sql} "
+                "ORDER BY kc.embedding <=> CAST(:vec AS vector) LIMIT 50"
             )
-        ).all()
-        vector_hits = [(row[0], float(row[1])) for row in vector_rows]
-    except Exception:  # noqa: BLE001 外部向量服务失败时保留 BM25 可用性
-        warnings.append("语义检索暂时不可用，已降级为关键词检索")
+            if scope_bindparams:
+                vector_statement = vector_statement.bindparams(*scope_bindparams)
+            vector_rows = (
+                await db.execute(
+                    vector_statement,
+                    {
+                        "vec": vector_literal,
+                        "ev": client.version,
+                        "min_similarity": min_similarity,
+                        **scope_params,
+                    },
+                )
+            ).all()
+            vector_hits = [(row[0], float(row[1])) for row in vector_rows]
+        except Exception:  # noqa: BLE001 外部向量服务失败时保留 BM25 可用性
+            warnings.append("语义检索暂时不可用，已降级为关键词检索")
 
     cutoff = adaptive_cutoff(
         _rrf_fuse(bm25_hits, vector_hits, channel_priors=channel_priors), max_items=top_k
@@ -501,9 +543,7 @@ async def hybrid_search(
         await _load_evidence_closure(
             db,
             source_object_ids=[
-                info["source_object_id"]
-                for info in meta.values()
-                if info["source_object_id"]
+                info["source_object_id"] for info in meta.values() if info["source_object_id"]
             ],
             version_ids=version_ids,
         )

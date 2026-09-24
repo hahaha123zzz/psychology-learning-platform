@@ -34,9 +34,9 @@ OpenStax《Psychology 2e》首轮本地 `hybrid-v1 + hash-v1` 基线已完成，
 
 `/knowledge/search` 的章节和对象类型过滤已在候选查询、RRF 排序之前生效：章节范围使用稳定的章节对象 ID；当前只对 `paragraph-child` 建索引，因此请求图片、表格或公式不会伪装为段落命中，而是诚实返回空结果，直至相应对象表示真正建成。
 
-`hybrid-v3` 已把 Query Analyzer 的文本通道先验接入 Weighted RRF：`sparse` 对应 BM25、`dense` 对应向量通道，并只在已实现文本通道中归一化。视觉先验会产生明确的文本降级提示，尚不代表视觉索引或多模态检索已完成。
+`hybrid-v3` 已把 Query Analyzer 的文本通道先验接入 Weighted RRF：`sparse` 对应 BM25、`dense` 对应向量通道，并只在已实现文本通道中归一化。视觉先验会产生明确的文本降级提示，尚不代表视觉索引或多模态检索已完成。`hybrid-v4` 进一步明确本地 `hash-v1` 只是确定性关键词基线：禁用其不具语义含义的伪向量通道，改用 BM25 加至少两个有效关键词锚点；真实外部 Embedding 仍走相似度门槛和 Weighted RRF。
 
-OpenStax《Psychology 2e》的本地自动化 `hybrid-v3 + hash-v1` 基线已运行（不调用外部 API）并重解析重建：11,309 个文本对象均有 bbox，两个独立渲染人工金标的 bbox IoU 为 0.960721；拒答准确率为 1.0。但新版细粒度分块当前使页级 Recall@5/NDCG@5 降至 0.6（准实验和图题未命中），这是待定位修复的回归，不能宣称 V3 效果完成。对可验证的 4 个段落对象，精确 Recall@5 为 0.625、NDCG@5 为 0.653287；图题仍未形成图片对象，已从精确对象指标排除。
+OpenStax《Psychology 2e》的本地自动化 `hybrid-v3 + hash-v1` 基线曾因伪向量干扰把页级 Recall@5/NDCG@5 降至 0.6，逐阶段排序追踪已证实准实验和图题目标页原本在 BM25 前列。修复后的 `hybrid-v4 + hash-v1`（不调用外部 API）页级 Recall@5 为 1.0、Page NDCG@5 为 0.826186、教材外拒答准确率为 1.0；精确对象 Recall@5 仍为 0.625，首项 bbox IoU 为 0.480661。11,309 个文本对象均有 bbox，两个独立渲染人工金标对对应段落的原始 bbox IoU 为 0.960721。图题仍未形成图片对象，已从精确对象指标排除；因此不能宣称 V3 的对象级、视觉或精确引用效果完成。详细运行与诊断见 `docs/v3/2026-09-24-openstax-local-hybrid-v4-baseline.md`。
 
 本地 PyMuPDF 段落 bbox 验证已完成，见 `docs/v3/2026-09-23-local-pdf-layout-bbox.md`：同一 OpenStax PDF 的 11,293 个原生文本段落均取得 PDF 用户空间坐标。该能力只覆盖原生文本段落，仍不产生图片、表格、公式对象或视觉检索结果；重解析后必须重建索引并重新评测。
 

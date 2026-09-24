@@ -1,0 +1,204 @@
+{
+  "dataset_id": "openstax-psychology-2e-local-v2",
+  "schema_version": "rag-eval/v3-run",
+  "run_id": "openstax-psychology-2e-local-v2-local-hybrid-v4-hash-v1",
+  "retrieval_version": "hybrid-v4",
+  "embedding_version": "hash-v1",
+  "material_version_id": "01M33P6ACK2GAFPF6FCP95Z0YZ",
+  "matching_note": "本地 hash-v1 自动运行；同页 text_anchor 命中时映射评测对象，否则保留真实来源对象 ID。",
+  "results": [
+    {
+      "case_id": "case-independent-dependent-variable",
+      "retrieved_object_ids": [
+        "01M37CJD4DYH9ZA16148YWX8YQ",
+        "openstax-p066-variables",
+        "01M37CJD4C584YKWG9R9YJ7WNA",
+        "01M37CJD4C6EFV00WGAQJ4AK6F",
+        "01M37CJD4CFW3YFSFZQ4CE2GGM",
+        "01M37CJD4C5BCTECJA9R6960A1",
+        "01M37CJD4C11QA9XW329J41NE5",
+        "01M37CJD4C99Z566W0CZQDYECD"
+      ],
+      "retrieved_pages": [
+        77,
+        66,
+        66,
+        75,
+        67,
+        75,
+        68,
+        68
+      ],
+      "predicted_page": 77,
+      "predicted_bbox": [
+        72.0,
+        326.6999816894531,
+        539.280029296875,
+        419.3999938964844
+      ],
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": true,
+      "refused": false,
+      "latency_ms": 24.724
+    },
+    {
+      "case_id": "case-quasi-experimental-causality",
+      "retrieved_object_ids": [
+        "01M37CJD4C11QA9XW329J41NE5",
+        "01M37CJD4CDCC6VVQ24G72QFCP",
+        "01M37CJD4KTTJE8E500TKA2D14",
+        "01M37CJD4CA4W1MG5QBMNNXQYM",
+        "01M37CJD4J9XW18CB54EW2NGJA",
+        "01M37CJD4VQA803AQ28WEYR55S",
+        "01M37CJD4BSRB7C43KG0EG46JQ",
+        "01M37CJD4CKTPXR8N1A0N211B9"
+      ],
+      "retrieved_pages": [
+        68,
+        54,
+        283,
+        72,
+        266,
+        526,
+        35,
+        75
+      ],
+      "predicted_page": 68,
+      "predicted_bbox": [
+        72.0,
+        654.3000183105469,
+        536.6880493164062,
+        733.5000228881836
+      ],
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": true,
+      "refused": false,
+      "latency_ms": 32.843
+    },
+    {
+      "case_id": "case-classical-conditioning-sequence",
+      "retrieved_object_ids": [
+        "01M37CJD4HEK7RXA4GQSWTM1DW",
+        "01M37CJD4GW67G25EGNH1Z1PY5",
+        "01M37CJD4GWSYD264MM20ZN2HN",
+        "01M37CJD4HGT99HNW0NSS80XMH",
+        "01M37CJD4HAAXB6ZE48BF6CGMB",
+        "01M37CJD4GEQH9FGS9T3FJZB6F",
+        "01M37CJD4GH4GDC6DE5KPZ63RA",
+        "01M37CJD4GZT7905G672R5DRHA"
+      ],
+      "retrieved_pages": [
+        211,
+        200,
+        197,
+        220,
+        219,
+        195,
+        194,
+        197
+      ],
+      "predicted_page": 211,
+      "predicted_bbox": [
+        72.0,
+        143.10003662109375,
+        540.3599853515625,
+        249.29998779296875
+      ],
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": false,
+      "refused": false,
+      "latency_ms": 9.984
+    },
+    {
+      "case_id": "case-memory-three-stages",
+      "retrieved_object_ids": [
+        "openstax-p262-memory-model",
+        "01M37CJD4K7C36FT897BX0CT0W",
+        "01M37CJD4K3MVWJSE9DR5SP8FE",
+        "01M37CJD4KTTJE8E500TKA2D14",
+        "openstax-p263-rehearsal-transfer",
+        "01M37CJD4K2APFQAH5CYM1DT3N",
+        "01M37CJD4JA8XF0W7YMXYB6T4C",
+        "01M37CJD4JRJB04GBP00ET0V0C"
+      ],
+      "retrieved_pages": [
+        262,
+        286,
+        271,
+        283,
+        263,
+        285,
+        267,
+        263
+      ],
+      "predicted_page": 262,
+      "predicted_bbox": [
+        72.0,
+        581.3999938964844,
+        532.6740112304688,
+        647.1000061035156
+      ],
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": true,
+      "refused": false,
+      "latency_ms": 23.09
+    },
+    {
+      "case_id": "case-active-rehearsal",
+      "retrieved_object_ids": [
+        "openstax-p263-rehearsal-transfer",
+        "01M37CJD4K7C36FT897BX0CT0W",
+        "01M37CJD4KGQ3SP9E9CZW1EZWF",
+        "01M37CJD4KTTJE8E500TKA2D14",
+        "01M37CJD4KE3ASXZQEVNJQN91R",
+        "01M37CJD4K2APFQAH5CYM1DT3N",
+        "01M37CJD4JRR0509XZQ4C7NTWH",
+        "openstax-p262-memory-model"
+      ],
+      "retrieved_pages": [
+        263,
+        286,
+        281,
+        283,
+        286,
+        285,
+        262,
+        262
+      ],
+      "predicted_page": 263,
+      "predicted_bbox": [
+        72.0,
+        512.9999694824219,
+        540.6210327148438,
+        659.6999816894531
+      ],
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": true,
+      "refused": false,
+      "latency_ms": 8.707
+    },
+    {
+      "case_id": "case-out-of-scope-szechuan-cooking",
+      "retrieved_object_ids": [],
+      "retrieved_pages": [],
+      "predicted_page": null,
+      "predicted_bbox": null,
+      "cited_object_ids": [],
+      "claim_support_levels": [],
+      "generation_evaluated": false,
+      "object_mapping_evaluated": true,
+      "refused": true,
+      "latency_ms": 1.882
+    }
+  ]
+}

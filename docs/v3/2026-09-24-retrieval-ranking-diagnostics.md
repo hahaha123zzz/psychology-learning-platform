@@ -3,3 +3,5 @@
 `build_ranking_trace` 把实际 BM25 候选、向量候选、Weighted RRF 融合候选和自适应截断结果保持为同一份可序列化追踪数据。它不改变排序、不产生证据票据、不参与在线 API 响应。
 
 在本地数据库可用后，OpenStax 的每个回归题将记录：目标页在 BM25、向量和融合三个阶段的排名；若目标页只在截断前存在，还会记录截断原因。只有拿到这份事实后，才能调整候选深度、融合或分块策略。
+
+`scripts/trace_local_retrieval.py` 是该合同的可复现入口。首轮追踪确认 `hash-v1` 向量会干扰而非补充 BM25，修复结果见 `2026-09-24-openstax-local-hybrid-v4-baseline.md`。

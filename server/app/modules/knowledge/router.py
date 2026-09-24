@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
@@ -39,9 +38,7 @@ async def trigger_embed(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    version, material = await materials_service.get_version_with_material_or_404(
-        db, version_id
-    )
+    version, material = await materials_service.get_version_with_material_or_404(db, version_id)
     await require_course_role(material.course_id, user, db, roles={"teacher"})
     if version.status != "parsed":
         raise ApiError(
@@ -60,9 +57,7 @@ async def trigger_embed(
         )
         existing = result.scalar_one_or_none()
         if existing is not None:
-            return ok(
-                request, {"job_id": existing.id, "status": existing.status}, status_code=202
-            )
+            return ok(request, {"job_id": existing.id, "status": existing.status}, status_code=202)
 
     active = await knowledge_service.find_active_embed_job(db, version_id)
     if active is not None:
@@ -140,12 +135,7 @@ async def search_knowledge(
                 "plan_top_k": plan.retrieval_budget,
                 "effective_top_k": effective_top_k,
             },
-            "fusion": {
-                "strategy": "weighted_rrf-v1",
-                "text_channel_weights": knowledge_service.text_channel_weights(
-                    plan.channel_priors
-                ),
-            },
+            "fusion": knowledge_service.retrieval_fusion_summary(plan.channel_priors),
             "retrieval_version": knowledge_service.RETRIEVAL_VERSION,
             "warnings": warnings,
         },
@@ -162,9 +152,7 @@ async def get_evidence(
     from datetime import UTC, datetime
 
     ticket = (
-        await db.execute(
-            select(EvidenceTicket).where(EvidenceTicket.id == evidence_id).limit(1)
-        )
+        await db.execute(select(EvidenceTicket).where(EvidenceTicket.id == evidence_id).limit(1))
     ).scalar_one_or_none()
     if (
         ticket is None
@@ -172,9 +160,7 @@ async def get_evidence(
         or ticket.expires_at < datetime.now(UTC)
         or ticket.user_id != user.id
     ):
-        raise ApiError(
-            status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已过期"
-        )
+        raise ApiError(status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已过期")
     role = await require_course_role(
         ticket.course_id, user, db, roles={"teacher", "assistant", "student"}
     )
@@ -196,19 +182,11 @@ async def get_evidence(
         )
     ).first()
     if row is None:
-        raise ApiError(
-            status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已过期"
-        )
+        raise ApiError(status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已过期")
     if ticket.material_version_id != row[5]:
-        raise ApiError(
-            status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已过期"
-        )
-    if role == "student" and (
-        row[8] != "published" or row[9] != "active" or row[10] != row[5]
-    ):
-        raise ApiError(
-            status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已过期"
-        )
+        raise ApiError(status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已过期")
+    if role == "student" and (row[8] != "published" or row[9] != "active" or row[10] != row[5]):
+        raise ApiError(status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已过期")
     preview_url = None
     if row[4]:
         try:

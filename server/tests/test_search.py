@@ -59,9 +59,7 @@ def _prepare(client, *, publish: bool, content: bytes = TWO_CHAPTER_PDF):
     job = _parse_and_wait(client, version_id, kind="embed")
     assert job["status"] == "succeeded", job
     if publish:
-        published = client.post(
-            f"/api/v1/material-versions/{version_id}/publish"
-        )
+        published = client.post(f"/api/v1/material-versions/{version_id}/publish")
         assert published.status_code == 200
     return course_id, student_id, version_id
 
@@ -138,7 +136,7 @@ def test_student_search_after_publish_has_no_score(client) -> None:
     assert len(items) >= 1
     assert "score" not in items[0]
     assert items[0]["evidence_id"]
-    assert "vector" in items[0]["retrieval_sources"]
+    assert items[0]["retrieval_sources"] == ["bm25"]
 
 
 def test_search_applies_chapter_and_object_type_before_ranking(client) -> None:
@@ -168,9 +166,7 @@ def test_search_applies_chapter_and_object_type_before_ranking(client) -> None:
     )
     assert scoped.status_code == 200
     assert scoped.json()["data"]["items"]
-    assert all(
-        item["chapter_path"] == "2" for item in scoped.json()["data"]["items"]
-    )
+    assert all(item["chapter_path"] == "2" for item in scoped.json()["data"]["items"])
 
     unsupported_type = client.post(
         "/api/v1/knowledge/search",
@@ -199,8 +195,8 @@ def test_visual_query_reports_text_only_weighted_fusion(client) -> None:
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["fusion"] == {
-        "strategy": "weighted_rrf-v1",
-        "text_channel_weights": {"dense": 2 / 3, "sparse": 1 / 3},
+        "strategy": "bm25-keyword-anchor-v1",
+        "text_channel_weights": {"sparse": 1.0},
     }
     assert any("visual" in warning and "文本检索" in warning for warning in data["warnings"])
 
@@ -213,9 +209,7 @@ def test_embed_persists_one_retrieval_unit_per_source_object(client) -> None:
             return list(
                 (
                     await db.execute(
-                        select(RetrievalUnit).where(
-                            RetrievalUnit.material_version_id == version_id
-                        )
+                        select(RetrievalUnit).where(RetrievalUnit.material_version_id == version_id)
                     )
                 ).scalars()
             )
@@ -249,9 +243,7 @@ def test_hash_keyword_anchor_requires_two_meaningful_query_terms() -> None:
 
 
 def test_search_returns_only_approved_adjacent_evidence_closure(client) -> None:
-    course_id, _, version_id = _prepare(
-        client, publish=False, content=ADJACENT_PARAGRAPHS_PDF
-    )
+    course_id, _, version_id = _prepare(client, publish=False, content=ADJACENT_PARAGRAPHS_PDF)
     _login(client, "mt@uni.edu")
     response = client.post(
         "/api/v1/knowledge/search",
