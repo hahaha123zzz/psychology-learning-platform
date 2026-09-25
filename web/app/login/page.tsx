@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { api, ApiError } from "../../lib/api";
+import { workspaceForRoles } from "../../components/WorkspaceRoleGuard";
 
 type Me = { display_name: string; platform_roles: string[] };
 
 export default function LoginPage() {
-  const router = useRouter(); const search = useSearchParams();
+  const router = useRouter();
   const [email, setEmail] = useState("teacher@demo.edu"); const [password, setPassword] = useState("demo-password-123");
   const [error, setError] = useState(""); const [loading, setLoading] = useState(false);
   async function submit(event: FormEvent) {
@@ -17,9 +18,7 @@ export default function LoginPage() {
     try {
       await api("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
       const me = await api<Me>("/me");
-      const requested = search.get("next");
-      const target = requested === "/teacher" || requested === "/student" ? requested : (me.platform_roles.includes("teacher") ? "/teacher" : "/student");
-      router.replace(target);
+      router.replace(`/${workspaceForRoles(me.platform_roles)}`);
     } catch (reason) { setError(reason instanceof ApiError ? reason.message : "无法连接服务，请确认本地服务已启动。"); }
     finally { setLoading(false); }
   }
