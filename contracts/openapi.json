@@ -739,6 +739,86 @@
         }
       }
     },
+    "/api/v1/material-versions/{version_id}/workflow": {
+      "get": {
+        "tags": [
+          "materials"
+        ],
+        "summary": "Get Material Workflow",
+        "operationId": "get_material_workflow_api_v1_material_versions__version_id__workflow_get",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/material-jobs": {
+      "get": {
+        "tags": [
+          "materials"
+        ],
+        "summary": "List Material Jobs",
+        "operationId": "list_material_jobs_api_v1_courses__course_id__material_jobs_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/material-versions/{version_id}/publish": {
       "post": {
         "tags": [

@@ -9,9 +9,7 @@ from tests.test_materials import _login, _setup_course, _upload
 
 def _parse(client, version_id: str, key=None):
     headers = {"Idempotency-Key": key} if key else {}
-    return client.post(
-        f"/api/v1/material-versions/{version_id}/parse", headers=headers
-    )
+    return client.post(f"/api/v1/material-versions/{version_id}/parse", headers=headers)
 
 
 def _wait_job(client, job_id: str, timeout: float = 20.0) -> dict:
@@ -185,14 +183,13 @@ def test_publish_makes_material_visible_to_students(client) -> None:
     _wait_job(client, job_id)
     embed_job = _embed_and_wait(client, published["version_id"])
     assert embed_job["status"] == "succeeded", embed_job
-    publish = client.post(
-        f"/api/v1/material-versions/{published['version_id']}/publish"
-    )
+    publish = client.post(f"/api/v1/material-versions/{published['version_id']}/publish")
     assert publish.status_code == 200
     body = publish.json()["data"]
     assert body["material_id"] == published["material_id"]
     assert body["published_at"]
     assert body["index_job_id"]
+    assert body["publication_snapshot_id"]
 
     reparse = _parse(client, published["version_id"])
     assert reparse.status_code == 409
@@ -211,6 +208,58 @@ def test_publish_makes_material_visible_to_students(client) -> None:
     assert all("visibility" in item for item in teacher_items)
     published_item = next(i for i in teacher_items if i["id"] == published["material_id"])
     assert published_item["current_version"]["quality_gate_status"] == "approved"
+    assert published_item["current_version"]["workflow_state"] == "published"
+    assert published_item["current_version"]["published_snapshot_id"]
+
+
+def test_material_workflow_reaches_ready_then_published(client) -> None:
+    course_id, _ = _setup_course(client)
+    data = _upload_one(client, course_id, title="工作流教材")
+
+    uploaded = client.get(f"/api/v1/material-versions/{data['version_id']}/workflow")
+    assert uploaded.status_code == 200
+    assert uploaded.json()["data"]["state"] == "uploaded"
+    assert uploaded.json()["data"]["allowed_actions"] == ["start_parse"]
+
+    parse_job = _parse(client, data["version_id"]).json()["data"]["job_id"]
+    assert _wait_job(client, parse_job)["status"] == "succeeded"
+    parsed = client.get(f"/api/v1/material-versions/{data['version_id']}/workflow").json()["data"]
+    assert parsed["state"] == "index_required"
+    assert "build_index" in parsed["allowed_actions"]
+
+    assert _embed_and_wait(client, data["version_id"])["status"] == "succeeded"
+    ready = client.get(f"/api/v1/material-versions/{data['version_id']}/workflow").json()["data"]
+    assert ready["state"] == "ready_to_publish"
+    assert ready["allowed_actions"] == ["publish"]
+
+    published = client.post(f"/api/v1/material-versions/{data['version_id']}/publish")
+    assert published.status_code == 200
+    first_snapshot = published.json()["data"]["publication_snapshot_id"]
+
+    replay = client.post(f"/api/v1/material-versions/{data['version_id']}/publish")
+    assert replay.status_code == 200
+    assert replay.json()["data"]["publication_snapshot_id"] == first_snapshot
+
+    workflow = client.get(f"/api/v1/material-versions/{data['version_id']}/workflow").json()["data"]
+    assert workflow["state"] == "published"
+    assert workflow["publication"]["id"] == first_snapshot
+
+
+def test_material_jobs_are_course_scoped_and_hidden_from_students(client) -> None:
+    course_id, _ = _setup_course(client)
+    data = _upload_one(client, course_id, title="任务中心教材")
+    job_id = _parse(client, data["version_id"]).json()["data"]["job_id"]
+    _wait_job(client, job_id)
+
+    jobs = client.get(f"/api/v1/courses/{course_id}/material-jobs")
+    assert jobs.status_code == 200
+    item = next(job for job in jobs.json()["data"] if job["job_id"] == job_id)
+    assert item["material_title"] == "任务中心教材"
+    assert item["material_version_id"] == data["version_id"]
+
+    _login(client, "ms@uni.edu")
+    denied = client.get(f"/api/v1/courses/{course_id}/material-jobs")
+    assert denied.status_code == 404
 
 
 def test_student_listing_requires_current_version_to_be_parsed(client) -> None:
@@ -254,9 +303,7 @@ def test_archive_hides_material_from_students(client) -> None:
     assert student_view.json()["data"] == []
 
     _login(client, "mt@uni.edu")
-    republish = client.post(
-        f"/api/v1/material-versions/{data['version_id']}/publish"
-    )
+    republish = client.post(f"/api/v1/material-versions/{data['version_id']}/publish")
     assert republish.status_code == 409
     assert republish.json()["error"]["code"] == "MATERIAL_ARCHIVED"
 

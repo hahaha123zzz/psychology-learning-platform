@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ApiError
 from app.core.response import ok
 from app.core.storage import presigned_get_url
-from app.db.models import EvidenceTicket, Job, User
+from app.db.models import EvidenceTicket, Job, ParseReviewIssue, User
 from app.db.session import get_db_session
 from app.modules.auth.dependencies import get_current_user, require_course_role
 from app.modules.courses import service as course_service
@@ -46,6 +46,20 @@ async def trigger_embed(
             code="INVALID_VERSION_STATUS",
             message="必须先完成解析才能构建索引",
             details={"status": version.status},
+        )
+    open_blocking = await db.scalar(
+        select(func.count(ParseReviewIssue.id)).where(
+            ParseReviewIssue.material_version_id == version_id,
+            ParseReviewIssue.severity == "blocking",
+            ParseReviewIssue.status == "open",
+        )
+    )
+    if open_blocking:
+        raise ApiError(
+            status_code=409,
+            code="QUALITY_REVIEW_REQUIRED",
+            message="仍有阻塞解析问题，修复并重新解析后才能构建索引",
+            details={"open_blocking_issue_count": int(open_blocking)},
         )
 
     if idempotency_key:

@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, Depends, File, Form, Header, Request, Response, UploadFile
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,11 +6,19 @@ from app.core.embedding import get_embedding_client
 from app.core.errors import ApiError
 from app.core.response import ok
 from app.core.storage import put_object
-from app.db.models import Job, Material, MaterialVersion, ParseReviewIssue, User
+from app.db.models import (
+    Job,
+    Material,
+    MaterialVersion,
+    ParseReviewIssue,
+    PublicationSnapshot,
+    User,
+)
 from app.db.session import get_db_session
 from app.modules.auth.dependencies import get_current_user, require_course_role
 from app.modules.courses import service as course_service
 from app.modules.materials import service as materials_service
+from app.modules.materials import workflow as workflow_service
 from app.modules.materials.schemas import (
     KnowledgeObjectCorrection,
     MaterialUploadForm,
@@ -29,9 +36,7 @@ async def upload_material(
     course_id: str,
     request: Request,
     title: str = Form(min_length=1, max_length=200),
-    material_type: str = Form(
-        pattern="^(textbook|slides|handout|exercise|reference|other)$"
-    ),
+    material_type: str = Form(pattern="^(textbook|slides|handout|exercise|reference|other)$"),
     visibility: str = Form(default="draft", pattern="^(draft|published)$"),
     file: UploadFile = File(),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
@@ -41,9 +46,7 @@ async def upload_material(
     await require_course_role(course_id, user, db, roles={"teacher"})
     await materials_service.get_course_or_404(db, course_id)
 
-    form = MaterialUploadForm(
-        title=title, material_type=material_type, visibility=visibility
-    )
+    form = MaterialUploadForm(title=title, material_type=material_type, visibility=visibility)
     if form.visibility != "draft":
         raise ApiError(
             status_code=422,
@@ -195,16 +198,10 @@ async def trigger_parse(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    version, material = await materials_service.get_version_with_material_or_404(
-        db, version_id
-    )
-    await require_course_role(
-        material.course_id, user, db, roles={"teacher"}
-    )
+    version, material = await materials_service.get_version_with_material_or_404(db, version_id)
+    await require_course_role(material.course_id, user, db, roles={"teacher"})
     if idempotency_key:
-        existing = await materials_service.find_parse_job_by_idempotency_key(
-            db, idempotency_key
-        )
+        existing = await materials_service.find_parse_job_by_idempotency_key(db, idempotency_key)
         if existing is not None:
             return ok(
                 request,
@@ -258,9 +255,7 @@ async def trigger_parse(
     await db.commit()
     await db.refresh(job, attribute_names=["id"])
     materials_service.spawn_parse_job(job.id, version_id)
-    return ok(
-        request, {"job_id": job.id, "status": "queued"}, status_code=202
-    )
+    return ok(request, {"job_id": job.id, "status": "queued"}, status_code=202)
 
 
 @router.get("/jobs/{job_id}", response_model=None)
@@ -270,9 +265,7 @@ async def get_job_status(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    job = (
-        await db.execute(select(Job).where(Job.id == job_id).limit(1))
-    ).scalar_one_or_none()
+    job = (await db.execute(select(Job).where(Job.id == job_id).limit(1))).scalar_one_or_none()
     if job is None:
         raise ApiError(status_code=404, code="JOB_NOT_FOUND", message="任务不存在")
     if job.created_by != user.id and not user.is_platform_admin:
@@ -281,9 +274,7 @@ async def get_job_status(
             version, material = await materials_service.get_version_with_material_or_404(
                 db, version_id
             )
-            await require_course_role(
-                material.course_id, user, db, roles={"teacher"}
-            )
+            await require_course_role(material.course_id, user, db, roles={"teacher"})
         else:
             raise ApiError(status_code=404, code="JOB_NOT_FOUND", message="任务不存在")
     return ok(request, materials_service.job_out(job))
@@ -296,9 +287,7 @@ async def list_materials(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    role = await require_course_role(
-        course_id, user, db, roles={"teacher", "assistant", "student"}
-    )
+    role = await require_course_role(course_id, user, db, roles={"teacher", "assistant", "student"})
     is_staff = role in ("teacher", "assistant") or user.is_platform_admin
     query = (
         select(Material, MaterialVersion)
@@ -336,11 +325,71 @@ async def list_materials(
                 "content_type": version.content_type,
             }
             if is_staff:
-                item["current_version"]["quality_gate_status"] = (
-                    version.quality_gate_status
+                item["current_version"]["quality_gate_status"] = version.quality_gate_status
+                workflow = await workflow_service.build_workflow(
+                    db, material=material, version=version
+                )
+                item["current_version"]["workflow_state"] = workflow["state"]
+                item["current_version"]["published_snapshot_id"] = (
+                    workflow["publication"]["id"] if workflow["publication"] else None
                 )
         items.append(item)
     return ok(request, items, has_more=False)
+
+
+@router.get("/material-versions/{version_id}/workflow", response_model=None)
+async def get_material_workflow(
+    version_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    version, material = await materials_service.get_version_with_material_or_404(db, version_id)
+    await require_course_role(material.course_id, user, db, roles={"teacher", "assistant"})
+    return ok(
+        request,
+        await workflow_service.build_workflow(db, material=material, version=version),
+    )
+
+
+@router.get("/courses/{course_id}/material-jobs", response_model=None)
+async def list_material_jobs(
+    course_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    await require_course_role(course_id, user, db, roles={"teacher", "assistant"})
+    rows = (
+        await db.execute(
+            select(Job, MaterialVersion, Material)
+            .join(
+                MaterialVersion,
+                Job.payload["material_version_id"].as_string() == MaterialVersion.id,
+            )
+            .join(Material, Material.id == MaterialVersion.material_id)
+            .where(
+                Material.course_id == course_id,
+                Job.kind.in_(("material_parse", "material_embed")),
+            )
+            .order_by(Job.created_at.desc())
+            .limit(50)
+        )
+    ).all()
+    return ok(
+        request,
+        [
+            {
+                **materials_service.job_out(job),
+                "material_id": material.id,
+                "material_title": material.title,
+                "material_version_id": version.id,
+                "version_no": version.version_no,
+            }
+            for job, version, material in rows
+        ],
+        has_more=False,
+    )
 
 
 @router.post("/material-versions/{version_id}/publish", response_model=None)
@@ -352,12 +401,19 @@ async def publish_version(
 ) -> Response:
     from datetime import UTC, datetime
 
-    version, material = await materials_service.get_version_with_material_or_404(
-        db, version_id
-    )
-    await require_course_role(
-        material.course_id, user, db, roles={"teacher"}
-    )
+    version, material = await materials_service.get_version_with_material_or_404(db, version_id)
+    await require_course_role(material.course_id, user, db, roles={"teacher"})
+    # 发布事务重新锁定事实，避免并发审核、归档或发布产生半新半旧状态。
+    version = (
+        await db.execute(
+            select(MaterialVersion).where(MaterialVersion.id == version_id).with_for_update()
+        )
+    ).scalar_one()
+    material = (
+        await db.execute(
+            select(Material).where(Material.id == version.material_id).with_for_update()
+        )
+    ).scalar_one()
     if version.status != "parsed":
         raise ApiError(
             status_code=409,
@@ -430,10 +486,65 @@ async def publish_version(
         .order_by(Job.finished_at.desc())
         .limit(1)
     )
+    if index_job_id is None:
+        raise ApiError(
+            status_code=409,
+            code="MATERIAL_INDEX_JOB_NOT_READY",
+            message="未找到当前教材版本成功完成的索引任务",
+        )
+    parse_job_id = await db.scalar(
+        select(Job.id)
+        .where(
+            Job.kind == "material_parse",
+            Job.status == "succeeded",
+            Job.payload["material_version_id"].as_string() == version_id,
+        )
+        .order_by(Job.finished_at.desc())
+        .limit(1)
+    )
+    current_snapshot = (
+        await db.execute(
+            select(PublicationSnapshot)
+            .where(
+                PublicationSnapshot.material_id == material.id,
+                PublicationSnapshot.superseded_at.is_(None),
+            )
+            .with_for_update()
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if (
+        current_snapshot is not None
+        and current_snapshot.material_version_id == version.id
+        and current_snapshot.embedding_version == embedding_version
+    ):
+        return ok(
+            request,
+            {
+                "material_id": material.id,
+                "version_id": version.id,
+                "published_at": current_snapshot.published_at.isoformat(),
+                "index_job_id": current_snapshot.index_job_id,
+                "publication_snapshot_id": current_snapshot.id,
+            },
+        )
     material.visibility = "published"
     material.current_version_id = version.id
     version.quality_gate_status = "approved"
     published_at = datetime.now(UTC)
+    if current_snapshot is not None:
+        current_snapshot.superseded_at = published_at
+    snapshot = PublicationSnapshot(
+        material_id=material.id,
+        material_version_id=version.id,
+        parse_job_id=parse_job_id,
+        index_job_id=index_job_id,
+        embedding_version=embedding_version,
+        published_by=user.id,
+        published_at=published_at,
+    )
+    db.add(snapshot)
+    await db.flush()
     await course_service.write_audit(
         db,
         actor_id=user.id,
@@ -451,6 +562,7 @@ async def publish_version(
             "version_id": version.id,
             "published_at": published_at.isoformat(),
             "index_job_id": index_job_id,
+            "publication_snapshot_id": snapshot.id,
         },
     )
 
@@ -462,12 +574,8 @@ async def list_parse_review_issues(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    version, material = await materials_service.get_version_with_material_or_404(
-        db, version_id
-    )
-    await require_course_role(
-        material.course_id, user, db, roles={"teacher", "assistant"}
-    )
+    version, material = await materials_service.get_version_with_material_or_404(db, version_id)
+    await require_course_role(material.course_id, user, db, roles={"teacher", "assistant"})
     issues = list(
         (
             await db.execute(
@@ -492,9 +600,7 @@ async def list_parse_review_issues(
                 "status": issue.status,
                 "resolution": issue.resolution,
                 "resolved_by": issue.resolved_by,
-                "resolved_at": issue.resolved_at.isoformat()
-                if issue.resolved_at
-                else None,
+                "resolved_at": issue.resolved_at.isoformat() if issue.resolved_at else None,
             }
             for issue in issues
         ],
@@ -570,9 +676,7 @@ async def get_outline(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    version, material = await materials_service.get_version_with_material_or_404(
-        db, version_id
-    )
+    version, material = await materials_service.get_version_with_material_or_404(db, version_id)
     role = await require_course_role(
         material.course_id, user, db, roles={"teacher", "assistant", "student"}
     )
@@ -587,9 +691,7 @@ async def get_outline(
             code="MATERIAL_VERSION_NOT_FOUND",
             message="资料版本不存在或无权访问",
         )
-    outline = await materials_service.build_outline(
-        db, version_id, version.page_count
-    )
+    outline = await materials_service.build_outline(db, version_id, version.page_count)
     return ok(request, outline, has_more=False)
 
 
@@ -607,9 +709,7 @@ async def correct_knowledge_object(
     version, material = await materials_service.get_version_with_material_or_404(
         db, knowledge_object.material_version_id
     )
-    await require_course_role(
-        material.course_id, user, db, roles={"teacher"}
-    )
+    await require_course_role(material.course_id, user, db, roles={"teacher"})
     if knowledge_object.version != body.version:
         raise ApiError(
             status_code=409,
@@ -631,9 +731,7 @@ async def correct_knowledge_object(
     if body.review_status is not None:
         changes["review_status"] = body.review_status
     if not changes:
-        raise ApiError(
-            status_code=422, code="VALIDATION_ERROR", message="没有需要修正的字段"
-        )
+        raise ApiError(status_code=422, code="VALIDATION_ERROR", message="没有需要修正的字段")
 
     override_entry = {
         "reason": body.reason,
@@ -681,16 +779,10 @@ async def archive_material(
         await db.execute(select(Material).where(Material.id == material_id).limit(1))
     ).scalar_one_or_none()
     if material is None:
-        raise ApiError(
-            status_code=404, code="MATERIAL_NOT_FOUND", message="资料不存在或无权访问"
-        )
-    await require_course_role(
-        material.course_id, user, db, roles={"teacher"}
-    )
+        raise ApiError(status_code=404, code="MATERIAL_NOT_FOUND", message="资料不存在或无权访问")
+    await require_course_role(material.course_id, user, db, roles={"teacher"})
     if material.status == "archived":
-        raise ApiError(
-            status_code=409, code="MATERIAL_ALREADY_ARCHIVED", message="资料已归档"
-        )
+        raise ApiError(status_code=409, code="MATERIAL_ALREADY_ARCHIVED", message="资料已归档")
     material.status = "archived"
     await course_service.write_audit(
         db,

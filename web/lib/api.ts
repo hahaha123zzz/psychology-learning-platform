@@ -1,12 +1,26 @@
 export type ApiEnvelope<T> = { data: T; meta?: { request_id?: string; server_time?: string; next_cursor?: string | null; has_more?: boolean } };
+type ErrorEnvelope = { error?: { message?: string; details?: unknown; code?: string; retryable?: boolean } };
+type XhrEnvelope<T> = { data?: T } & ErrorEnvelope;
 
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string, public readonly details?: unknown) { super(message); }
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly details?: unknown,
+    public readonly code?: string,
+    public readonly retryable = false,
+  ) { super(message); }
 }
 
 async function unwrap<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => null);
-  if (!response.ok) throw new ApiError(response.status, body?.error?.message ?? "请求失败，请稍后重试", body?.error?.details);
+  if (!response.ok) throw new ApiError(
+    response.status,
+    body?.error?.message ?? "请求失败，请稍后重试",
+    body?.error?.details,
+    body?.error?.code,
+    Boolean(body?.error?.retryable),
+  );
   return body.data as T;
 }
 
@@ -17,6 +31,31 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export function idempotencyKey(): string { return crypto.randomUUID(); }
+
+export function uploadForm<T>(path: string, body: FormData, onProgress: (percent: number) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `/api/v1${path}`);
+    request.withCredentials = true;
+    request.setRequestHeader("Idempotency-Key", idempotencyKey());
+    request.upload.onprogress = event => {
+      if (event.lengthComputable && event.total > 0) onProgress(Math.round((event.loaded / event.total) * 100));
+    };
+    request.onerror = () => reject(new ApiError(0, "上传连接中断。当前版本不支持断点续传，请重新上传。", undefined, "UPLOAD_NETWORK_ERROR", true));
+    request.onload = () => {
+      let envelope: XhrEnvelope<T> | null = null;
+      try { envelope = JSON.parse(request.responseText) as XhrEnvelope<T>; } catch { /* 响应不是 JSON */ }
+      if (request.status >= 200 && request.status < 300 && envelope?.data !== undefined) {
+        onProgress(100);
+        resolve(envelope.data);
+        return;
+      }
+      const error = envelope?.error;
+      reject(new ApiError(request.status, error?.message ?? "上传失败，请稍后重试", error?.details, error?.code, Boolean(error?.retryable)));
+    };
+    request.send(body);
+  });
+}
 
 export type ChatEvent = { event: string; data: Record<string, unknown> };
 

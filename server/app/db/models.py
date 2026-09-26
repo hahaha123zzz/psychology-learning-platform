@@ -15,6 +15,9 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy import (
+    text as sql_text,
+)
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import UserDefinedType
@@ -670,6 +673,39 @@ class MaterialVersion(Base, ULIDPrimaryKeyMixin):
         CheckConstraint(
             "quality_gate_status IN ('pending','blocked','approved')",
             name="ck_material_versions_quality_gate",
+        ),
+    )
+
+
+class PublicationSnapshot(Base, ULIDPrimaryKeyMixin):
+    """一次原子发布所使用的教材、解析与索引版本快照。"""
+
+    __tablename__ = "publication_snapshots"
+
+    material_id: Mapped[str] = mapped_column(String(26), ForeignKey("materials.id"), nullable=False)
+    material_version_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("material_versions.id"), nullable=False
+    )
+    parse_job_id: Mapped[str | None] = mapped_column(String(26), ForeignKey("jobs.id"))
+    index_job_id: Mapped[str] = mapped_column(String(26), ForeignKey("jobs.id"), nullable=False)
+    embedding_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    published_by: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+    published_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index(
+            "uq_publication_snapshots_current",
+            "material_id",
+            unique=True,
+            postgresql_where=sql_text("superseded_at IS NULL"),
+        ),
+        Index(
+            "ix_publication_snapshots_version",
+            "material_version_id",
+            "published_at",
         ),
     )
 
