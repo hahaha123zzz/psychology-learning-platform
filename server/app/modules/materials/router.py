@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, File, Form, Header, Request, Response, U
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.embedding import get_embedding_client
 from app.core.errors import ApiError
 from app.core.response import ok
 from app.core.storage import put_object
+from app.core.task_dispatcher import dispatch_parse_job
 from app.db.models import (
     Job,
     Material,
@@ -18,17 +20,162 @@ from app.db.session import get_db_session
 from app.modules.auth.dependencies import get_current_user, require_course_role
 from app.modules.courses import service as course_service
 from app.modules.materials import service as materials_service
+from app.modules.materials import uploads as uploads_service
 from app.modules.materials import workflow as workflow_service
 from app.modules.materials.schemas import (
     KnowledgeObjectCorrection,
     MaterialUploadForm,
     MaterialUploadOut,
     ParseReviewIssueResolution,
+    UploadPartComplete,
+    UploadSessionCreate,
 )
 
 router = APIRouter()
 
 MATERIALS_UPLOAD_ENDPOINT = "POST:/api/v1/courses/{course_id}/materials"
+
+
+@router.post("/courses/{course_id}/upload-sessions", response_model=None)
+async def create_upload_session(
+    course_id: str,
+    body: UploadSessionCreate,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    await require_course_role(course_id, user, db, roles={"teacher"})
+    await materials_service.get_course_or_404(db, course_id)
+    session = await uploads_service.create_session(
+        db,
+        course_id=course_id,
+        title=body.title,
+        material_type=body.material_type,
+        filename=body.filename,
+        size_bytes=body.size_bytes,
+        created_by=user.id,
+    )
+    await course_service.write_audit(
+        db,
+        actor_id=user.id,
+        action="material.upload_session_created",
+        resource_type="upload_session",
+        resource_id=session.id,
+        course_id=course_id,
+        detail={"filename": body.filename, "size_bytes": body.size_bytes},
+    )
+    await db.commit()
+    return ok(request, uploads_service.session_out(session), status_code=201)
+
+
+@router.get("/upload-sessions/{session_id}", response_model=None)
+async def get_upload_session(
+    session_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    session = await uploads_service.get_session_or_404(db, session_id)
+    await require_course_role(session.course_id, user, db, roles={"teacher"})
+    await uploads_service.expire_if_needed(db, session)
+    parts = list(
+        (
+            await db.execute(
+                select(uploads_service.UploadPart)
+                .where(uploads_service.UploadPart.upload_session_id == session.id)
+                .order_by(uploads_service.UploadPart.part_number)
+            )
+        ).scalars()
+    )
+    await db.commit()
+    return ok(request, uploads_service.session_out(session, parts))
+
+
+@router.post("/upload-sessions/{session_id}/parts/{part_number}/url", response_model=None)
+async def get_upload_part_url(
+    session_id: str,
+    part_number: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    session = await uploads_service.get_session_or_404(db, session_id)
+    await require_course_role(session.course_id, user, db, roles={"teacher"})
+    data = await uploads_service.get_part_url(db, session, part_number)
+    await db.commit()
+    return ok(request, data)
+
+
+@router.put("/upload-sessions/{session_id}/parts/{part_number}", response_model=None)
+async def complete_upload_part(
+    session_id: str,
+    part_number: int,
+    body: UploadPartComplete,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    session = await uploads_service.get_session_or_404(db, session_id)
+    await require_course_role(session.course_id, user, db, roles={"teacher"})
+    await uploads_service.record_part(
+        db, session, part_number=part_number, etag=body.etag, size_bytes=body.size_bytes
+    )
+    await db.commit()
+    return ok(
+        request,
+        {"upload_session_id": session.id, "part_number": part_number, "status": session.status},
+    )
+
+
+@router.post("/upload-sessions/{session_id}/complete", response_model=None)
+async def complete_upload_session(
+    session_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    session = await uploads_service.get_session_or_404(db, session_id)
+    await require_course_role(session.course_id, user, db, roles={"teacher"})
+    material, version = await uploads_service.complete_session(db, session, user.id)
+    await course_service.write_audit(
+        db,
+        actor_id=user.id,
+        action="material.uploaded",
+        resource_type="material_version",
+        resource_id=version.id,
+        course_id=material.course_id,
+        detail={
+            "material_id": material.id,
+            "sha256": version.sha256,
+            "size_bytes": version.size_bytes,
+            "upload_session_id": session.id,
+        },
+    )
+    await db.commit()
+    return ok(
+        request,
+        {
+            "material_id": material.id,
+            "version_id": version.id,
+            "status": version.status,
+            "sha256": version.sha256,
+            "size_bytes": version.size_bytes,
+        },
+    )
+
+
+@router.delete("/upload-sessions/{session_id}", response_model=None)
+async def cancel_upload_session(
+    session_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    session = await uploads_service.get_session_or_404(db, session_id)
+    await require_course_role(session.course_id, user, db, roles={"teacher"})
+    await uploads_service.cancel_session(db, session)
+    await db.commit()
+    return ok(request, {"upload_session_id": session.id, "status": session.status})
 
 
 @router.post("/courses/{course_id}/materials", response_model=None)
@@ -238,6 +385,7 @@ async def trigger_parse(
         stage="queued",
         payload={"material_version_id": version_id},
         idempotency_key=idempotency_key,
+        worker_backend=get_settings().task_backend,
         created_by=user.id,
     )
     db.add(job)
@@ -254,7 +402,7 @@ async def trigger_parse(
     )
     await db.commit()
     await db.refresh(job, attribute_names=["id"])
-    materials_service.spawn_parse_job(job.id, version_id)
+    dispatch_parse_job(job.id, version_id)
     return ok(request, {"job_id": job.id, "status": "queued"}, status_code=202)
 
 

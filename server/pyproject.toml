@@ -21,6 +21,8 @@ dependencies = [
   "pyjwt>=2.10,<3",
   "bcrypt>=4.2,<5",
   "minio>=7.2,<8",
+  "boto3>=1.35,<2",
+  "celery>=5.4,<6",
   "python-multipart>=0.0.20,<0.1",
   "pypdf>=5.1,<7",
   "PyMuPDF>=1.26,<2",
@@ -49,3 +51,8 @@ target-version = "py311"
 select = ["E", "F", "I", "B", "UP"]
 # B008: FastAPI 依赖注入的标准用法即在参数默认值中调用 Depends()
 ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# 已合并的历史迁移只读，不按当前风格改写；alembic 模板生成的旧式导入与长行予以豁免。
+"alembic/versions/000*.py" = ["I001", "UP007", "UP035"]
+"alembic/versions/001[0-2]*.py" = ["I001", "UP007", "UP035"]

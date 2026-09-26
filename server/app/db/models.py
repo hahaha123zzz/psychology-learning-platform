@@ -58,13 +58,23 @@ class Job(Base, ULIDPrimaryKeyMixin, OptimisticLockMixin, TimestampMixin):
     idempotency_key: Mapped[str | None] = mapped_column(String(128))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    checkpoint: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    worker_backend: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="in_process", server_default="in_process"
+    )
     created_by: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
 
     __table_args__ = (
+        Index("ix_jobs_heartbeat", "status", "last_heartbeat_at"),
         CheckConstraint(
             "status IN ('queued','running','succeeded','failed','cancelled')",
             name="ck_jobs_status",
         ),
+        CheckConstraint("worker_backend IN ('in_process','celery')", name="ck_jobs_worker_backend"),
         UniqueConstraint("kind", "idempotency_key", name="uq_jobs_kind_idempotency"),
     )
 
@@ -674,6 +684,64 @@ class MaterialVersion(Base, ULIDPrimaryKeyMixin):
             "quality_gate_status IN ('pending','blocked','approved')",
             name="ck_material_versions_quality_gate",
         ),
+    )
+
+
+class UploadSession(Base, ULIDPrimaryKeyMixin, TimestampMixin):
+    """可恢复浏览器直传会话；完成验收后才创建教材版本。"""
+
+    __tablename__ = "upload_sessions"
+
+    course_id: Mapped[str] = mapped_column(String(26), ForeignKey("courses.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    material_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    part_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    object_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    multipart_upload_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="created", server_default="created"
+    )
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    material_id: Mapped[str | None] = mapped_column(String(26), ForeignKey("materials.id"))
+    material_version_id: Mapped[str | None] = mapped_column(
+        String(26), ForeignKey("material_versions.id")
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(26), ForeignKey("users.id"), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('created','uploading','uploaded','verifying','completed',"
+            "'failed','cancelled','expired')",
+            name="ck_upload_sessions_status",
+        ),
+        CheckConstraint(
+            "material_type IN ('textbook','slides','handout','exercise','reference','other')",
+            name="ck_upload_sessions_material_type",
+        ),
+        Index("ix_upload_sessions_course_status", "course_id", "status", "created_at"),
+        Index("ix_upload_sessions_creator_status", "created_by", "status"),
+    )
+
+
+class UploadPart(Base, TimestampMixin):
+    """已确认的 MinIO Multipart 分片。"""
+
+    __tablename__ = "upload_parts"
+
+    upload_session_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("upload_sessions.id"), primary_key=True
+    )
+    part_number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    etag: Mapped[str] = mapped_column(String(128), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("part_number >= 1", name="ck_upload_parts_number"),
+        CheckConstraint("size_bytes > 0", name="ck_upload_parts_size"),
     )
 
 

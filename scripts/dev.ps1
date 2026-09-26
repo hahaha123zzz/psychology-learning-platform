@@ -52,11 +52,19 @@ try {
         Write-Host "$($service.Name) 已启动，PID $($started.ProcessId)。"
     }
 
+    $worker = Remove-StaleDevProcessRecord -RepositoryRoot $repoRoot -Name "worker"
+    if ($null -ne $worker) {
+        Write-Host "worker 已在运行，复用受管进程 PID $($worker.ProcessId)。"
+    } else {
+        $started = Start-ManagedDevProcess -RepositoryRoot $repoRoot -Name "worker" -ScriptPath (Join-Path $PSScriptRoot "dev-worker.ps1")
+        Write-Host "worker 已启动，PID $($started.ProcessId)。"
+    }
+
     Write-Host "`n开发环境已就绪："
     Write-Host "  Web: http://localhost:3000"
     Write-Host "  API: http://localhost:8000/docs"
     Write-Host "  日志: logs/dev"
-    Write-Host "  停止 API/Web: .\scripts\dev-stop.ps1"
+    Write-Host "  停止 API/Web/Worker: .\scripts\dev-stop.ps1"
 } catch {
     Write-Error $_.Exception.Message
     exit 1

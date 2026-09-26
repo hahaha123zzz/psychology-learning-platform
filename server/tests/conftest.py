@@ -10,6 +10,7 @@ os.environ["DATABASE_URL"] = (
 )
 os.environ["JWT_SECRET"] = "test-secret-key-for-hmac-sha256-32bytes!"
 os.environ["APP_ENV"] = "test"
+os.environ["TASK_BACKEND"] = "in_process"
 
 import asyncio  # noqa: E402
 

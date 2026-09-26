@@ -2,7 +2,7 @@
 . (Join-Path $PSScriptRoot "dev-common.ps1")
 
 $repoRoot = Get-DevRepositoryRoot
-foreach ($name in @("api", "web")) {
+foreach ($name in @("api", "web", "worker")) {
     $recordPath = Get-DevProcessRecordPath -RepositoryRoot $repoRoot -Name $name
     $record = Get-DevProcessRecord -RepositoryRoot $repoRoot -Name $name
     if ($null -eq $record) {

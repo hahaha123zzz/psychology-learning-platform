@@ -209,8 +209,11 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
             return
         job.status = "running"
         job.started_at = datetime.now(UTC)
+        job.last_heartbeat_at = job.started_at
+        job.attempt_count += 1
         job.stage = "chunk"
         job.progress = 5
+        job.checkpoint = {"stage": "chunk"}
         await session.commit()
         try:
             material = await session.get(Material, version.material_id)
@@ -233,6 +236,8 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
 
             job.stage = "embed"
             job.progress = 20
+            job.last_heartbeat_at = datetime.now(UTC)
+            job.checkpoint = {"stage": "embed", "completed": 0, "total": len(rows)}
             await session.commit()
 
             total = len(rows)
@@ -243,6 +248,8 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
                     row["embedding"] = "[" + ",".join(f"{v:.6f}" for v in vector) + "]"
                 progress = 20 + int(70 * (start + len(batch)) / total)
                 job.progress = max(job.progress or 0, progress)
+                job.last_heartbeat_at = datetime.now(UTC)
+                job.checkpoint = {"stage": "embed", "completed": start + len(batch), "total": total}
                 await session.commit()
 
             # 先完整取得新向量，再在一个事务中替换旧索引；外部调用失败不会破坏旧索引。
@@ -315,6 +322,8 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
             job.progress = 100
             job.status = "succeeded"
             job.finished_at = datetime.now(UTC)
+            job.last_heartbeat_at = job.finished_at
+            job.checkpoint = {"stage": "done"}
             await session.commit()
         except Exception as exc:  # noqa: BLE001
             await session.rollback()
@@ -324,6 +333,7 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
                 job.error = str(exc)[:500]
                 job.retryable = True
                 job.finished_at = datetime.now(UTC)
+                job.last_heartbeat_at = job.finished_at
                 await session.commit()
 
 

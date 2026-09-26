@@ -3,9 +3,7 @@ from pydantic import BaseModel, Field
 
 class MaterialUploadForm(BaseModel):
     title: str = Field(min_length=1, max_length=200)
-    material_type: str = Field(
-        pattern="^(textbook|slides|handout|exercise|reference|other)$"
-    )
+    material_type: str = Field(pattern="^(textbook|slides|handout|exercise|reference|other)$")
     visibility: str = Field(default="draft", pattern="^(draft|published)$")
 
 
@@ -31,3 +29,15 @@ class KnowledgeObjectCorrection(BaseModel):
 class ParseReviewIssueResolution(BaseModel):
     status: str = Field(pattern="^(resolved|ignored)$")
     resolution: str = Field(min_length=1, max_length=1000)
+
+
+class UploadSessionCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    material_type: str = Field(pattern="^(textbook|slides|handout|exercise|reference|other)$")
+    filename: str = Field(min_length=1, max_length=255)
+    size_bytes: int = Field(gt=0)
+
+
+class UploadPartComplete(BaseModel):
+    etag: str = Field(min_length=1, max_length=128)
+    size_bytes: int = Field(gt=0)

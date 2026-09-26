@@ -26,7 +26,7 @@ function Initialize-DevRuntimePaths {
 function Get-DevProcessRecordPath {
     param(
         [Parameter(Mandatory = $true)][string]$RepositoryRoot,
-        [Parameter(Mandatory = $true)][ValidateSet("api", "web")][string]$Name
+        [Parameter(Mandatory = $true)][ValidateSet("api", "web", "worker")][string]$Name
     )
 
     $paths = Get-DevRuntimePaths -RepositoryRoot $RepositoryRoot
@@ -36,7 +36,7 @@ function Get-DevProcessRecordPath {
 function Get-DevProcessRecord {
     param(
         [Parameter(Mandatory = $true)][string]$RepositoryRoot,
-        [Parameter(Mandatory = $true)][ValidateSet("api", "web")][string]$Name
+        [Parameter(Mandatory = $true)][ValidateSet("api", "web", "worker")][string]$Name
     )
 
     $path = Get-DevProcessRecordPath -RepositoryRoot $RepositoryRoot -Name $Name
@@ -66,7 +66,7 @@ function Test-DevProcessRecord {
 function Remove-StaleDevProcessRecord {
     param(
         [Parameter(Mandatory = $true)][string]$RepositoryRoot,
-        [Parameter(Mandatory = $true)][ValidateSet("api", "web")][string]$Name
+        [Parameter(Mandatory = $true)][ValidateSet("api", "web", "worker")][string]$Name
     )
 
     $record = Get-DevProcessRecord -RepositoryRoot $RepositoryRoot -Name $Name
@@ -128,7 +128,7 @@ function Wait-ComposeServiceHealth {
 function Start-ManagedDevProcess {
     param(
         [Parameter(Mandatory = $true)][string]$RepositoryRoot,
-        [Parameter(Mandatory = $true)][ValidateSet("api", "web")][string]$Name,
+        [Parameter(Mandatory = $true)][ValidateSet("api", "web", "worker")][string]$Name,
         [Parameter(Mandatory = $true)][string]$ScriptPath
     )
 

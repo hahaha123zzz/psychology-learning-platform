@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     minio_secret_key: str = "change-me"
     minio_secure: bool = False
     minio_bucket: str = "course-materials"
+    minio_browser_origins: str = "http://localhost:3000,http://localhost:3001"
 
     jwt_secret: str = "dev-only-change-me-32-bytes-minimum-key!"
     jwt_algorithm: str = "HS256"
@@ -35,7 +36,14 @@ class Settings(BaseSettings):
 
     upload_max_mb: int = 200
     course_storage_quota_gb: int = 20
+    upload_part_size_mb: int = 8
+    upload_session_ttl_hours: int = 24
     parse_simulate_seconds: float = 2.0
+    task_backend: Literal["celery", "in_process"] = "celery"
+    celery_broker_url: str = "redis://127.0.0.1:6379/1"
+    celery_result_backend: str = "redis://127.0.0.1:6379/1"
+    task_heartbeat_seconds: int = 10
+    task_stale_seconds: int = 1800
 
     llm_provider: str = "internal"
     llm_base_url: str = ""

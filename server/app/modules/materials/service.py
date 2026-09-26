@@ -100,9 +100,7 @@ async def validate_and_hash(file: UploadFile) -> ValidatedUpload:
             )
         digest.update(chunk)
     await file.seek(0)
-    return ValidatedUpload(
-        content_type=content_type, sha256=digest.hexdigest(), size_bytes=size
-    )
+    return ValidatedUpload(content_type=content_type, sha256=digest.hexdigest(), size_bytes=size)
 
 
 async def check_course_quota(db: AsyncSession, course_id: str, incoming: int) -> None:
@@ -162,9 +160,7 @@ async def get_course_or_404(db: AsyncSession, course_id: str) -> Course:
     result = await db.execute(select(Course).where(Course.id == course_id).limit(1))
     course = result.scalar_one_or_none()
     if course is None:
-        raise ApiError(
-            status_code=404, code="COURSE_NOT_FOUND", message="课程不存在或无权访问"
-        )
+        raise ApiError(status_code=404, code="COURSE_NOT_FOUND", message="课程不存在或无权访问")
     return course
 
 
@@ -173,9 +169,7 @@ async def get_course_or_404(db: AsyncSession, course_id: str) -> Course:
 _background_tasks: set[asyncio.Task] = set()
 
 
-async def find_active_parse_job(
-    db: AsyncSession, version_id: str
-) -> Job | None:
+async def find_active_parse_job(db: AsyncSession, version_id: str) -> Job | None:
     result = await db.execute(
         select(Job).where(
             Job.kind == "material_parse",
@@ -186,9 +180,7 @@ async def find_active_parse_job(
     return result.scalar_one_or_none()
 
 
-async def find_parse_job_by_idempotency_key(
-    db: AsyncSession, key: str
-) -> Job | None:
+async def find_parse_job_by_idempotency_key(db: AsyncSession, key: str) -> Job | None:
     result = await db.execute(
         select(Job).where(
             Job.kind == "material_parse",
@@ -211,7 +203,10 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
             return
         job.status = "running"
         job.started_at = datetime.now(UTC)
+        job.last_heartbeat_at = job.started_at
+        job.attempt_count += 1
         job.stage = "download"
+        job.checkpoint = {"stage": "download"}
         version.status = "parsing"
         await session.commit()
         try:
@@ -220,12 +215,16 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
             data = await get_object_bytes(version.object_key)
             job.progress = max(job.progress, 30)
             job.stage = "parse"
+            job.last_heartbeat_at = datetime.now(UTC)
+            job.checkpoint = {"stage": "parse", "source": "downloaded"}
             await session.commit()
 
             parser = get_parser(version.content_type)
             result = await asyncio.to_thread(parser.parse, data, version.content_type or "")
             job.progress = max(job.progress, 70)
             job.stage = "quality"
+            job.last_heartbeat_at = datetime.now(UTC)
+            job.checkpoint = {"stage": "quality", "object_count": len(result.objects)}
             await session.commit()
 
             empty_pages = max(result.page_count - _pages_with_objects(result.objects), 0)
@@ -254,9 +253,7 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
                 )
             )
             await session.execute(
-                delete(KnowledgeChunk).where(
-                    KnowledgeChunk.material_version_id == version_id
-                )
+                delete(KnowledgeChunk).where(KnowledgeChunk.material_version_id == version_id)
             )
             await session.execute(
                 delete(RetrievalIndexEntry).where(
@@ -268,19 +265,13 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
                 )
             )
             await session.execute(
-                delete(RetrievalUnit).where(
-                    RetrievalUnit.material_version_id == version_id
-                )
+                delete(RetrievalUnit).where(RetrievalUnit.material_version_id == version_id)
             )
             await session.execute(
-                delete(KnowledgeObject).where(
-                    KnowledgeObject.material_version_id == version_id
-                )
+                delete(KnowledgeObject).where(KnowledgeObject.material_version_id == version_id)
             )
             await session.execute(
-                delete(ParseReviewIssue).where(
-                    ParseReviewIssue.material_version_id == version_id
-                )
+                delete(ParseReviewIssue).where(ParseReviewIssue.material_version_id == version_id)
             )
             rows = [
                 KnowledgeObject(
@@ -344,6 +335,8 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
             job.stage = "done"
             job.status = "succeeded"
             job.finished_at = datetime.now(UTC)
+            job.last_heartbeat_at = job.finished_at
+            job.checkpoint = {"stage": "done"}
             await session.commit()
         except Exception as exc:  # noqa: BLE001
             await session.rollback()
@@ -356,6 +349,7 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
                 job.error = str(exc)[:500]
                 job.retryable = True
                 job.finished_at = datetime.now(UTC)
+                job.last_heartbeat_at = job.finished_at
                 await session.commit()
 
 
@@ -366,7 +360,8 @@ def _pages_with_objects(objects) -> int:
 def _sequence_relations(objects: list[KnowledgeObject]) -> list[ObjectRelation]:
     """从确定的阅读顺序构建同章节相邻对象关系，供最小证据闭包使用。"""
     content_objects = [
-        object for object in sorted(objects, key=lambda item: item.reading_order)
+        object
+        for object in sorted(objects, key=lambda item: item.reading_order)
         if object.type != "chapter"
     ]
     relations: list[ObjectRelation] = []
@@ -411,6 +406,10 @@ def job_out(job: Job) -> dict:
         "stage": job.stage,
         "started_at": job.started_at.isoformat() if job.started_at else None,
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+        "last_heartbeat_at": job.last_heartbeat_at.isoformat() if job.last_heartbeat_at else None,
+        "attempt_count": job.attempt_count,
+        "checkpoint": job.checkpoint,
+        "worker_backend": job.worker_backend,
         "error": job.error,
         "retryable": job.retryable,
     }
@@ -449,9 +448,7 @@ async def get_object_or_404(db: AsyncSession, object_id: str) -> KnowledgeObject
     return object_row
 
 
-async def get_parse_review_issue_or_404(
-    db: AsyncSession, issue_id: str
-) -> ParseReviewIssue:
+async def get_parse_review_issue_or_404(db: AsyncSession, issue_id: str) -> ParseReviewIssue:
     issue = await db.get(ParseReviewIssue, issue_id)
     if issue is None:
         raise ApiError(
@@ -474,9 +471,7 @@ async def build_outline(db: AsyncSession, version_id: str, page_count: int | Non
     chapters = list(result.scalars())
 
     count_result = await db.execute(
-        select(
-            KnowledgeObject.chapter_path, func.count(KnowledgeObject.id)
-        )
+        select(KnowledgeObject.chapter_path, func.count(KnowledgeObject.id))
         .where(KnowledgeObject.material_version_id == version_id)
         .group_by(KnowledgeObject.chapter_path)
     )
@@ -485,9 +480,7 @@ async def build_outline(db: AsyncSession, version_id: str, page_count: int | Non
     outline: list[dict] = []
     for index, chapter in enumerate(chapters):
         start_page = chapter.physical_page
-        next_page = (
-            chapters[index + 1].physical_page if index + 1 < len(chapters) else None
-        )
+        next_page = chapters[index + 1].physical_page if index + 1 < len(chapters) else None
         end_page = (next_page - 1) if next_page else (page_count or start_page)
         outline.append(
             {

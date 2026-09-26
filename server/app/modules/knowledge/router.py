@@ -3,9 +3,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.core.response import ok
 from app.core.storage import presigned_get_url
+from app.core.task_dispatcher import dispatch_embed_job
 from app.db.models import EvidenceTicket, Job, ParseReviewIssue, User
 from app.db.session import get_db_session
 from app.modules.auth.dependencies import get_current_user, require_course_role
@@ -88,6 +90,7 @@ async def trigger_embed(
         stage="queued",
         payload={"material_version_id": version_id},
         idempotency_key=idempotency_key,
+        worker_backend=get_settings().task_backend,
         created_by=user.id,
     )
     db.add(job)
@@ -102,7 +105,7 @@ async def trigger_embed(
     )
     await db.commit()
     await db.refresh(job, attribute_names=["id"])
-    knowledge_service.spawn_embed_job(job.id, version_id)
+    dispatch_embed_job(job.id, version_id)
     return ok(request, {"job_id": job.id, "status": "queued"}, status_code=202)
 
 

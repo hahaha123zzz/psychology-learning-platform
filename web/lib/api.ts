@@ -57,6 +57,72 @@ export function uploadForm<T>(path: string, body: FormData, onProgress: (percent
   });
 }
 
+type UploadSession = {
+  upload_session_id: string;
+  status: string;
+  original_filename: string;
+  size_bytes: number;
+  part_size_bytes: number;
+  total_parts: number;
+  completed_parts: number[];
+};
+
+type UploadPartUrl = { part_number: number; size_bytes: number; upload_url: string };
+
+export async function uploadMaterialResumable(
+  courseId: string,
+  input: { title: string; material_type: string; file: File },
+  onProgress: (percent: number, detail: string) => void,
+): Promise<{ material_id: string; version_id: string; status: string }> {
+  const storageKey = `material-upload:${courseId}:${input.file.name}:${input.file.size}`;
+  let session: UploadSession | null = null;
+  const stored = window.localStorage.getItem(storageKey);
+  if (stored) {
+    try {
+      const candidate = await api<UploadSession>(`/upload-sessions/${stored}`);
+      if (candidate.status === "uploading") session = candidate;
+      else window.localStorage.removeItem(storageKey);
+    } catch { window.localStorage.removeItem(storageKey); }
+  }
+  if (!session) {
+    session = await api<UploadSession>(`/courses/${courseId}/upload-sessions`, {
+      method: "POST",
+      body: JSON.stringify({
+        title: input.title,
+        material_type: input.material_type,
+        filename: input.file.name,
+        size_bytes: input.file.size,
+      }),
+    });
+    window.localStorage.setItem(storageKey, session.upload_session_id);
+  }
+  const completed = new Set(session.completed_parts);
+  for (let number = 1; number <= session.total_parts; number += 1) {
+    if (completed.has(number)) continue;
+    const part = await api<UploadPartUrl>(`/upload-sessions/${session.upload_session_id}/parts/${number}/url`, { method: "POST" });
+    const start = (number - 1) * session.part_size_bytes;
+    const blob = input.file.slice(start, start + part.size_bytes);
+    onProgress(Math.round((completed.size / session.total_parts) * 100), `正在上传第 ${number}/${session.total_parts} 个分片…`);
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      response = await fetch(part.upload_url, { method: "PUT", body: blob });
+      if (response.ok) break;
+    }
+    if (!response?.ok) throw new ApiError(0, "分片上传未完成，已保存进度；网络恢复后重新选择同一文件即可继续。", undefined, "UPLOAD_PART_NETWORK_ERROR", true);
+    const etag = response.headers.get("ETag");
+    if (!etag) throw new ApiError(502, "对象存储未返回 ETag，无法安全确认分片。", undefined, "UPLOAD_PART_ETAG_MISSING", true);
+    await api(`/upload-sessions/${session.upload_session_id}/parts/${number}`, {
+      method: "PUT", body: JSON.stringify({ etag, size_bytes: blob.size }),
+    });
+    completed.add(number);
+    onProgress(Math.round((completed.size / session.total_parts) * 100), `已完成 ${completed.size}/${session.total_parts} 个分片`);
+  }
+  const result = await api<{ material_id: string; version_id: string; status: string }>(`/upload-sessions/${session.upload_session_id}/complete`, { method: "POST" });
+  window.localStorage.removeItem(storageKey);
+  onProgress(100, "上传与完整性校验完成。");
+  return result;
+}
+
 export type ChatEvent = { event: string; data: Record<string, unknown> };
 
 export async function streamChatTurn(sessionId: string, content: string, onEvent: (event: ChatEvent) => void): Promise<void> {

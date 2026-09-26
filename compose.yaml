@@ -36,6 +36,8 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-change-me}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-change-me}
+      # 浏览器从 localhost:3000 直传分片到 MinIO 属跨域 PUT，必须显式放行来源。
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_BROWSER_ORIGINS:-http://localhost:3000,http://localhost:3001}
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
