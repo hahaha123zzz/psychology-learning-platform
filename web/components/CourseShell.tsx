@@ -18,6 +18,9 @@ const NAVIGATION: Record<CourseRole, NavItem[]> = {
   student: [
     { label: "首页", icon: "solar:home-2-linear", suffix: "" },
     { label: "学习", icon: "solar:book-2-linear", suffix: "/learn" },
+    { label: "练习", icon: "solar:pen-new-square-linear", suffix: "/practice" },
+    { label: "成长", icon: "solar:chart-square-linear", suffix: "/growth" },
+    { label: "我的", icon: "solar:user-rounded-linear", suffix: "/me" },
   ],
 };
 
