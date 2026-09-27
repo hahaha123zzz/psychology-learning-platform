@@ -1,2 +1,2 @@
-import StudentBranches from "../../../components/StudentBranches";
-export default function StudentBranchesPage(){return <StudentBranches/>}
+import LegacyCourseRedirect from "../../../components/LegacyCourseRedirect";
+export default function StudentBranchesPage(){return <LegacyCourseRedirect role="student" suffix="/learn" />}

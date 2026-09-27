@@ -1,3 +1,3 @@
-import StudentAssessments from "../../../components/StudentAssessments";
+import LegacyCourseRedirect from "../../../components/LegacyCourseRedirect";
 
-export default function StudentAssessmentsPage() { return <StudentAssessments />; }
+export default function StudentAssessmentsPage() { return <LegacyCourseRedirect role="student" suffix="/practice" />; }

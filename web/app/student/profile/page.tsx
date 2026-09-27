@@ -1,2 +1,2 @@
-import StudentProfile from "../../../components/StudentProfile";
-export default function StudentProfilePage(){return <StudentProfile/>}
+import LegacyCourseRedirect from "../../../components/LegacyCourseRedirect";
+export default function StudentProfilePage(){return <LegacyCourseRedirect role="student" suffix="/me" />}

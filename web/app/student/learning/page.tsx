@@ -1,3 +1,3 @@
-import StudentLearningSession from "../../../components/StudentLearningSession";
+import LegacyCourseRedirect from "../../../components/LegacyCourseRedirect";
 
-export default function StudentLearningPage() { return <StudentLearningSession />; }
+export default function StudentLearningPage() { return <LegacyCourseRedirect role="student" suffix="/learn" />; }
