@@ -1,6 +1,7 @@
-"""Stub 解析器：基于pypdf的文本抽取，演示解析器合同。
+"""原生数字 PDF 的本地布局解析器。
 
-真实部署将替换为MinerU适配器（版面、表格、公式、OCR），业务模型不受影响。
+该解析器只使用 PDF 内的原生文字和图片对象，不调用外部服务，也不把猜测结果
+伪装成表格、公式或视觉理解结果。类名因既有调用方兼容而保留。
 """
 
 import io
@@ -25,7 +26,7 @@ MAX_PARAGRAPH_CHARS = 600
 
 class StubPdfParser:
     name = "stub-pdf"
-    version = "1.0"
+    version = "native-layout-v3.3"
 
     def parse(self, data: bytes, content_type: str) -> ParserResult:
         reader = pypdf.PdfReader(io.BytesIO(data))
@@ -104,21 +105,14 @@ class StubPdfParser:
                     continue
                 else:
                     page_paragraphs.append(line)
-            layout_blocks = _page_text_blocks(layout_document[page_index - 1], chapter_lines)
-            if layout_blocks:
-                for block, bbox in layout_blocks:
+            layout_entries = _page_layout_entries(layout_document[page_index - 1], chapter_lines)
+            if layout_entries:
+                for entry in layout_entries:
                     order += 1
-                    objects.append(
-                        ParsedObject(
-                            type="paragraph",
-                            raw_content=block,
-                            physical_page=page_index,
-                            reading_order=order,
-                            chapter_path=current_path,
-                            bbox=bbox,
-                            confidence=0.9,
-                        )
-                    )
+                    entry.physical_page = page_index
+                    entry.reading_order = order
+                    entry.chapter_path = current_path
+                    objects.append(entry)
             elif page_paragraphs:
                 merged = " ".join(page_paragraphs)
                 for block_start in range(0, len(merged), MAX_PARAGRAPH_CHARS):
@@ -159,12 +153,32 @@ class StubPdfParser:
         )
 
 
-def _page_text_blocks(page: pymupdf.Page, chapter_lines: set[str]) -> list[tuple[str, list[float]]]:
-    """提取原生 PDF 文本块并转换为项目统一的 [left, bottom, right, top] 坐标。"""
+def _page_layout_entries(page: pymupdf.Page, chapter_lines: set[str]) -> list[ParsedObject]:
+    """提取原生文本和嵌入图片，坐标统一为 [left, bottom, right, top]。"""
     page_height = float(page.rect.height)
-    blocks: list[tuple[str, list[float]]] = []
+    entries: list[ParsedObject] = []
     for block in page.get_text("dict").get("blocks", []):
-        if block.get("type") != 0:
+        block_type = block.get("type")
+        if block_type == 1:
+            bbox = _to_pdf_bbox(block.get("bbox"), page_height)
+            image = block.get("image")
+            if bbox is None or not isinstance(image, bytes) or not image:
+                continue
+            entries.append(
+                ParsedObject(
+                    type="figure",
+                    raw_content="",
+                    physical_page=0,
+                    bbox=bbox,
+                    confidence=0.95,
+                    asset_bytes=image,
+                    asset_mime_type=_image_mime_type(block.get("ext")),
+                    asset_width=_positive_int(block.get("width")),
+                    asset_height=_positive_int(block.get("height")),
+                )
+            )
+            continue
+        if block_type != 0:
             continue
         kept_lines = []
         for line in block.get("lines", []):
@@ -173,19 +187,55 @@ def _page_text_blocks(page: pymupdf.Page, chapter_lines: set[str]) -> list[tuple
                 kept_lines.append((content, line["bbox"]))
         if not kept_lines:
             continue
-        left = min(float(bbox[0]) for _, bbox in kept_lines)
-        top = min(float(bbox[1]) for _, bbox in kept_lines)
-        right = max(float(bbox[2]) for _, bbox in kept_lines)
-        bottom = max(float(bbox[3]) for _, bbox in kept_lines)
-        if left >= right or top >= bottom:
+        raw_bbox = [
+            min(float(bbox[0]) for _, bbox in kept_lines),
+            min(float(bbox[1]) for _, bbox in kept_lines),
+            max(float(bbox[2]) for _, bbox in kept_lines),
+            max(float(bbox[3]) for _, bbox in kept_lines),
+        ]
+        bbox = _to_pdf_bbox(raw_bbox, page_height)
+        if bbox is None:
             continue
-        blocks.append(
-            (
-                " ".join(content for content, _ in kept_lines),
-                [left, page_height - bottom, right, page_height - top],
+        entries.append(
+            ParsedObject(
+                type="paragraph",
+                raw_content=" ".join(content for content, _ in kept_lines),
+                physical_page=0,
+                bbox=bbox,
+                confidence=0.9,
             )
         )
-    return blocks
+    return sorted(entries, key=lambda item: (-item.bbox[3], item.bbox[0]))
+
+
+def _to_pdf_bbox(raw_bbox, page_height: float) -> list[float] | None:
+    if not isinstance(raw_bbox, (list, tuple)) or len(raw_bbox) != 4:
+        return None
+    left, top, right, bottom = (float(value) for value in raw_bbox)
+    if left >= right or top >= bottom:
+        return None
+    return [left, page_height - bottom, right, page_height - top]
+
+
+def _positive_int(value) -> int | None:
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        return None
+    return result if result > 0 else None
+
+
+def _image_mime_type(extension: object) -> str:
+    normalized = str(extension or "png").lower()
+    return {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "jpx": "image/jpx",
+        "png": "image/png",
+        "gif": "image/gif",
+        "bmp": "image/bmp",
+        "tiff": "image/tiff",
+    }.get(normalized, "application/octet-stream")
 
 
 class UnsupportedTypeParser:

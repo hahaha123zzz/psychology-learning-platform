@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, File, Form, Header, Request, Response, UploadFile
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -12,6 +12,7 @@ from app.db.models import (
     Job,
     Material,
     MaterialVersion,
+    ParsedPage,
     ParseReviewIssue,
     PublicationSnapshot,
     User,
@@ -378,6 +379,10 @@ async def trigger_parse(
             message="当前版本状态不可触发解析",
             details={"status": version.status},
         )
+
+    # 已完成版本的“重新解析”是一次新的全量解析；失败任务的重试保留页级检查点。
+    if version.status == "parsed":
+        await db.execute(delete(ParsedPage).where(ParsedPage.material_version_id == version_id))
 
     job = Job(
         kind="material_parse",

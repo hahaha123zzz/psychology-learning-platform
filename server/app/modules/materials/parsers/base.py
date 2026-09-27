@@ -15,6 +15,10 @@ class ParsedObject:
     chapter_path: str = ""
     bbox: list[float] | None = None
     confidence: float = 0.9
+    asset_bytes: bytes | None = None
+    asset_mime_type: str | None = None
+    asset_width: int | None = None
+    asset_height: int | None = None
 
 
 @dataclass

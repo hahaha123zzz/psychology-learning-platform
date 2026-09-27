@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import io
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -16,7 +17,9 @@ from app.db.models import (
     KnowledgeObject,
     Material,
     MaterialVersion,
+    ObjectAsset,
     ObjectRelation,
+    ParsedPage,
     ParseReviewIssue,
     RetrievalIndexEntry,
     RetrievalUnit,
@@ -191,11 +194,11 @@ async def find_parse_job_by_idempotency_key(db: AsyncSession, key: str) -> Job |
 
 
 async def run_parse_job(job_id: str, version_id: str) -> None:
-    """后台执行解析：下载→解析→质量检查→持久化。失败时版本回退为failed。"""
-    from app.core.storage import get_object_bytes
-    from app.db.models import KnowledgeObject
+    """后台执行解析：按页持久化，重试时保留已完成页面。"""
+    from app.core.storage import get_object_bytes, put_object
     from app.modules.materials.parsers.base import get_parser
 
+    current_page: int | None = None
     async with session_factory() as session:
         job = await session.get(Job, job_id)
         version = await session.get(MaterialVersion, version_id)
@@ -206,7 +209,7 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
         job.last_heartbeat_at = job.started_at
         job.attempt_count += 1
         job.stage = "download"
-        job.checkpoint = {"stage": "download"}
+        job.checkpoint = {"stage": "download", "attempt": job.attempt_count}
         version.status = "parsing"
         await session.commit()
         try:
@@ -221,13 +224,133 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
 
             parser = get_parser(version.content_type)
             result = await asyncio.to_thread(parser.parse, data, version.content_type or "")
-            job.progress = max(job.progress, 70)
+            completed_rows = list(
+                (
+                    await session.execute(
+                        select(ParsedPage).where(
+                            ParsedPage.material_version_id == version_id,
+                            ParsedPage.parser_version == parser.version,
+                            ParsedPage.status == "completed",
+                        )
+                    )
+                ).scalars()
+            )
+            completed_pages = {row.physical_page for row in completed_rows}
+            if not completed_pages:
+                await _clear_parse_outputs(session, version_id)
+                await session.commit()
+
+            objects_by_page: dict[int, list] = {}
+            for parsed_object in result.objects:
+                objects_by_page.setdefault(parsed_object.physical_page, []).append(parsed_object)
+
+            completed_object_count = sum(row.object_count for row in completed_rows)
+            completed_asset_count = sum(row.asset_count for row in completed_rows)
+            for page_no in range(1, result.page_count + 1):
+                if page_no in completed_pages:
+                    continue
+                current_page = page_no
+                page_objects = objects_by_page.get(page_no, [])
+                rows = [
+                    KnowledgeObject(
+                        material_version_id=version_id,
+                        type=parsed.type,
+                        title=parsed.title,
+                        chapter_path=parsed.chapter_path,
+                        physical_page=parsed.physical_page,
+                        printed_page=parsed.printed_page,
+                        reading_order=parsed.reading_order,
+                        bbox=parsed.bbox,
+                        raw_content=parsed.raw_content,
+                        parser=parser.name,
+                        parser_version=parser.version,
+                        confidence=parsed.confidence,
+                        review_status="pending",
+                    )
+                    for parsed in page_objects
+                ]
+                session.add_all(rows)
+                await session.flush()
+                asset_count = 0
+                for parsed, row in zip(page_objects, rows, strict=True):
+                    if not parsed.asset_bytes:
+                        continue
+                    digest = hashlib.sha256(parsed.asset_bytes).hexdigest()
+                    key = layout_asset_key(
+                        version_id=version_id,
+                        parser_version=parser.version,
+                        physical_page=page_no,
+                        object_id=row.id,
+                        sha256=digest,
+                    )
+                    await put_object(
+                        key=key,
+                        data=io.BytesIO(parsed.asset_bytes),
+                        length=len(parsed.asset_bytes),
+                        content_type=parsed.asset_mime_type or "application/octet-stream",
+                    )
+                    session.add(
+                        ObjectAsset(
+                            material_version_id=version_id,
+                            knowledge_object_id=row.id,
+                            asset_type="object_crop",
+                            object_key=key,
+                            mime_type=parsed.asset_mime_type or "application/octet-stream",
+                            sha256=digest,
+                            physical_page=page_no,
+                            bbox=parsed.bbox,
+                            width=parsed.asset_width,
+                            height=parsed.asset_height,
+                            render_version=parser.version,
+                            status="ready",
+                        )
+                    )
+                    asset_count += 1
+                page_hash = _parsed_page_hash(page_objects)
+                session.add(
+                    ParsedPage(
+                        material_version_id=version_id,
+                        parser_version=parser.version,
+                        physical_page=page_no,
+                        status="completed",
+                        object_count=len(rows),
+                        asset_count=asset_count,
+                        content_hash=page_hash,
+                    )
+                )
+                completed_pages.add(page_no)
+                completed_object_count += len(rows)
+                completed_asset_count += asset_count
+                job.progress = max(job.progress, 30 + int(50 * page_no / max(result.page_count, 1)))
+                job.stage = "parse_pages"
+                job.last_heartbeat_at = datetime.now(UTC)
+                job.checkpoint = {
+                    "stage": "parse_pages",
+                    "parser_version": parser.version,
+                    "completed_pages": len(completed_pages),
+                    "total_pages": result.page_count,
+                    "last_page": page_no,
+                    "object_count": completed_object_count,
+                    "asset_count": completed_asset_count,
+                }
+                await session.commit()
+
+            job.progress = max(job.progress, 85)
             job.stage = "quality"
             job.last_heartbeat_at = datetime.now(UTC)
-            job.checkpoint = {"stage": "quality", "object_count": len(result.objects)}
+            job.checkpoint = {
+                "stage": "quality",
+                "parser_version": parser.version,
+                "completed_pages": len(completed_pages),
+                "total_pages": result.page_count,
+                "object_count": completed_object_count,
+                "asset_count": completed_asset_count,
+            }
             await session.commit()
 
-            empty_pages = max(result.page_count - _pages_with_objects(result.objects), 0)
+            empty_pages = result.page_count - len(
+                {page for page, entries in objects_by_page.items() if entries}
+            )
             low_confidence = sum(1 for o in result.objects if o.confidence < 0.5)
             quality_report = {
                 "parser": parser.name,
@@ -240,60 +363,16 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
             }
 
             job.stage = "persist"
-            # 重新解析会改变对象边界，旧检索分块不得继续作为可发布证据。
-            version_object_ids = select(KnowledgeObject.id).where(
-                KnowledgeObject.material_version_id == version_id
-            )
-            await session.execute(
-                delete(ObjectRelation).where(
-                    or_(
-                        ObjectRelation.source_object_id.in_(version_object_ids),
-                        ObjectRelation.target_object_id.in_(version_object_ids),
+            all_rows = list(
+                (
+                    await session.execute(
+                        select(KnowledgeObject)
+                        .where(KnowledgeObject.material_version_id == version_id)
+                        .order_by(KnowledgeObject.reading_order.asc())
                     )
-                )
+                ).scalars()
             )
-            await session.execute(
-                delete(KnowledgeChunk).where(KnowledgeChunk.material_version_id == version_id)
-            )
-            await session.execute(
-                delete(RetrievalIndexEntry).where(
-                    RetrievalIndexEntry.retrieval_unit_id.in_(
-                        select(RetrievalUnit.id).where(
-                            RetrievalUnit.material_version_id == version_id
-                        )
-                    )
-                )
-            )
-            await session.execute(
-                delete(RetrievalUnit).where(RetrievalUnit.material_version_id == version_id)
-            )
-            await session.execute(
-                delete(KnowledgeObject).where(KnowledgeObject.material_version_id == version_id)
-            )
-            await session.execute(
-                delete(ParseReviewIssue).where(ParseReviewIssue.material_version_id == version_id)
-            )
-            rows = [
-                KnowledgeObject(
-                    material_version_id=version_id,
-                    type=o.type,
-                    title=o.title,
-                    chapter_path=o.chapter_path,
-                    physical_page=o.physical_page,
-                    printed_page=o.printed_page,
-                    reading_order=o.reading_order,
-                    bbox=o.bbox,
-                    raw_content=o.raw_content,
-                    parser=parser.name,
-                    parser_version=parser.version,
-                    confidence=o.confidence,
-                    review_status="pending",
-                )
-                for o in result.objects
-            ]
-            session.add_all(rows)
-            await session.flush()
-            session.add_all(_sequence_relations(rows))
+            session.add_all(_sequence_relations(all_rows))
             blocking_codes = {"no_text_extracted", "parser_unavailable"}
             review_issues = [
                 ParseReviewIssue(
@@ -336,7 +415,14 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
             job.status = "succeeded"
             job.finished_at = datetime.now(UTC)
             job.last_heartbeat_at = job.finished_at
-            job.checkpoint = {"stage": "done"}
+            job.checkpoint = {
+                "stage": "done",
+                "parser_version": parser.version,
+                "completed_pages": len(completed_pages),
+                "total_pages": result.page_count,
+                "object_count": completed_object_count,
+                "asset_count": completed_asset_count,
+            }
             await session.commit()
         except Exception as exc:  # noqa: BLE001
             await session.rollback()
@@ -350,11 +436,75 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
                 job.retryable = True
                 job.finished_at = datetime.now(UTC)
                 job.last_heartbeat_at = job.finished_at
+                job.checkpoint = {
+                    **(job.checkpoint or {}),
+                    "stage": "failed",
+                    "failed_page": current_page,
+                    "error": str(exc)[:500],
+                }
                 await session.commit()
 
 
 def _pages_with_objects(objects) -> int:
     return len({o.physical_page for o in objects if o.raw_content})
+
+
+def layout_asset_key(
+    *, version_id: str, parser_version: str, physical_page: int, object_id: str, sha256: str
+) -> str:
+    """版面派生产物使用教材版本范围内不可变键，避免覆盖历史资产。"""
+    return (
+        f"material-layout/{version_id}/{parser_version}/pages/{physical_page}/"
+        f"objects/{object_id}-{sha256[:16]}"
+    )
+
+
+def _parsed_page_hash(objects) -> str:
+    digest = hashlib.sha256()
+    for object_row in objects:
+        digest.update(object_row.type.encode())
+        digest.update(object_row.raw_content.encode())
+        digest.update(repr(object_row.bbox).encode())
+        if object_row.asset_bytes:
+            digest.update(hashlib.sha256(object_row.asset_bytes).digest())
+    return digest.hexdigest()
+
+
+async def _clear_parse_outputs(session: AsyncSession, version_id: str) -> None:
+    """新解析起始时失效旧对象和索引；断点重试不会调用本函数。"""
+    version_object_ids = select(KnowledgeObject.id).where(
+        KnowledgeObject.material_version_id == version_id
+    )
+    await session.execute(
+        delete(ObjectRelation).where(
+            or_(
+                ObjectRelation.source_object_id.in_(version_object_ids),
+                ObjectRelation.target_object_id.in_(version_object_ids),
+            )
+        )
+    )
+    await session.execute(
+        delete(KnowledgeChunk).where(KnowledgeChunk.material_version_id == version_id)
+    )
+    await session.execute(
+        delete(RetrievalIndexEntry).where(
+            RetrievalIndexEntry.retrieval_unit_id.in_(
+                select(RetrievalUnit.id).where(RetrievalUnit.material_version_id == version_id)
+            )
+        )
+    )
+    await session.execute(
+        delete(RetrievalUnit).where(RetrievalUnit.material_version_id == version_id)
+    )
+    await session.execute(
+        delete(ObjectAsset).where(ObjectAsset.material_version_id == version_id)
+    )
+    await session.execute(
+        delete(KnowledgeObject).where(KnowledgeObject.material_version_id == version_id)
+    )
+    await session.execute(
+        delete(ParseReviewIssue).where(ParseReviewIssue.material_version_id == version_id)
+    )
 
 
 def _sequence_relations(objects: list[KnowledgeObject]) -> list[ObjectRelation]:

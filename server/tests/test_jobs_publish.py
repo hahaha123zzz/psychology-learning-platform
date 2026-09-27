@@ -1,7 +1,7 @@
 import asyncio
 import time
 
-from app.db.models import Material
+from app.db.models import Material, ParsedPage
 from app.db.session import session_factory
 from tests.conftest import create_user_sync, make_pdf
 from tests.test_materials import _login, _setup_course, _upload
@@ -49,6 +49,26 @@ def test_parse_job_lifecycle_and_version_status(client) -> None:
     assert job["status"] == "succeeded"
     assert job["progress"] == 100
     assert job["kind"] == "material_parse"
+    assert job["checkpoint"]["completed_pages"] == 1
+    assert job["checkpoint"]["total_pages"] == 1
+    assert job["checkpoint"]["object_count"] >= 1
+
+    async def load_page_checkpoint() -> list[ParsedPage]:
+        async with session_factory() as db:
+            from sqlalchemy import select
+
+            return list(
+                (
+                    await db.execute(
+                        select(ParsedPage).where(
+                            ParsedPage.material_version_id == data["version_id"]
+                        )
+                    )
+                ).scalars()
+            )
+
+    pages = asyncio.run(load_page_checkpoint())
+    assert [(page.physical_page, page.status) for page in pages] == [(1, "completed")]
 
     listing = client.get(f"/api/v1/courses/{course_id}/materials")
     version = listing.json()["data"][0]["current_version"]

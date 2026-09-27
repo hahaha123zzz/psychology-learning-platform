@@ -856,6 +856,39 @@ class ObjectAsset(Base, ULIDPrimaryKeyMixin, TimestampMixin):
     )
 
 
+class ParsedPage(Base, ULIDPrimaryKeyMixin, TimestampMixin):
+    """单页解析提交标记，供持久任务在重试时从检查点恢复。"""
+
+    __tablename__ = "parsed_pages"
+
+    material_version_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("material_versions.id"), nullable=False
+    )
+    parser_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    physical_page: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="completed", server_default="completed"
+    )
+    object_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    asset_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    error: Mapped[str | None] = mapped_column(String(500))
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('completed','failed')", name="ck_parsed_pages_status"
+        ),
+        CheckConstraint("physical_page >= 1", name="ck_parsed_pages_physical_page"),
+        UniqueConstraint(
+            "material_version_id",
+            "parser_version",
+            "physical_page",
+            name="uq_parsed_pages_version_parser_page",
+        ),
+        Index("ix_parsed_pages_version_status", "material_version_id", "status", "physical_page"),
+    )
+
+
 class ObjectRepresentation(Base, ULIDPrimaryKeyMixin, TimestampMixin):
     """可重建的对象派生表示，不能单独成为教材事实引用。"""
 

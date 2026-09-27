@@ -1,5 +1,7 @@
 import io
 
+import pymupdf
+
 from app.modules.materials.parsers.stub_pdf import StubPdfParser
 from tests.conftest import create_user_sync, make_pdf
 
@@ -37,6 +39,29 @@ def test_pdf_parser_emits_real_text_block_bbox() -> None:
     left, bottom, right, top = paragraph.bbox
     assert 0 <= left < right
     assert 0 <= bottom < top
+
+
+def test_pdf_parser_emits_embedded_figure_with_real_bbox_and_asset() -> None:
+    # 原生 PNG；PDF 中以真正的 image block 嵌入，避免以图注模拟图片对象。
+    pixmap = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 2, 2), False)
+    pixmap.clear_with(255)
+    png = pixmap.tobytes("png")
+    document = pymupdf.open()
+    page = document.new_page()
+    page.insert_text((72, 72), "Figure source page")
+    page.insert_image(pymupdf.Rect(72, 120, 172, 220), stream=png)
+    source = document.tobytes()
+    document.close()
+
+    result = StubPdfParser().parse(source, "application/pdf")
+
+    figure = next(item for item in result.objects if item.type == "figure")
+    assert figure.bbox is not None
+    left, bottom, right, top = figure.bbox
+    assert 0 <= left < right
+    assert 0 <= bottom < top
+    assert figure.asset_bytes
+    assert figure.asset_mime_type == "image/png"
 
 
 def _login(client, email: str, password: str = "correct-password"):
