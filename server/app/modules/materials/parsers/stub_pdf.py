@@ -205,7 +205,40 @@ def _page_layout_entries(page: pymupdf.Page, chapter_lines: set[str]) -> list[Pa
                 confidence=0.9,
             )
         )
+    entries.extend(_page_table_entries(page, page_height))
     return sorted(entries, key=lambda item: (-item.bbox[3], item.bbox[0]))
+
+
+def _page_table_entries(page: pymupdf.Page, page_height: float) -> list[ParsedObject]:
+    """仅接受 PyMuPDF 识别到的原生规则网格，不从普通段落猜测表格。"""
+    try:
+        tables = page.find_tables().tables
+    except Exception:  # noqa: BLE001 - 单页版面异常不得中断整本教材
+        return []
+    entries: list[ParsedObject] = []
+    for table in tables:
+        rows = table.extract()
+        if len(rows) < 2 or max((len(row) for row in rows), default=0) < 2:
+            continue
+        nonempty_rows = [
+            [str(cell or "").strip() for cell in row]
+            for row in rows
+        ]
+        if sum(bool(cell) for row in nonempty_rows for cell in row) < 2:
+            continue
+        bbox = _to_pdf_bbox(table.bbox, page_height)
+        if bbox is None:
+            continue
+        entries.append(
+            ParsedObject(
+                type="table",
+                raw_content="\n".join(" | ".join(row) for row in nonempty_rows),
+                physical_page=0,
+                bbox=bbox,
+                confidence=0.85,
+            )
+        )
+    return entries
 
 
 def _to_pdf_bbox(raw_bbox, page_height: float) -> list[float] | None:

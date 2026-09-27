@@ -64,6 +64,32 @@ def test_pdf_parser_emits_embedded_figure_with_real_bbox_and_asset() -> None:
     assert figure.asset_mime_type == "image/png"
 
 
+def test_pdf_parser_emits_only_native_grid_table_objects() -> None:
+    document = pymupdf.open()
+    page = document.new_page()
+    for x in (72, 172, 272):
+        page.draw_line((x, 100), (x, 200))
+    for y in (100, 150, 200):
+        page.draw_line((72, y), (272, y))
+    cells = (
+        ((82, 130), "变量"),
+        ((182, 130), "定义"),
+        ((82, 180), "自变量"),
+        ((182, 180), "实验条件"),
+    )
+    for point, text in cells:
+        page.insert_text(point, text)
+    source = document.tobytes()
+    document.close()
+
+    result = StubPdfParser().parse(source, "application/pdf")
+
+    table = next(item for item in result.objects if item.type == "table")
+    assert table.bbox is not None
+    assert table.confidence == 0.85
+    assert "|" in table.raw_content
+
+
 def _login(client, email: str, password: str = "correct-password"):
     response = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
