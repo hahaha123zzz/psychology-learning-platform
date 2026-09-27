@@ -81,7 +81,8 @@ function Test-LocalPortListening {
     param([Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port)
 
     $listeners = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
-    return $null -ne $listeners
+    # PowerShell 在没有结果时可能返回空数组而非 $null；空数组不能被视为端口已监听。
+    return @($listeners).Count -gt 0
 }
 
 function Assert-DevCommand {
