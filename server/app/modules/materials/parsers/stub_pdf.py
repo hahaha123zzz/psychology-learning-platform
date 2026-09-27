@@ -20,6 +20,8 @@ CHAPTER_RE = re.compile(
 ENGLISH_CHAPTER_RE = re.compile(r"^Chapter\s+([0-9]+)\b", re.IGNORECASE)
 CHAPTER_OUTLINE_RE = re.compile(r"^CHAPTER\s+OUTLINE$", re.IGNORECASE)
 FIRST_SECTION_RE = re.compile(r"^([0-9]+)\.1\s+\S")
+FORMULA_SIGNAL_RE = re.compile(r"[=≈≠≤≥±×÷∑∫√^_]")
+FORMULA_FORBIDDEN_RE = re.compile(r"[。！？；，,:]")
 
 MAX_PARAGRAPH_CHARS = 600
 
@@ -205,6 +207,17 @@ def _page_layout_entries(page: pymupdf.Page, chapter_lines: set[str]) -> list[Pa
                 confidence=0.9,
             )
         )
+        formula_text = " ".join(content for content, _ in kept_lines)
+        if _looks_like_standalone_formula(formula_text, kept_lines):
+            entries.append(
+                ParsedObject(
+                    type="formula",
+                    raw_content=formula_text,
+                    physical_page=0,
+                    bbox=bbox,
+                    confidence=0.8,
+                )
+            )
     entries.extend(_page_table_entries(page, page_height))
     return sorted(entries, key=lambda item: (-item.bbox[3], item.bbox[0]))
 
@@ -239,6 +252,19 @@ def _page_table_entries(page: pymupdf.Page, page_height: float) -> list[ParsedOb
             )
         )
     return entries
+
+
+def _looks_like_standalone_formula(
+    content: str, lines: list[tuple[str, object]]
+) -> bool:
+    """宁可漏检，也不把正文中的“x=…”描述伪装成公式对象。"""
+    compact = content.strip()
+    if len(lines) != 1 or not (3 <= len(compact) <= 160):
+        return False
+    if FORMULA_FORBIDDEN_RE.search(compact) or not FORMULA_SIGNAL_RE.search(compact):
+        return False
+    chinese_or_words = re.findall(r"[\u4e00-\u9fff]|[A-Za-z]{4,}", compact)
+    return len(chinese_or_words) <= 1
 
 
 def _to_pdf_bbox(raw_bbox, page_height: float) -> list[float] | None:

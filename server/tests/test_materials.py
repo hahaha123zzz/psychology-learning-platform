@@ -90,6 +90,21 @@ def test_pdf_parser_emits_only_native_grid_table_objects() -> None:
     assert "|" in table.raw_content
 
 
+def test_pdf_parser_emits_conservative_standalone_formula_object() -> None:
+    document = pymupdf.open()
+    page = document.new_page()
+    page.insert_text((180, 180), "d' = Z(H) - Z(F)")
+    page.insert_text((72, 260), "The result = 3 is explained in this complete sentence.")
+    source = document.tobytes()
+    document.close()
+
+    result = StubPdfParser().parse(source, "application/pdf")
+
+    formulas = [item for item in result.objects if item.type == "formula"]
+    assert [item.raw_content for item in formulas] == ["d' = Z(H) - Z(F)"]
+    assert formulas[0].bbox is not None
+
+
 def _login(client, email: str, password: str = "correct-password"):
     response = client.post(
         "/api/v1/auth/login", json={"email": email, "password": password}
