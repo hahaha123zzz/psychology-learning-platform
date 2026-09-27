@@ -224,6 +224,8 @@ def _page_layout_entries(page: pymupdf.Page, chapter_lines: set[str]) -> list[Pa
 
 def _page_table_entries(page: pymupdf.Page, page_height: float) -> list[ParsedObject]:
     """仅接受 PyMuPDF 识别到的原生规则网格，不从普通段落猜测表格。"""
+    if not _has_grid_like_drawings(page):
+        return []
     try:
         tables = page.find_tables().tables
     except Exception:  # noqa: BLE001 - 单页版面异常不得中断整本教材
@@ -252,6 +254,28 @@ def _page_table_entries(page: pymupdf.Page, page_height: float) -> list[ParsedOb
             )
         )
     return entries
+
+
+def _has_grid_like_drawings(page: pymupdf.Page) -> bool:
+    """先用廉价的绘制路径预筛，避免对每个纯文本页执行昂贵的 find_tables。"""
+    horizontal = 0
+    vertical = 0
+    try:
+        drawings = page.get_drawings()
+    except Exception:  # noqa: BLE001
+        return False
+    for drawing in drawings:
+        for item in drawing.get("items", []):
+            if not item or item[0] != "l":
+                continue
+            start, end = item[1], item[2]
+            if abs(start.y - end.y) < 0.5 and abs(start.x - end.x) >= 12:
+                horizontal += 1
+            elif abs(start.x - end.x) < 0.5 and abs(start.y - end.y) >= 12:
+                vertical += 1
+            if horizontal >= 2 and vertical >= 2:
+                return True
+    return False
 
 
 def _looks_like_standalone_formula(
