@@ -57,7 +57,12 @@ function Test-DevProcessRecord {
     try {
         $process = Get-Process -Id ([int]$Record.ProcessId) -ErrorAction Stop
         $actualStart = $process.StartTime.ToUniversalTime().ToString("o")
-        return $actualStart -eq [string]$Record.StartedAtUtc
+        $expectedStart = if ($Record.StartedAtUtc -is [datetime]) {
+            $Record.StartedAtUtc.ToUniversalTime().ToString("o")
+        } else {
+            [string]$Record.StartedAtUtc
+        }
+        return $actualStart -eq $expectedStart
     } catch {
         return $false
     }
