@@ -63,6 +63,58 @@ function Test-DevProcessRecord {
     }
 }
 
+function Set-DevProcessRecord {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+        [Parameter(Mandatory = $true)][ValidateSet("api", "web", "worker")][string]$Name,
+        [Parameter(Mandatory = $true)]$Process,
+        [Parameter(Mandatory = $true)][string]$ScriptPath
+    )
+
+    $record = [ordered]@{
+        ProcessId = $Process.Id
+        StartedAtUtc = $Process.StartTime.ToUniversalTime().ToString("o")
+        ScriptPath = $ScriptPath
+    }
+    $record | ConvertTo-Json | Set-Content -LiteralPath (Get-DevProcessRecordPath -RepositoryRoot $RepositoryRoot -Name $Name) -Encoding utf8
+    [pscustomobject]$record
+}
+
+function Get-ProjectPortProcess {
+    param(
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot
+    )
+
+    $listener = @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($listener.Count -eq 0) {
+        return $null
+    }
+    $repoPrefix = [regex]::Escape($RepositoryRoot)
+    $candidate = Get-CimInstance Win32_Process -Filter "ProcessId = $($listener[0].OwningProcess)" -ErrorAction SilentlyContinue
+    if ($null -eq $candidate -or $candidate.CommandLine -notmatch $repoPrefix) {
+        return $null
+    }
+    while ($candidate.ParentProcessId) {
+        $parent = Get-CimInstance Win32_Process -Filter "ProcessId = $($candidate.ParentProcessId)" -ErrorAction SilentlyContinue
+        if ($null -eq $parent -or $parent.CommandLine -notmatch $repoPrefix) {
+            break
+        }
+        $candidate = $parent
+    }
+    Get-Process -Id $candidate.ProcessId -ErrorAction SilentlyContinue
+}
+
+function Stop-DevProcessTree {
+    param([Parameter(Mandatory = $true)][int]$ProcessId)
+
+    $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId = $ProcessId" -ErrorAction SilentlyContinue)
+    foreach ($child in $children) {
+        Stop-DevProcessTree -ProcessId $child.ProcessId
+    }
+    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+}
+
 function Remove-StaleDevProcessRecord {
     param(
         [Parameter(Mandatory = $true)][string]$RepositoryRoot,
@@ -140,13 +192,7 @@ function Start-ManagedDevProcess {
         "-ExecutionPolicy", "Bypass",
         "-File", $ScriptPath
     ) -WorkingDirectory $RepositoryRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $paths.LogRoot "$Name.out.log") -RedirectStandardError (Join-Path $paths.LogRoot "$Name.err.log") -PassThru
-    $record = [ordered]@{
-        ProcessId = $process.Id
-        StartedAtUtc = $process.StartTime.ToUniversalTime().ToString("o")
-        ScriptPath = $ScriptPath
-    }
-    $record | ConvertTo-Json | Set-Content -LiteralPath $recordPath -Encoding utf8
-    [pscustomobject]$record
+    Set-DevProcessRecord -RepositoryRoot $RepositoryRoot -Name $Name -Process $process -ScriptPath $ScriptPath
 }
 
 function Wait-LocalPort {

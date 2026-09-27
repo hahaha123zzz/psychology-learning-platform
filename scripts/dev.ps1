@@ -43,6 +43,12 @@ try {
                 Write-Host "$($service.Name) 已在运行，复用受管进程 PID $($record.ProcessId)。"
                 continue
             }
+            $projectProcess = Get-ProjectPortProcess -Port $service.Port -RepositoryRoot $repoRoot
+            if ($null -ne $projectProcess) {
+                $recovered = Set-DevProcessRecord -RepositoryRoot $repoRoot -Name $service.Name -Process $projectProcess -ScriptPath $service.Script
+                Write-Host "$($service.Name) 已在运行，已重新接管项目进程 PID $($recovered.ProcessId)。"
+                continue
+            }
             throw "端口 $($service.Port) 已被未知进程占用；请先释放端口再运行。"
         }
         $started = Start-ManagedDevProcess -RepositoryRoot $repoRoot -Name $service.Name -ScriptPath $service.Script

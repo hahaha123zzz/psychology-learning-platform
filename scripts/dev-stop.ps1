@@ -14,7 +14,7 @@ foreach ($name in @("api", "web", "worker")) {
         Write-Host "$name 的 PID 记录已过期，未停止任何进程。"
         continue
     }
-    Stop-Process -Id ([int]$record.ProcessId) -Force
+    Stop-DevProcessTree -ProcessId ([int]$record.ProcessId)
     Remove-Item -LiteralPath $recordPath -Force
     Write-Host "$name 已停止。"
 }
