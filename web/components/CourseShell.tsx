@@ -14,6 +14,10 @@ const NAVIGATION: Record<CourseRole, NavItem[]> = {
   teacher: [
     { label: "课程概览", icon: "solar:widget-2-linear", suffix: "" },
     { label: "教材", icon: "solar:book-bookmark-linear", suffix: "/materials" },
+    { label: "题库", icon: "solar:clipboard-list-linear", suffix: "/questions" },
+    { label: "测验", icon: "solar:checklist-minimalistic-linear", suffix: "/assessments" },
+    { label: "学情", icon: "solar:chart-2-linear", suffix: "/analytics" },
+    { label: "成员", icon: "solar:users-group-rounded-linear", suffix: "/members" },
   ],
   student: [
     { label: "首页", icon: "solar:home-2-linear", suffix: "" },
