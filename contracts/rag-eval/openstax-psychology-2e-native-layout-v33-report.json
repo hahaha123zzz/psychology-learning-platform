@@ -1,0 +1,22 @@
+{
+  "source_filename": "openstax-psychology-2e.pdf",
+  "source_sha256": "2f08113c78127bc684922ad6a819db22bd4705ce9fcf28a07f36a2041b1474e2",
+  "parser": {
+    "name": "stub-pdf",
+    "version": "native-layout-v3.3"
+  },
+  "page_count": 755,
+  "object_counts": {
+    "chapter": 16,
+    "figure": 361,
+    "paragraph": 11293,
+    "table": 12
+  },
+  "bbox_counts": {
+    "figure": 361,
+    "paragraph": 11293,
+    "table": 12
+  },
+  "asset_count": 361,
+  "issues": []
+}
