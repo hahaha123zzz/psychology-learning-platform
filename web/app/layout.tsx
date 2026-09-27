@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import V2Navigation from "../components/V2Navigation";
 
 export const metadata: Metadata = {
   title: "实验心理学智能学习平台",
@@ -10,7 +9,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh-CN">
-      <body><V2Navigation />{children}</body>
+      <body>{children}</body>
     </html>
   );
 }

@@ -1,3 +1,3 @@
-import StudentWorkspace from "../../components/StudentWorkspace";
+import LegacyCourseRedirect from "../../components/LegacyCourseRedirect";
 
-export default function StudentPage() { return <StudentWorkspace />; }
+export default function StudentPage() { return <LegacyCourseRedirect role="student" />; }
