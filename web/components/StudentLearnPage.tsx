@@ -10,7 +10,13 @@ import EvidencePointerDrawer from "./learning/EvidencePointerDrawer";
 type Material = { id: string; title: string; current_version: null | { id: string; version_no: number; status: string } };
 type SearchItem = { text?: string; title?: string; physical_page?: number | null; evidence_id?: string; evidence_pointer_id?: string };
 type Citation = { pointerId?: string; label: string };
-type Turn = { role: "student" | "tutor"; content: string; citations: Citation[] };
+type Turn = { role: "student" | "tutor"; content: string; citations: Citation[]; status?: string };
+const tutorStageLabels: Record<string, string> = {
+  retrieving: "正在检索教材依据…",
+  generating: "正在整理回答…",
+  verifying: "正在核对回答与引用…",
+  safety: "正在检查回答边界…",
+};
 function reasonText(reason: unknown): string { return reason instanceof ApiError ? reason.message : "请求未完成，请检查本地服务后重试。"; }
 
 export default function StudentLearnPage() {
@@ -25,7 +31,7 @@ export default function StudentLearnPage() {
     if (!content || sending) return;
     setNotice("");
     setSending(true);
-    setTurns((items) => [...items, { role: "student", content, citations: [] }, { role: "tutor", content: "", citations: [] }]);
+    setTurns((items) => [...items, { role: "student", content, citations: [] }, { role: "tutor", content: "", citations: [], status: "正在连接学习助手…" }]);
     try {
       let activeSession = sessionId;
       if (!activeSession) {
@@ -42,6 +48,12 @@ export default function StudentLearnPage() {
         : crypto.randomUUID();
       pendingTurn.current = { sessionId: activeSession, content, clientTurnId };
       await streamChatTurn(activeSession, content, (eventData) => {
+        if (eventData.event === "state") {
+          const stage = String(eventData.data.stage ?? "");
+          setTurns((items) => items.map((item, index) => index === items.length - 1
+            ? { ...item, status: tutorStageLabels[stage] ?? "学习助手正在处理当前请求…" }
+            : item));
+        }
         if (eventData.event === "delta") {
           const text = String(eventData.data.text ?? "");
           setTurns((items) => items.map((item, index) => index === items.length - 1
@@ -59,6 +71,11 @@ export default function StudentLearnPage() {
             ? { ...item, citations: [...item.citations, citation] }
             : item));
         }
+        if (eventData.event === "done") {
+          setTurns((items) => items.map((item, index) => index === items.length - 1
+            ? { ...item, status: eventData.data.saved === true ? "回答已保存" : "回答尚未确认保存" }
+            : item));
+        }
         if (eventData.event === "error") {
           setNotice(String(eventData.data.message ?? "暂时无法完成回答。"));
         }
@@ -73,5 +90,5 @@ export default function StudentLearnPage() {
       setSending(false);
     }
   }
-  return <div className="student-learn-page"><div className="page-heading"><div><h1>学习</h1><p>从已发布教材中检索内容，并基于教材证据提问。</p></div></div>{notice && <p className="status-banner" role="status" aria-live="polite"><Icon icon="solar:info-circle-linear" />{notice}</p>}<StudentInterventionRunsPanel courseId={courseId} /><div className="learn-layout"><aside className="learn-materials"><h2>课程教材</h2>{materials.length ? materials.map((material) => <div className="learn-material-row" key={material.id}><Icon icon="solar:book-bookmark-linear" /><span><strong>{material.title}</strong><small>版本 {material.current_version?.version_no ?? "—"}</small></span></div>) : <p className="empty-state">暂时没有可学习教材。</p>}</aside><section className="learn-evidence"><form className="learn-search" onSubmit={search}><label htmlFor="course-search">搜索教材</label><div><input id="course-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="输入概念、章节或问题" disabled={!materials.length} /><button className="primary-button" disabled={!materials.length}>搜索</button></div></form>{results.length ? <section className="evidence-list"><h2>教材依据</h2>{results.map((item, index) => <article key={item.evidence_id ?? index}><strong>{item.title ?? "教材内容"}{item.physical_page ? ` · 第 ${item.physical_page} 页` : ""}</strong><p>{item.text ?? "未返回可显示的教材片段。"}</p><small>{item.evidence_id ? "已找到教材依据" : "教材结果"}</small>{item.evidence_pointer_id && <EvidencePointerDrawer label="查看固定来源快照" pointerId={item.evidence_pointer_id} />}</article>)}</section> : <section className="learn-empty"><Icon icon="solar:book-2-linear" /><h2>从教材开始学习</h2><p>输入课程内的概念或问题，系统会先查找教材依据。</p></section>}</section><section className="learn-tutor"><header><div><h2>学习助手</h2><p>回答以当前课程教材为依据。</p></div><Icon icon="solar:chat-round-dots-linear" /></header><div className="learn-turns" aria-live="polite" aria-relevant="additions text">{turns.length ? turns.map((turn, index) => <article className={`learn-turn ${turn.role}`} key={index}><strong>{turn.role === "student" ? "我" : "学习助手"}</strong><p>{turn.content || "正在整理教材依据…"}</p>{turn.citations.map((citation, citationIndex) => <div className="learn-citation" key={`${citation.pointerId ?? citation.label}-${citationIndex}`}><small><Icon icon="solar:book-bookmark-linear" />{citation.label}</small>{citation.pointerId && <EvidencePointerDrawer label="打开引用" pointerId={citation.pointerId} />}</div>)}</article>) : <p className="empty-state">你可以围绕当前教材提问；证据不足时会明确说明。</p>}</div><form className="learn-composer" onSubmit={send}><input aria-label="围绕教材提问" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="围绕教材提问…" disabled={!materials.length || sending} /><button type="submit" disabled={!materials.length || sending} aria-label="发送问题"><Icon icon="solar:plain-2-bold" /></button></form></section></div></div>;
+  return <div className="student-learn-page"><div className="page-heading"><div><h1>学习</h1><p>从已发布教材中检索内容，并基于教材证据提问。</p></div></div>{notice && <p className="status-banner" role="status" aria-live="polite"><Icon icon="solar:info-circle-linear" />{notice}</p>}<StudentInterventionRunsPanel courseId={courseId} /><div className="learn-layout"><aside className="learn-materials"><h2>课程教材</h2>{materials.length ? materials.map((material) => <div className="learn-material-row" key={material.id}><Icon icon="solar:book-bookmark-linear" /><span><strong>{material.title}</strong><small>版本 {material.current_version?.version_no ?? "—"}</small></span></div>) : <p className="empty-state">暂时没有可学习教材。</p>}</aside><section className="learn-evidence"><form className="learn-search" onSubmit={search}><label htmlFor="course-search">搜索教材</label><div><input id="course-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="输入概念、章节或问题" disabled={!materials.length} /><button className="primary-button" disabled={!materials.length}>搜索</button></div></form>{results.length ? <section className="evidence-list"><h2>教材依据</h2>{results.map((item, index) => <article key={item.evidence_id ?? index}><strong>{item.title ?? "教材内容"}{item.physical_page ? ` · 第 ${item.physical_page} 页` : ""}</strong><p>{item.text ?? "未返回可显示的教材片段。"}</p><small>{item.evidence_id ? "已找到教材依据" : "教材结果"}</small>{item.evidence_pointer_id && <EvidencePointerDrawer label="查看固定来源快照" pointerId={item.evidence_pointer_id} />}</article>)}</section> : <section className="learn-empty"><Icon icon="solar:book-2-linear" /><h2>从教材开始学习</h2><p>输入课程内的概念或问题，系统会先查找教材依据。</p></section>}</section><section className="learn-tutor"><header><div><h2>学习助手</h2><p>回答以当前课程教材为依据。</p></div><Icon icon="solar:chat-round-dots-linear" /></header><div className="learn-turns" aria-live="polite" aria-relevant="additions text">{turns.length ? turns.map((turn, index) => <article className={`learn-turn ${turn.role}`} key={index}><strong>{turn.role === "student" ? "我" : "学习助手"}</strong><p>{turn.content || "正在整理教材依据…"}</p>{turn.status && <small className="learn-turn-status" role="status">{turn.status}</small>}{turn.citations.map((citation, citationIndex) => <div className="learn-citation" key={`${citation.pointerId ?? citation.label}-${citationIndex}`}><small><Icon icon="solar:book-bookmark-linear" />{citation.label}</small>{citation.pointerId && <EvidencePointerDrawer label="打开引用" pointerId={citation.pointerId} />}</div>)}</article>) : <p className="empty-state">你可以围绕当前教材提问；证据不足时会明确说明。</p>}</div><form className="learn-composer" onSubmit={send}><input aria-label="围绕教材提问" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="围绕教材提问…" disabled={!materials.length || sending} /><button type="submit" disabled={!materials.length || sending} aria-label="发送问题"><Icon icon="solar:plain-2-bold" /></button></form></section></div></div>;
 }

@@ -48,6 +48,10 @@ test("learning and SSE inputs remain accessible and recoverable after network fa
   assert.match(learn, /你的问题仍保留在输入框/);
   assert.match(learn, /aria-label="围绕教材提问"/);
   assert.match(learn, /aria-live="polite" aria-relevant="additions text"/);
+  assert.match(learn, /eventData\.event === "state"/);
+  assert.match(learn, /eventData\.event === "done"/);
+  assert.match(learn, /回答已保存/);
+  assert.match(learn, /EvidencePointerDrawer label="打开引用" pointerId=\{citation\.pointerId\}/);
 });
 
 test("case workbench has a dedicated student route separate from Branch", () => {
