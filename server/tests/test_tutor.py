@@ -250,6 +250,7 @@ def test_bound_chat_claim_reads_superseded_snapshot_and_rejects_withdrawal(clien
         ChatSession,
         ClassMember,
         CourseClass,
+        CourseRelease,
         CourseReleaseAssignment,
         DomainRelease,
         EvidencePointer,
@@ -433,6 +434,7 @@ def test_bound_chat_claim_reads_superseded_snapshot_and_rejects_withdrawal(clien
     assert session_detail.status_code == 200
     tutor_turn = session_detail.json()["data"]["turns"][-1]
     claim = tutor_turn["verification"]["domain_claim"]
+    assert claim["status"] == "supported"
     assert claim["scope"]["course_release_assignment_id"] == old_assignment_id
     assert claim["scope"]["course_release_id"] == release1["id"]
     assert claim["scope"]["domain_release_id"] == old_domain_id
@@ -477,6 +479,68 @@ def test_bound_chat_claim_reads_superseded_snapshot_and_rejects_withdrawal(clien
             assert new_assignment_id != old_assignment_id
 
     asyncio.run(assert_evidence_uses_old_index())
+
+    async def corrupt_release_pin(*, index_job_id: str, domain_release_id: str) -> None:
+        async with session_factory() as db:
+            old_release = await db.get(CourseRelease, release1["id"])
+            assert old_release is not None
+            manifest = dict(old_release.manifest)
+            pins = [dict(pin) for pin in manifest["publication_snapshots"]]
+            pins[0]["index_job_id"] = index_job_id
+            pins[0]["domain_release_id"] = domain_release_id
+            manifest["publication_snapshots"] = pins
+            old_release.manifest = manifest
+            await db.commit()
+
+    async def restore_release_pin() -> None:
+        async with session_factory() as db:
+            old_release = await db.get(CourseRelease, release1["id"])
+            assert old_release is not None
+            manifest = dict(old_release.manifest)
+            manifest["publication_snapshots"] = [dict(pinned)]
+            old_release.manifest = manifest
+            await db.commit()
+
+    def assert_corrupt_pin_is_rejected(
+        *, client_turn_id: str, expected_refusal: str
+    ) -> None:
+        response = client.post(
+            f"/api/v1/chat/sessions/{session_id}/turns",
+            json={
+                "content": "请基于课程材料再解释一次",
+                "client_turn_id": client_turn_id,
+            },
+        )
+        assert response.status_code == 200, response.text
+        detail = client.get(f"/api/v1/chat/sessions/{session_id}")
+        assert detail.status_code == 200
+        claim_record = detail.json()["data"]["turns"][-1]["verification"]["domain_claim"]
+        assert claim_record["status"] == "unknown"
+        assert claim_record["refusal_reason"] == expected_refusal
+        assert claim_record["initial_evidence_refs"] == []
+        assert claim_record["supplemental_retrieval_attempts"] == 0
+
+    asyncio.run(
+        corrupt_release_pin(
+            index_job_id=new_job_id,
+            domain_release_id=old_domain_id,
+        )
+    )
+    assert_corrupt_pin_is_rejected(
+        client_turn_id="old-release-wrong-index-job-001",
+        expected_refusal="publication_snapshot_unavailable",
+    )
+    asyncio.run(
+        corrupt_release_pin(
+            index_job_id=old_job_id,
+            domain_release_id=new_domain_id,
+        )
+    )
+    assert_corrupt_pin_is_rejected(
+        client_turn_id="old-release-wrong-domain-001",
+        expected_refusal="release_material_snapshots_mismatch",
+    )
+    asyncio.run(restore_release_pin())
 
     async def withdraw_material() -> None:
         async with session_factory() as db:
