@@ -2,6 +2,8 @@
 
 更新时间：2026-10-05 17:26（R3 共享发布固定、全量后端/前端验收、隔离预览启动）
 
+> **2026-10-06 学生核心页面 P0-04 局部复核：** 本地合成学生 Demo 的 Home、Learn、课程首页、Practice、Growth、Preference 共 7 个路由，在 Chromium 生产模式下按 360/393/768 CSS px 检查，无横向溢出、页面异常为 0；Tab 首焦点可见；`prefers-reduced-motion: reduce` 将动画/过渡时长压至 0.01ms。Learn 顶栏与 Practice Mini Lab 选择框的 360px 溢出已修复。该证据仅覆盖学生核心页工程布局，P0-04 的 11 组页面、读屏器、真实设备和完整视觉签收仍未完成。详见 [`学生核心页面本地可访问性复核`](student-core-local-accessibility-review-2026-10-06.md)。
+
 > **2026-10-05 17:26 最新状态：** migration head 0051。CourseRelease manifest 固定材料版本和有序 PublicationSnapshot/IndexJob/Embedding/Domain 快照，元数据编辑不漂移、显式重选刷新。root final 专库全量后端 **364 passed、2 warnings**；Alembic check/全仓 Ruff 通过；OpenAPI 156 paths，SHA `A7E85EF6A81C2D2CEF673E87EEB2D54C7D63C29C28975B737DFC46B155322743`；前端 Node 56/56、typecheck、独立 production build 24/24 通过，lint 0 errors/2 warnings。另有隔离演示 API/Web 于 8000/3000 可访问，详情见状态文件 17:26 节。Tutor 历史 superseded snapshot 正向 Claim 与 Branch child assignment/release 继承仍待 R3-B 交付；真实教材/机构政策和生产验证不伪称通过。
 
 > **2026-10-05 离散数学输入补记：** `TEXTBOOK/` 10 个 OLE `.doc` SHA-256 与来源台账一致；逐个本地格式识别成功，但解析全部因 `parser_unavailable` 阻断。本轮隔离材料/解析/编译/检索 fixture 回归 **51 passed、2 warnings**；没有把这记作离散数学教材导入或命中。原件未转换/上传；需本地 DOCX/PDF 输入或可用本地 renderer。详见 [`离散数学本地测试教材导入核验`](discrete-math-local-import-2026-10-05.md)。

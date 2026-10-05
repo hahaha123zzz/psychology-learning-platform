@@ -1,3 +1,15 @@
+.mini-lab-start .field-label {
+  display: grid;
+  min-width: 0;
+  gap: 0.45rem;
+}
+
+.mini-lab-start select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .mini-lab-runtime {
   display: grid;
   min-width: 0;
