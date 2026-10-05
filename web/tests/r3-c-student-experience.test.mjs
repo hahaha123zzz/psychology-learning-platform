@@ -58,6 +58,17 @@ test("learning and SSE inputs remain accessible and recoverable after network fa
   assert.match(learn, /EvidencePointerDrawer label="打开引用" pointerId=\{citation\.pointerId\}/);
 });
 
+test("student Learn can search native tables and open adjacent image pointers without implying image meaning", () => {
+  const learn = read("../components/StudentLearnPage.tsx");
+  const reader = read("../components/learning/EvidencePointerDrawer.tsx");
+  assert.match(learn, /object_types: tableOnly \? \["table"\]/);
+  assert.match(learn, /只看表格/);
+  assert.match(learn, /neighbor\.object_type === "figure" && neighbor\.evidence_pointer_id/);
+  assert.match(learn, /阅读顺序相邻图像 · 仅定位/);
+  assert.match(learn, /EvidencePointerDrawer label="定位相邻图像"/);
+  assert.match(reader, /系统未解析图像含义/);
+});
+
 test("case workbench has a dedicated student route separate from Branch", () => {
   const route = read("../app/student/cases/page.tsx");
   const home = read("../components/StudentHomeDashboard.tsx");

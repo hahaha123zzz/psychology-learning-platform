@@ -3,6 +3,7 @@ import hashlib
 import time
 from datetime import UTC, datetime, timedelta
 
+import pymupdf
 from sqlalchemy import select
 
 from app.db.base import new_ulid
@@ -44,6 +45,33 @@ ADJACENT_PARAGRAPHS_PDF = make_pdf(
         ["A control group gives researchers a comparison for the intervention."],
     ]
 )
+
+
+def _make_native_figure_table_pdf() -> tuple[bytes, str]:
+    document = pymupdf.open()
+    page = document.new_page()
+    page.insert_text((72, 75), "Chapter 1 Experimental Results")
+    page.insert_text((72, 385), "The surrounding paragraph explains the measured result.")
+    for x in (72, 172, 272):
+        page.draw_line((x, 250), (x, 350))
+    for y in (250, 300, 350):
+        page.draw_line((72, y), (272, y))
+    rows = (
+        ((82, 280), "Measure"),
+        ((182, 280), "Score"),
+        ((82, 330), "Recall"),
+        ((182, 330), "42"),
+    )
+    table_text = "Measure | Score\nRecall | 42"
+    for point, text in rows:
+        page.insert_text(point, text)
+
+    pixmap = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 4, 4), False)
+    pixmap.clear_with(255)
+    page.insert_image(pymupdf.Rect(72, 135, 172, 235), stream=pixmap.tobytes("png"))
+    content = document.tobytes()
+    document.close()
+    return content, table_text
 
 
 def _parse_and_wait(client, version_id: str, kind: str = "parse", timeout=20.0):
@@ -525,6 +553,184 @@ def test_search_returns_only_approved_adjacent_evidence_closure(client) -> None:
     )
     assert rejected.status_code == 200
     assert rejected.json()["data"]["items"][0]["closure"] == []
+
+
+def test_native_pdf_table_search_pins_table_and_adjacent_figure(client, monkeypatch) -> None:
+    from app.core.embedding import get_embedding_client as get_base_embedding_client
+    from app.modules.knowledge import service as knowledge_service
+
+    content, table_text = _make_native_figure_table_pdf()
+    base_client = get_base_embedding_client()
+    embedded_texts: list[str] = []
+
+    class RecordingEmbeddingClient:
+        version = base_client.version
+
+        async def embed(self, texts: list[str]) -> list[list[float]]:
+            embedded_texts.extend(texts)
+            return await base_client.embed(texts)
+
+    monkeypatch.setattr(
+        knowledge_service, "get_embedding_client", lambda: RecordingEmbeddingClient()
+    )
+    course_id, _, version_id = _prepare(client, publish=True, content=content)
+
+    async def load_table_and_chunks():
+        async with session_factory() as db:
+            table = await db.scalar(
+                select(KnowledgeObject).where(
+                    KnowledgeObject.material_version_id == version_id,
+                    KnowledgeObject.type == "table",
+                )
+            )
+            assert table is not None
+            units = list(
+                (
+                    await db.execute(
+                        select(RetrievalUnit).where(
+                            RetrievalUnit.source_object_id == table.id,
+                            RetrievalUnit.material_version_id == version_id,
+                        )
+                    )
+                ).scalars()
+            )
+            return table, units
+
+    table, units = asyncio.run(load_table_and_chunks())
+    assert units
+    assert all(unit.unit_type == "table_cells" and unit.channel_hint == "sparse" for unit in units)
+    assert all(unit.bbox == table.bbox for unit in units)
+    assert all(table_text not in embedded for embedded in embedded_texts)
+
+    _login(client, "ms@uni.edu")
+    response = client.post(
+        "/api/v1/knowledge/search",
+        json={
+            "course_id": course_id,
+            "query": "measure score recall",
+            "object_types": ["table"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    item = response.json()["data"]["items"][0]
+    assert item["object_type"] == "table"
+    assert item["source_object_id"] == table.id
+    assert item["evidence_pointer_id"]
+    assert item["physical_page"] == 1
+    assert item["bbox"] == table.bbox
+    assert item["text"]
+
+    figure_closure = next(
+        neighbor
+        for neighbor in item["closure"]
+        if neighbor["object_type"] == "figure"
+    )
+    assert figure_closure["relation_type"] in {"previous", "next"}
+    assert figure_closure["physical_page"] == 1
+    assert figure_closure["evidence_pointer_id"]
+    table_pointer = client.get(
+        f"/api/v1/evidence-pointers/{item['evidence_pointer_id']}"
+    )
+    figure_pointer = client.get(
+        f"/api/v1/evidence-pointers/{figure_closure['evidence_pointer_id']}"
+    )
+    assert table_pointer.status_code == 200
+    assert figure_pointer.status_code == 200
+    assert figure_pointer.json()["data"]["excerpt"] == ""
+    assert figure_pointer.json()["data"]["source_object_id"] == figure_closure["object_id"]
+    assert figure_pointer.json()["data"]["physical_page"] == 1
+    assert figure_pointer.json()["data"]["bbox"] == figure_closure["bbox"]
+
+    figure_page = client.get(
+        f"/api/v1/evidence-pointers/{figure_closure['evidence_pointer_id']}/page-image",
+        params={"physical_page": 1},
+    )
+    assert figure_page.status_code == 200
+    assert figure_page.headers["x-reader-physical-page"] == "1"
+    assert figure_page.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+    _login(client, "mt@uni.edu")
+    teacher_id = client.get("/api/v1/me").json()["data"]["id"]
+    cross_version_figure_id = new_ulid()
+    cross_version_id = new_ulid()
+
+    async def create_cross_version_relation() -> None:
+        async with session_factory() as db:
+            db.add(
+                MaterialVersion(
+                    id=cross_version_id,
+                    material_id=item["material_id"],
+                    version_no=2,
+                    status="parsed",
+                    object_key="test/other-version.pdf",
+                    sha256="f" * 64,
+                    size_bytes=100,
+                    content_type="application/pdf",
+                    original_filename="other-version.pdf",
+                    created_by=teacher_id,
+                    page_count=1,
+                )
+            )
+            await db.flush()
+            db.add(
+                KnowledgeObject(
+                    id=cross_version_figure_id,
+                    material_version_id=cross_version_id,
+                    type="figure",
+                    chapter_path="1",
+                    physical_page=1,
+                    reading_order=5,
+                    bbox=[72.0, 300.0, 172.0, 400.0],
+                    raw_content="",
+                    parser="stub-pdf",
+                    parser_version="native-layout-v3.3",
+                    confidence=0.95,
+                    review_status="approved",
+                )
+            )
+            db.add(
+                ObjectRelation(
+                    source_object_id=table.id,
+                    target_object_id=cross_version_figure_id,
+                    relation_type="next",
+                    source="test:cross-version",
+                    confidence=1.0,
+                    review_status="approved",
+                )
+            )
+            await db.commit()
+
+    asyncio.run(create_cross_version_relation())
+    from app.modules.knowledge.service import _load_evidence_closure
+
+    async def load_cross_version_closure():
+        async with session_factory() as db:
+            return await _load_evidence_closure(
+                db,
+                source_object_ids=[table.id],
+                version_ids=[version_id, cross_version_id],
+            )
+
+    cross_version_closure = asyncio.run(load_cross_version_closure())
+    assert cross_version_figure_id not in {
+        neighbor["object_id"] for neighbor in cross_version_closure.get(table.id, [])
+    }
+
+    cross_version_search = client.post(
+        "/api/v1/knowledge/search",
+        json={
+            "course_id": course_id,
+            "query": "measure score recall",
+            "object_types": ["table"],
+            "material_version_ids": [version_id, cross_version_id],
+        },
+    )
+    assert cross_version_search.status_code == 200, cross_version_search.text
+    cross_version_item = cross_version_search.json()["data"]["items"][0]
+    assert cross_version_item["source_object_id"] == table.id
+    assert cross_version_figure_id not in {
+        neighbor["object_id"] for neighbor in cross_version_item["closure"]
+    }
 
 
 def test_student_search_cannot_request_non_current_published_version(client) -> None:

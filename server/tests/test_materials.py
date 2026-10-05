@@ -79,6 +79,7 @@ def test_pdf_parser_emits_only_native_grid_table_objects() -> None:
     )
     for point, text in cells:
         page.insert_text(point, text)
+    page.insert_text((72, 250), "The table discussion explains the results.")
     source = document.tobytes()
     document.close()
 
@@ -88,6 +89,14 @@ def test_pdf_parser_emits_only_native_grid_table_objects() -> None:
     assert table.bbox is not None
     assert table.confidence == 0.85
     assert "|" in table.raw_content
+    assert not any(
+        item.type == "paragraph" and "自变量" in item.raw_content
+        for item in result.objects
+    )
+    assert any(
+        item.type == "paragraph" and "table discussion" in item.raw_content
+        for item in result.objects
+    )
 
 
 def test_pdf_parser_emits_conservative_standalone_formula_object() -> None:

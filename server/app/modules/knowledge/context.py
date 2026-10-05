@@ -24,6 +24,8 @@ def assemble_generation_units(
     for item in items:
         if len(units) >= max_units or remaining <= 0:
             break
+        if item.get("object_type", "paragraph") != "paragraph":
+            continue
         object_id = item.get("source_object_id")
         if object_id and object_id in covered:
             continue
@@ -43,7 +45,11 @@ def assemble_generation_units(
         for neighbor in item.get("closure", []):
             neighbor_id = neighbor.get("object_id")
             neighbor_text = neighbor.get("text", "")
-            if not neighbor_text or (neighbor_id and neighbor_id in covered):
+            if (
+                neighbor.get("object_type", "paragraph") != "paragraph"
+                or not neighbor_text
+                or (neighbor_id and neighbor_id in covered)
+            ):
                 continue
             if len("\n".join(text_parts)) + len(neighbor_text) > remaining:
                 continue

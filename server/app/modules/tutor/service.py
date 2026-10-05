@@ -380,7 +380,17 @@ def build_evidence_package(
         items, context_budget_chars=package.context_budget_chars, max_units=TOP_EVIDENCE
     )
     selected_evidence_ids = {unit.evidence_id for unit in package.generation_units}
-    package.items = [item for item in items if item["evidence_id"] in selected_evidence_ids]
+    package.items = []
+    for item in items:
+        if item["evidence_id"] not in selected_evidence_ids:
+            continue
+        model_item = deepcopy(item)
+        model_item["closure"] = [
+            neighbor
+            for neighbor in item.get("closure", [])
+            if neighbor.get("object_type", "paragraph") == "paragraph"
+        ]
+        package.items.append(model_item)
     return package
 
 
@@ -737,6 +747,7 @@ async def prepare_bound_chat_retrieval(
             query=query,
             top_k=min(8, query_plan.retrieval_budget),
             staff=False,
+            object_types=["paragraph"],
             channel_priors=query_plan.channel_priors,
             domain_release_id=binding.domain_release_id,
             domain_index_job_ids=index_job_ids,
@@ -1066,6 +1077,7 @@ async def run_turn_stream(
                 query=content,
                 top_k=min(8, plan.retrieval_budget),
                 staff=False,
+                object_types=["paragraph"],
                 channel_priors=plan.channel_priors,
             )
         await db.commit()

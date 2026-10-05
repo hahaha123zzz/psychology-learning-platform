@@ -374,12 +374,16 @@ export default function EvidencePointerDrawer({
                   </div>
                 </div>
                 <figcaption>
-                  物理页 {visiblePage.physicalPage} · 红框为经坐标变换定位的引用段落
+                  物理页 {visiblePage.physicalPage} · 红框为经坐标变换定位的来源对象
                   {activeAnchor.precision ? ` · ${activeAnchor.precision}` : ""}
                 </figcaption>
               </figure>
             )}
-            <blockquote>{view.excerpt}</blockquote>
+            <blockquote>
+              {view.excerpt || (view.object_type === "figure"
+                ? "该对象只保存了图像位置；系统未解析图像含义。"
+                : "此对象没有可显示的文字摘录。")}
+            </blockquote>
             <dl>
               <div><dt>教材版本</dt><dd>{view.material_version_id}</dd></div>
               <div><dt>引用校验</dt><dd>SHA-256 {view.excerpt_sha256}</dd></div>

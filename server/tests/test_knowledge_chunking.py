@@ -54,3 +54,39 @@ def test_chunking_splits_long_paragraph_without_crossing_object_boundary() -> No
     assert len(rows) == 2
     assert [row["source_object_id"] for row in rows] == ["paragraph-1", "paragraph-1"]
     assert [(row["char_start"], row["char_end"]) for row in rows] == [(0, 800), (800, 801)]
+
+
+def test_native_pdf_table_builds_sparse_units_without_embedding() -> None:
+    content = "变量 | 操作\n自变量 | 操纵条件\n因变量 | 测量结果"
+    table = _object(
+        id="table-1",
+        type="table",
+        parser="stub-pdf",
+        raw_content=content,
+        physical_page=2,
+        bbox=[72.0, 300.0, 420.0, 600.0],
+        reading_order=3,
+    )
+
+    rows = build_chunk_rows([table])
+
+    assert rows
+    assert all(row["unit_type"] == "table_cells" for row in rows)
+    assert all(row["channel_hint"] == "sparse" for row in rows)
+    assert all(row["needs_embedding"] is False for row in rows)
+    assert all(row["physical_page"] == 2 for row in rows)
+    assert all(row["bbox"] == table.bbox for row in rows)
+    assert "".join(row["unit_text"] for row in rows) == content
+
+
+def test_unanchored_or_non_pdf_table_does_not_become_a_retrieval_unit() -> None:
+    unanchored = _object(
+        id="table-unpaged",
+        type="table",
+        parser="docx-xml",
+        raw_content="变量 | 定义",
+        physical_page=None,
+        bbox=None,
+    )
+
+    assert build_chunk_rows([unanchored]) == []

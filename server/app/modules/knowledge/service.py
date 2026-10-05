@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import math
 import re
 from datetime import UTC, datetime, timedelta
 
@@ -31,6 +32,7 @@ RRF_K = 60
 RETRIEVAL_VERSION = "hybrid-v4"
 VECTOR_NONEXIST = "对象尚未完成嵌入或嵌入版本不匹配"
 RETRIEVAL_UNIT_BUILD_STRATEGY = "paragraph-child"
+TABLE_RETRIEVAL_UNIT_BUILD_STRATEGY = "pdf-table-cells"
 RETRIEVAL_UNIT_BUILD_VERSION = "v1"
 EVIDENCE_CLOSURE_RELATIONS = ("previous", "next", "caption_of", "explains", "references")
 MAX_EVIDENCE_CLOSURE_OBJECTS = 4
@@ -120,11 +122,14 @@ async def _load_evidence_closure(
     closure_query = text(
         "SELECT r.source_object_id, r.relation_type, target.id, target.type, "
         "target.physical_page, target.reading_order, target.bbox, "
-        "COALESCE(target.normalized_content, target.raw_content) "
+        "COALESCE(target.normalized_content, target.raw_content), target.parser, "
+        "target.chapter_path "
         "FROM object_relations r "
+        "JOIN knowledge_objects source ON source.id = r.source_object_id "
         "JOIN knowledge_objects target ON target.id = r.target_object_id "
         "WHERE r.source_object_id IN :source_object_ids "
-        "AND target.material_version_id IN :version_ids "
+        "AND source.material_version_id IN :version_ids "
+        "AND target.material_version_id = source.material_version_id "
         "AND r.relation_type IN :relation_types "
         "AND r.review_status = 'approved' "
         "ORDER BY r.source_object_id, target.reading_order"
@@ -153,10 +158,13 @@ async def _load_evidence_closure(
                 "object_id": row[2],
                 "object_type": row[3],
                 "physical_page": row[4],
+                "reading_order": row[5],
                 "anchor": f"p{row[4]}#order{row[5]}",
                 "bbox": row[6],
                 "text": row[7],
                 "relation_type": row[1],
+                "_parser": row[8],
+                "chapter_path": row[9],
             }
         )
     return closure
@@ -166,18 +174,36 @@ async def _load_evidence_closure(
 
 
 def build_chunk_rows(objects: list[KnowledgeObject]) -> list[dict]:
-    """按段落对象切分 RetrievalUnit，保证每个召回单元可回溯到唯一教材对象。"""
+    """按段落或固定版面表格切分检索单元，并保留唯一来源对象。"""
     chapters = {o.chapter_path: o for o in objects if o.type == "chapter"}
     chunks: list[dict] = []
 
     for object in sorted(objects, key=lambda o: o.reading_order):
         content = (object.normalized_content or object.raw_content).strip()
-        if object.type != "paragraph" or not content:
+        if not content:
+            continue
+        is_table = object.type == "table"
+        if is_table:
+            bbox = getattr(object, "bbox", None)
+            if (
+                getattr(object, "parser", None) != "stub-pdf"
+                or type(object.physical_page) is not int
+                or object.physical_page < 1
+                or not isinstance(bbox, list)
+                or len(bbox) != 4
+                or not all(
+                    isinstance(value, (int, float)) and math.isfinite(value) for value in bbox
+                )
+                or bbox[0] >= bbox[2]
+                or bbox[1] >= bbox[3]
+            ):
+                continue
+        elif object.type != "paragraph":
             continue
         chapter = chapters.get(object.chapter_path)
         chapter_title = (chapter.title if chapter else "") or ""
-        for char_start in range(0, len(content), MAX_CHUNK_CHARS):
-            body = content[char_start : char_start + MAX_CHUNK_CHARS]
+        for char_start, char_end in _chunk_boundaries(content, preserve_lines=is_table):
+            body = content[char_start:char_end]
             text_content = f"{chapter_title}\n{body}" if chapter_title else body
             chunks.append(
                 {
@@ -190,13 +216,36 @@ def build_chunk_rows(objects: list[KnowledgeObject]) -> list[dict]:
                     "physical_page": object.physical_page,
                     "reading_order": object.reading_order,
                     "char_start": char_start,
-                    "char_end": char_start + len(body),
+                    "char_end": char_end,
                     "unit_text": body,
                     "content_hash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
                     "text": text_content,
+                    "unit_type": "table_cells" if is_table else "text_child",
+                    "channel_hint": "sparse" if is_table else "dense",
+                    "build_strategy": (
+                        TABLE_RETRIEVAL_UNIT_BUILD_STRATEGY
+                        if is_table
+                        else RETRIEVAL_UNIT_BUILD_STRATEGY
+                    ),
+                    "bbox": bbox if is_table else None,
+                    "needs_embedding": not is_table,
                 }
             )
     return chunks
+
+
+def _chunk_boundaries(content: str, *, preserve_lines: bool) -> list[tuple[int, int]]:
+    boundaries: list[tuple[int, int]] = []
+    start = 0
+    while start < len(content):
+        end = min(start + MAX_CHUNK_CHARS, len(content))
+        if preserve_lines and end < len(content):
+            line_end = content.rfind("\n", start + 1, end)
+            if line_end > start:
+                end = line_end + 1
+        boundaries.append((start, end))
+        start = end
+    return boundaries
 
 
 # ---- 嵌入任务 ----
@@ -254,9 +303,10 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
             job.checkpoint = {"stage": "embed", "completed": 0, "total": len(rows)}
             await session.commit()
 
-            total = len(rows)
+            dense_rows = [row for row in rows if row["needs_embedding"]]
+            total = len(dense_rows)
             for start in range(0, total, EMBED_BATCH):
-                batch = rows[start : start + EMBED_BATCH]
+                batch = dense_rows[start : start + EMBED_BATCH]
                 vectors = await client.embed([r["text"] for r in batch])
                 for row, vector in zip(batch, vectors, strict=True):
                     row["embedding"] = "[" + ",".join(f"{v:.6f}" for v in vector) + "]"
@@ -300,13 +350,14 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
                         domain_release_id=domain_release_id,
                         source_object_id=row["source_object_id"],
                         parent_object_id=row["parent_object_id"],
-                        unit_type="text_child",
-                        channel_hint="dense",
+                        unit_type=row["unit_type"],
+                        channel_hint=row["channel_hint"],
                         char_start=row["char_start"],
                         char_end=row["char_end"],
+                        bbox=row["bbox"],
                         text_content=row["unit_text"],
                         content_hash=row["content_hash"],
-                        build_strategy=RETRIEVAL_UNIT_BUILD_STRATEGY,
+                        build_strategy=row["build_strategy"],
                         build_version=f"{RETRIEVAL_UNIT_BUILD_VERSION}-{job.id}",
                         status="ready",
                     )
@@ -337,8 +388,8 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
                         "page": row["physical_page"],
                         "order": row["reading_order"],
                         "text": row["text"],
-                        "embedding": row["embedding"],
-                        "ev": client.version,
+                        "embedding": row.get("embedding"),
+                        "ev": client.version if row["needs_embedding"] else None,
                     },
                 )
             await session.execute(text("ANALYZE knowledge_chunks"))
@@ -348,7 +399,21 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
             job.status = "succeeded"
             job.finished_at = datetime.now(UTC)
             job.last_heartbeat_at = job.finished_at
-            job.checkpoint = {"stage": "done"}
+            indexed_tables = {
+                row["source_object_id"] for row in rows if row["unit_type"] == "table_cells"
+            }
+            skipped_tables = sum(
+                object.type == "table" and object.id not in indexed_tables
+                for object in objects
+            )
+            job.checkpoint = {
+                "stage": "done",
+                "table_units": sum(row["unit_type"] == "table_cells" for row in rows),
+                "skipped_table_objects": skipped_tables,
+                "skipped_table_reason": (
+                    "missing_text_or_verified_pdf_anchor" if skipped_tables else None
+                ),
+            }
             await session.commit()
         except Exception as exc:  # noqa: BLE001
             await session.rollback()
@@ -660,6 +725,60 @@ async def hybrid_search(
             pointer_id=pointer.id,
             expires_at=expires,
         )
+        closure_items = [
+            {key: value for key, value in neighbor.items() if key != "_parser"}
+            for neighbor in closure_by_source.get(info["source_object_id"], [])
+        ]
+        for neighbor, source_neighbor in zip(
+            closure_items,
+            closure_by_source.get(info["source_object_id"], []),
+            strict=True,
+        ):
+            neighbor_bbox = neighbor["bbox"]
+            neighbor_page = neighbor["physical_page"]
+            if not (
+                neighbor["object_type"] == "figure"
+                and neighbor["relation_type"] in {"previous", "next"}
+                and source_neighbor["_parser"] == "stub-pdf"
+                and type(neighbor_page) is int
+                and neighbor_page >= 1
+                and isinstance(neighbor_bbox, list)
+                and len(neighbor_bbox) == 4
+                and all(
+                    isinstance(value, (int, float)) and math.isfinite(value)
+                    for value in neighbor_bbox
+                )
+                and neighbor_bbox[0] < neighbor_bbox[2]
+                and neighbor_bbox[1] < neighbor_bbox[3]
+            ):
+                continue
+            figure_pointer = EvidencePointer(
+                id=new_ulid(),
+                course_id=course_id,
+                material_id=info["material_id"],
+                material_version_id=info["material_version_id"],
+                source_object_id=neighbor["object_id"],
+                retrieval_unit_id=None,
+                material_title=info["material_title"],
+                excerpt="",
+                excerpt_sha256=hashlib.sha256(b"").hexdigest(),
+                chapter_path=neighbor["chapter_path"],
+                physical_page=neighbor_page,
+                reading_order=neighbor["reading_order"],
+                object_type="figure",
+                coordinate_space="pdf_user_bottom_left",
+                bbox=neighbor_bbox,
+                anchors=[
+                    {
+                        "physical_page": neighbor_page,
+                        "bbox": neighbor_bbox,
+                        "coordinate_space": "pdf_user_bottom_left",
+                        "precision": "stored_source_object_bbox",
+                    }
+                ],
+            )
+            db.add(figure_pointer)
+            neighbor["evidence_pointer_id"] = figure_pointer.id
         item = {
             "evidence_id": ticket.id,
             "evidence_pointer_id": pointer.id,
@@ -682,7 +801,7 @@ async def hybrid_search(
             "text": info["text"],
             "retrieval_sources": sources,
             "review_status": info["review_status"],
-            "closure": closure_by_source.get(info["source_object_id"], []),
+            "closure": closure_items,
         }
         if staff:
             item["score"] = round(score, 6)

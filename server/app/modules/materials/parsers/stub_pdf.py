@@ -160,6 +160,7 @@ def _page_layout_entries(page: pymupdf.Page, chapter_lines: set[str]) -> list[Pa
     # 文本与图像 block 的原始坐标在未旋转的 PDF 页面空间；page.rect 会随 /Rotate
     # 改变宽高，导致旋转页面的 bottom-left bbox 被错误平移。用 MediaBox 尺寸还原原空间。
     page_height = float(page.mediabox.height)
+    table_entries = _page_table_entries(page, page_height)
     entries: list[ParsedObject] = []
     for block in page.get_text("dict").get("blocks", []):
         block_type = block.get("type")
@@ -200,6 +201,8 @@ def _page_layout_entries(page: pymupdf.Page, chapter_lines: set[str]) -> list[Pa
         bbox = _to_pdf_bbox(raw_bbox, page_height)
         if bbox is None:
             continue
+        if _text_block_is_covered_by_table(kept_lines, bbox, table_entries):
+            continue
         entries.append(
             ParsedObject(
                 type="paragraph",
@@ -220,8 +223,30 @@ def _page_layout_entries(page: pymupdf.Page, chapter_lines: set[str]) -> list[Pa
                     confidence=0.8,
                 )
             )
-    entries.extend(_page_table_entries(page, page_height))
+    entries.extend(table_entries)
     return sorted(entries, key=lambda item: (-item.bbox[3], item.bbox[0]))
+
+
+def _text_block_is_covered_by_table(
+    lines: list[tuple[str, object]], bbox: list[float], tables: list[ParsedObject]
+) -> bool:
+    """只去除完全落在已识别表格内、且内容可在表格单元格中核对的文本块。"""
+    parts = [re.sub(r"\W+", "", text.casefold()) for text, _ in lines]
+    if not parts or any(not part for part in parts):
+        return False
+    for table in tables:
+        table_bbox = table.bbox
+        if table_bbox is None or not (
+            table_bbox[0] - 2 <= bbox[0]
+            and table_bbox[1] - 2 <= bbox[1]
+            and bbox[2] <= table_bbox[2] + 2
+            and bbox[3] <= table_bbox[3] + 2
+        ):
+            continue
+        table_text = re.sub(r"\W+", "", table.raw_content.casefold())
+        if all(part in table_text for part in parts):
+            return True
+    return False
 
 
 def _page_table_entries(page: pymupdf.Page, page_height: float) -> list[ParsedObject]:
