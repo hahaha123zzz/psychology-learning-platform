@@ -382,6 +382,22 @@ def test_bound_chat_claim_reads_superseded_snapshot_and_rejects_withdrawal(clien
     assert created_session.status_code == 201, created_session.text
     session_id = created_session.json()["data"]["id"]
 
+    original_turn_body = {
+        "content": "Explain internal validity in experiments.",
+        "client_turn_id": "old-release-claim-001",
+    }
+    original_turn_response = client.post(
+        f"/api/v1/chat/sessions/{session_id}/turns",
+        json=original_turn_body,
+    )
+    assert original_turn_response.status_code == 200, original_turn_response.text
+    original_events = _parse_sse_events(original_turn_response.content)
+    original_done = next(data for name, data in original_events if name == "done")
+    assert original_done["saved"] is True
+    original_answer = "".join(
+        data["text"] for name, data in original_events if name == "delta"
+    )
+
     _login(client, "mt@uni.edu")
     new_domain_id = asyncio.run(seed_domain_release(2, old_domain_id))
     new_job_id = build_domain_index(new_domain_id)
@@ -424,14 +440,29 @@ def test_bound_chat_claim_reads_superseded_snapshot_and_rejects_withdrawal(clien
     _login(client, "ms@uni.edu")
     turn_response = client.post(
         f"/api/v1/chat/sessions/{session_id}/turns",
-        json={
-            "content": "Explain internal validity in experiments.",
-            "client_turn_id": "old-release-claim-001",
-        },
+        json=original_turn_body,
     )
     assert turn_response.status_code == 200, turn_response.text
+    replay_events = _parse_sse_events(turn_response.content)
+    replay_done = next(data for name, data in replay_events if name == "done")
+    assert replay_done["saved"] is True
+    assert replay_done["replayed"] is True
+    assert replay_done["turn_id"] == original_done["turn_id"]
+    replay_answer = "".join(data["text"] for name, data in replay_events if name == "delta")
+    assert replay_answer == original_answer
+    original_citations = [
+        data["evidence_id"] for name, data in original_events if name == "citation"
+    ]
+    replay_citations = [
+        data["evidence_id"] for name, data in replay_events if name == "citation"
+    ]
+    assert replay_citations == original_citations
     session_detail = client.get(f"/api/v1/chat/sessions/{session_id}")
     assert session_detail.status_code == 200
+    assert [turn["role"] for turn in session_detail.json()["data"]["turns"]] == [
+        "student",
+        "tutor",
+    ]
     tutor_turn = session_detail.json()["data"]["turns"][-1]
     claim = tutor_turn["verification"]["domain_claim"]
     assert claim["status"] == "supported"
@@ -578,6 +609,12 @@ def test_bound_chat_claim_reads_superseded_snapshot_and_rejects_withdrawal(clien
 
     asyncio.run(revoke_class_membership())
     assert client.get(f"/api/v1/chat/sessions/{session_id}").status_code == 404
+    revoked_replay = client.post(
+        f"/api/v1/chat/sessions/{session_id}/turns",
+        json=original_turn_body,
+    )
+    assert revoked_replay.status_code == 404
+    assert revoked_replay.json()["error"]["code"] == "CHAT_SESSION_NOT_FOUND"
 
 
 def test_bound_chat_session_is_hidden_after_class_membership_revocation(client) -> None:
