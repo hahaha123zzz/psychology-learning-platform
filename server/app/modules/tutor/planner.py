@@ -7,7 +7,7 @@
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
@@ -71,6 +71,7 @@ async def plan_next_step(
                 Attempt.user_id == user_id,
                 Attempt.status == "in_progress",
                 Assessment.course_id == course_id,
+                or_(Assessment.purpose == "formal", Assessment.purpose.is_(None)),
             )
             .limit(1)
         )

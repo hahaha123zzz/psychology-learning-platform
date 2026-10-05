@@ -4,7 +4,7 @@ import hashlib
 import json
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
@@ -104,6 +104,7 @@ async def load_effective_policy(
             Attempt.user_id == user_id,
             Attempt.status == "in_progress",
             Assessment.course_id == course_id,
+            or_(Assessment.purpose == "formal", Assessment.purpose.is_(None)),
         )
         .order_by(Attempt.created_at.desc(), Attempt.id.desc())
         .limit(1)

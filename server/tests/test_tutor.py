@@ -961,6 +961,11 @@ def test_learning_microcycle_repairs_misconceptions_and_uses_grounded_example_fa
 
 
 def test_active_formal_assessment_fails_closed_for_learning_response(client) -> None:
+    import asyncio
+    from datetime import UTC, datetime, timedelta
+
+    from app.db.models import Assessment
+    from app.db.session import session_factory
     from tests.test_assessment_reliability import (
         OBJECTIVE_QUESTION,
         _create_assessment,
@@ -977,6 +982,16 @@ def test_active_formal_assessment_fails_closed_for_learning_response(client) -> 
     _login(client, "mt@uni.edu")
     question = _create_published_question(client, course_id, OBJECTIVE_QUESTION)
     assessment_id = _create_assessment(client, course_id, [question["id"]])
+    async def mark_as_formal() -> None:
+        async with session_factory() as db:
+            assessment = await db.get(Assessment, assessment_id)
+            assert assessment is not None
+            assessment.purpose = "formal"
+            assessment.result_visibility_policy = "after_close"
+            assessment.closes_at = datetime.now(UTC) + timedelta(hours=1)
+            await db.commit()
+
+    asyncio.run(mark_as_formal())
     _login(client, "ms@uni.edu")
     attempt = client.post(f"/api/v1/assessments/{assessment_id}/attempts")
     assert attempt.status_code == 201, attempt.text
@@ -991,6 +1006,48 @@ def test_active_formal_assessment_fails_closed_for_learning_response(client) -> 
     current = client.get(f"/api/v1/learning-sessions/{learning['id']}")
     assert current.json()["data"]["state_version"] == learning["state_version"]
     assert current.json()["data"]["state"] == learning["state"]
+
+
+def test_active_practice_assessment_keeps_tutor_available(client) -> None:
+    from tests.test_assessment_reliability import (
+        OBJECTIVE_QUESTION,
+        _create_assessment,
+        _create_published_question,
+    )
+
+    course_id, _, version_id = _prepare(client, publish=True)
+    _login(client, "ms@uni.edu")
+    learning = client.post(
+        "/api/v1/learning-sessions",
+        json={"course_id": course_id, "material_version_id": version_id},
+    )
+    assert learning.status_code == 201, learning.text
+    _login(client, "mt@uni.edu")
+    question = _create_published_question(client, course_id, OBJECTIVE_QUESTION)
+    assessment_id = _create_assessment(client, course_id, [question["id"]], purpose="practice")
+    _login(client, "ms@uni.edu")
+    attempt = client.post(f"/api/v1/assessments/{assessment_id}/attempts")
+    assert attempt.status_code == 201, attempt.text
+
+    session = client.post(
+        "/api/v1/chat/sessions",
+        json={"course_id": course_id, "mode": "course_qa", "title": "练习后教材学习"},
+    )
+    assert session.status_code == 201, session.text
+    turn = client.post(
+        f"/api/v1/chat/sessions/{session.json()['data']['id']}/turns",
+        json={"content": "请解释自变量。", "client_turn_id": "practice-turn-0001"},
+    )
+    assert turn.status_code == 200, turn.text
+    assert "当前策略不允许内容型教学支持" not in turn.text
+    search = client.post(
+        "/api/v1/knowledge/search",
+        json={"course_id": course_id, "query": "independent variable", "purpose": "course_qa"},
+    )
+    assert search.status_code == 200, search.text
+    home = client.get("/api/v1/student/home")
+    assert home.status_code == 200, home.text
+    assert "正式测评进行中" not in home.json()["data"]["progress_decision"]["reason"]
 
 
 def test_learning_session_pins_unique_course_release_assignment(client) -> None:

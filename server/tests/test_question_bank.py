@@ -194,8 +194,7 @@ def test_full_assessment_attempt_and_grading(client) -> None:
         "/api/v1/chat/sessions",
         json={"course_id": course_id, "mode": "question_coach"},
     )
-    assert coach.status_code == 403
-    assert coach.json()["error"]["code"] == "EXAM_AI_SUPPORT_RESTRICTED"
+    assert coach.status_code == 201, coach.text
 
     submit = client.post(f"/api/v1/attempts/{attempt_id}/submit")
     assert submit.status_code == 200
@@ -460,6 +459,8 @@ def test_unpublished_question_rejected_from_assessment(client) -> None:
 def test_active_assessment_cannot_be_bypassed_through_existing_chat(
     client, ai_policy: str, mode: str
 ) -> None:
+    from tests.conftest import create_user_sync
+
     course_id, question = _prepare_published_question(client)
     question_id = question["id"]
     _login(client, "mt@uni.edu")
@@ -471,6 +472,20 @@ def test_active_assessment_cannot_be_bypassed_through_existing_chat(
         == 200
     )
     assert client.post(f"/api/v1/questions/{question_id}/publish").status_code == 200
+    reviewer_id = create_user_sync(
+        email="assessment-reviewer@uni.edu", is_teacher=True
+    )
+    assert client.post(
+        f"/api/v1/courses/{course_id}/members",
+        json={"user_id": reviewer_id, "role": "teacher"},
+    ).status_code == 201
+    question_version_id = question["current_version"]["id"]
+    _login(client, "assessment-reviewer@uni.edu")
+    approved = client.post(
+        f"/api/v1/courses/{course_id}/question-versions/{question_version_id}/purpose/formal",
+        json={"decision": "approved", "reason": "另一位课程教师已独立复核正式用途。"},
+    )
+    assert approved.status_code == 201, approved.text
 
     _login(client, "ms@uni.edu")
     session = client.post(
@@ -486,6 +501,10 @@ def test_active_assessment_cannot_be_bypassed_through_existing_chat(
         json={
             "title": "正在进行的测验",
             "question_ids": [question_id],
+            "purpose": "formal",
+            "result_visibility_policy": "after_close",
+            "opens_at": datetime.now(UTC).isoformat(),
+            "closes_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
             "ai_policy": ai_policy,
             "points_per_question": 5,
         },

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ApiError
@@ -16,7 +16,12 @@ async def ensure_ai_support_available(db: AsyncSession, *, user_id: str) -> None
     policy = await db.scalar(
         select(Assessment.ai_policy)
         .join(Attempt, Attempt.assessment_id == Assessment.id)
-        .where(Attempt.user_id == user_id, Attempt.status == "in_progress")
+        .where(
+            Attempt.user_id == user_id,
+            Attempt.status == "in_progress",
+            # 兼容没有 purpose 的历史测评，继续按正式测评保守限制。
+            or_(Assessment.purpose == "formal", Assessment.purpose.is_(None)),
+        )
         .order_by(Attempt.created_at.desc(), Attempt.id.desc())
         .limit(1)
     )
