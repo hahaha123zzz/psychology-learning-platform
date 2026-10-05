@@ -81,7 +81,10 @@ test("formal assessment route has isolated multi-select and true-false answer co
   const practice = read("../components/StudentCourseSupportPages.tsx");
   assert.match(formalRoute, /StudentAssessments/);
   assert.doesNotMatch(formalRoute, /LegacyCourseRedirect/);
-  assert.match(practice, /student\/assessments\?course_id=/);
+  assert.match(practice, /assessment\.purpose === "practice"/);
+  assert.doesNotMatch(practice, /student\/assessments\?course_id=/);
+  assert.match(practice, /purpose=practice/);
+  assert.match(practice, /恢复练习/);
   assert.match(formal, /item\.type === "multiple"/);
   assert.match(formal, /item\.type === "true_false"/);
   assert.match(formal, /type="checkbox"/);
