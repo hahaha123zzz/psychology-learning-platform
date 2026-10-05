@@ -87,6 +87,17 @@ def test_reader_page_image_is_versioned_cached_and_keeps_historical_pointer(clie
     pointer = _search_pointer(client, course_id)
     pointer_id = pointer["evidence_pointer_id"]
 
+    pointer_view = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
+    assert pointer_view.status_code == 200
+    assert pointer_view.json()["data"]["material_version_id"] == version_id
+    assert pointer_view.json()["data"]["physical_page"] == pointer["physical_page"]
+    assert any(
+        anchor["physical_page"] == pointer["physical_page"]
+        and anchor["bbox"] == pointer["bbox"]
+        and anchor["coordinate_space"] == "pdf_user_bottom_left"
+        for anchor in pointer_view.json()["data"]["anchors"]
+    )
+
     page_image = client.get(f"/api/v1/evidence-pointers/{pointer_id}/page-image")
     assert page_image.status_code == 200
     assert page_image.headers["content-type"].startswith("image/png")
@@ -190,6 +201,9 @@ def test_reader_page_image_is_versioned_cached_and_keeps_historical_pointer(clie
     historical_page = client.get(f"/api/v1/evidence-pointers/{pointer_id}/page-image")
     assert historical_page.status_code == 200
     assert historical_page.content == stored_image
+    historical_pointer = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
+    assert historical_pointer.status_code == 200
+    assert historical_pointer.json()["data"]["material_version_id"] == version_id
 
 
 def test_reader_page_image_rechecks_membership_and_archive_state(client) -> None:
