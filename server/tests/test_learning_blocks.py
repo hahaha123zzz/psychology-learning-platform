@@ -1,5 +1,8 @@
 from app.modules.tutor.planner import decide_progress
-from app.modules.tutor.service import build_learning_blocks
+from app.modules.tutor.service import (
+    apply_presentation_preferences,
+    build_learning_blocks,
+)
 
 
 def test_learning_blocks_are_whitelisted_and_versioned() -> None:
@@ -46,3 +49,37 @@ def test_progress_planner_has_four_explainable_states_and_safe_fallback() -> Non
     result = decide_progress(task_status="active", task_state="check", due_review_count=0)
     assert result["decision"] == "continue"
     assert result["fallback"] == "continue"
+
+
+def test_tutor_presentation_preferences_change_order_and_length_without_new_claims() -> None:
+    answer = "根据教材：概念定义。 例如，教材中的例子。 进一步解释。"
+
+    concise = apply_presentation_preferences(
+        answer, response_length="CONCISE", example_order="EXAMPLE_FIRST"
+    )
+    detailed = apply_presentation_preferences(
+        answer, response_length="DETAILED", example_order="EXAMPLE_FIRST"
+    )
+
+    assert concise == "根据教材：例如，教材中的例子。"
+    assert detailed == "根据教材：例如，教材中的例子。 概念定义。 进一步解释。"
+
+
+def test_adaptive_example_order_responds_to_example_question() -> None:
+    answer = "根据教材：概念定义。 例如，教材中的例子。"
+
+    example_question = apply_presentation_preferences(
+        answer,
+        response_length="BALANCED",
+        example_order="ADAPTIVE",
+        query="能举个例子吗？",
+    )
+    concept_question = apply_presentation_preferences(
+        answer,
+        response_length="BALANCED",
+        example_order="ADAPTIVE",
+        query="这个概念是什么？",
+    )
+
+    assert example_question.startswith("根据教材：例如，教材中的例子。")
+    assert concept_question.startswith("根据教材：概念定义。")

@@ -140,6 +140,8 @@ def test_user_preferences_are_explicit_and_versioned(client) -> None:
     defaults = client.get("/api/v1/me/preferences")
     assert defaults.status_code == 200
     assert defaults.json()["data"]["preferences"]["font_scale"] == "100"
+    assert defaults.json()["data"]["preferences"]["response_length"] == "BALANCED"
+    assert defaults.json()["data"]["preferences"]["example_order"] == "CONCEPT_FIRST"
     updated = client.patch(
         "/api/v1/me/preferences",
         json={
@@ -148,16 +150,30 @@ def test_user_preferences_are_explicit_and_versioned(client) -> None:
             "font_scale": "115",
             "reduced_motion": True,
             "notification_in_app": False,
+            "response_length": "DETAILED",
+            "example_order": "EXAMPLE_FIRST",
         },
     )
     assert updated.status_code == 200
     assert updated.json()["data"]["preferences"]["hint_density"] == "guided"
+    assert updated.json()["data"]["preferences"]["response_length"] == "DETAILED"
+    assert updated.json()["data"]["preferences"]["example_order"] == "EXAMPLE_FIRST"
     stale = client.patch(
         "/api/v1/me/preferences",
         json={"version": defaults.json()["data"]["version"], "font_scale": "130"},
     )
     assert stale.status_code == 409
     assert stale.json()["error"]["code"] == "RESOURCE_VERSION_CONFLICT"
+
+
+def test_user_preferences_reject_unknown_tutor_presentation_values(client) -> None:
+    create_user_sync(email="invalid-preferences@uni.edu")
+    _login(client, "invalid-preferences@uni.edu")
+    invalid = client.patch(
+        "/api/v1/me/preferences",
+        json={"version": 1, "response_length": "UNLIMITED"},
+    )
+    assert invalid.status_code == 422
 
 
 def test_platform_admin_does_not_inherit_course_teaching_scope(client) -> None:

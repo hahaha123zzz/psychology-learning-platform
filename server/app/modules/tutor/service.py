@@ -841,8 +841,14 @@ async def _empty_evidence() -> list[dict[str, Any]]:
 
 # ---- 抽取式回答生成（可替换为LLM） ----
 
-def generate_answer(query: str, package: EvidencePackage) -> str:
-    """从证据中抽取与问题最相关的句子。无可用证据时返回拒答话术。"""
+def generate_answer(
+    query: str,
+    package: EvidencePackage,
+    *,
+    response_length: str = "BALANCED",
+    example_order: str = "CONCEPT_FIRST",
+) -> str:
+    """从证据中抽取相关句子，并按学生偏好控制长度与讲解顺序。"""
     if not package.items:
         return "当前教材中未找到足够依据回答这个问题，建议补充资料或向教师求助。"
     query_tokens = set(TOKEN_RE.findall(query.lower()))
@@ -856,10 +862,44 @@ def generate_answer(query: str, package: EvidencePackage) -> str:
             overlap = len(tokens & query_tokens) / max(len(tokens), 1)
             best_sentences.append((overlap, sentence))
     best_sentences.sort(key=lambda pair: pair[0], reverse=True)
-    picked = [s for score, s in best_sentences if score > 0][:3]
+    picked = [s for score, s in best_sentences if score > 0]
     if not picked:
         picked = [best_sentences[0][1]] if best_sentences else []
+    adaptive_example_first = example_order == "ADAPTIVE" and any(
+        marker in query for marker in ("例子", "举例", "例如", "比如", "案例")
+    )
+    if example_order == "EXAMPLE_FIRST" or adaptive_example_first:
+        example_markers = ("例如", "比如", "举例", "案例")
+        picked.sort(key=lambda sentence: not any(marker in sentence for marker in example_markers))
+    if response_length == "CONCISE":
+        picked = picked[:1]
+    elif response_length == "BALANCED":
+        picked = picked[:3]
+    else:
+        picked = picked[:5]
     return "根据教材：" + " ".join(picked)
+
+
+def apply_presentation_preferences(
+    answer: str, *, response_length: str, example_order: str, query: str = ""
+) -> str:
+    """只重排或截短已生成内容，不增加教材外事实。"""
+    prefix = "根据教材："
+    content = answer.removeprefix(prefix)
+    sentences = [sentence.strip() for sentence in SENTENCE_RE.findall(content) if sentence.strip()]
+    adaptive_example_first = example_order == "ADAPTIVE" and any(
+        marker in query for marker in ("例子", "举例", "例如", "比如", "案例")
+    )
+    if example_order == "EXAMPLE_FIRST" or adaptive_example_first:
+        markers = ("例如", "比如", "举例", "案例")
+        sentences.sort(key=lambda sentence: not any(marker in sentence for marker in markers))
+    if response_length == "CONCISE":
+        sentences = sentences[:1]
+    elif response_length == "BALANCED":
+        sentences = sentences[:3]
+    else:
+        sentences = sentences[:5]
+    return prefix + " ".join(sentences) if sentences else answer
 
 
 async def generate_grounded_answer(
@@ -945,6 +985,8 @@ async def run_turn_stream(
     effective_policy: dict | None = None,
     domain_claim_context: DomainClaimContext | None = None,
     organization_id: str | None = None,
+    response_length: str = "BALANCED",
+    example_order: str = "CONCEPT_FIRST",
 ):
     """生成SSE事件流。仅当全部成功时才提交（半截结论不落库）。"""
     yield _sse("state", {"stage": "retrieving"})
@@ -1050,9 +1092,17 @@ async def run_turn_stream(
         user_id=session_row.user_id,
         purpose=purpose,
     )
+    answer = apply_presentation_preferences(
+        answer,
+        response_length=response_length,
+        example_order=example_order,
+        query=content,
+    )
     verification = verify_claims(answer, package)
     if verification["unsupported_count"]:
-        answer = generate_answer(content, package)
+        answer = generate_answer(
+            content, package, response_length=response_length, example_order=example_order
+        )
         generation_provider = "internal_verification_fallback"
         verification = verify_claims(answer, package)
     verification["generation_provider"] = generation_provider

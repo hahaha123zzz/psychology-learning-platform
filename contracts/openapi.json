@@ -11207,6 +11207,30 @@
               }
             ],
             "title": "Notification In App"
+          },
+          "response_length": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(CONCISE|BALANCED|DETAILED)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Length"
+          },
+          "example_order": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(EXAMPLE_FIRST|CONCEPT_FIRST|ADAPTIVE)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Example Order"
           }
         },
         "type": "object",

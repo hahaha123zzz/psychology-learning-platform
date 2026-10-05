@@ -41,6 +41,12 @@ class PreferencesPatch(BaseModel):
     reduced_motion: bool | None = None
     font_scale: str | None = Field(default=None, pattern="^(100|115|130)$")
     notification_in_app: bool | None = None
+    response_length: str | None = Field(
+        default=None, pattern="^(CONCISE|BALANCED|DETAILED)$"
+    )
+    example_order: str | None = Field(
+        default=None, pattern="^(EXAMPLE_FIRST|CONCEPT_FIRST|ADAPTIVE)$"
+    )
 
 
 class PreferencesOut(BaseModel):

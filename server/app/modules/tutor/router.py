@@ -20,6 +20,7 @@ from app.db.models import (
     ReviewTask,
     TeachingSession,
     User,
+    UserPreference,
 )
 from app.db.session import get_db_session
 from app.modules.assessments.policy import ensure_ai_support_available
@@ -436,6 +437,12 @@ async def create_turn(
         course_id=session_row.course_id,
         course_release_id=session_row.course_release_id,
     )
+    preference_row = await db.scalar(
+        select(UserPreference).where(UserPreference.user_id == user.id)
+    )
+    preferences = (preference_row.preferences or {}) if preference_row else {}
+    response_length = preferences.get("response_length", "BALANCED")
+    example_order = preferences.get("example_order", "CONCEPT_FIRST")
     if not set(effective_policy["allowed_actions"]) - {"pause", "handoff"}:
         raise ApiError(
             status_code=403,
@@ -495,6 +502,8 @@ async def create_turn(
             purpose=session_row.mode,
             effective_policy=effective_policy,
             organization_id=user.organization_id,
+            response_length=response_length,
+            example_order=example_order,
         )
         try:
             async for event in turn_stream:

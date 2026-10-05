@@ -157,6 +157,8 @@ DEFAULT_PREFERENCES = {
     "reduced_motion": False,
     "font_scale": "100",
     "notification_in_app": True,
+    "response_length": "BALANCED",
+    "example_order": "CONCEPT_FIRST",
 }
 
 
