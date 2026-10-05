@@ -33,26 +33,65 @@ async def requeue_stale_jobs(db: AsyncSession) -> list[str]:
     older_than = datetime.now(UTC) - timedelta(seconds=stale_seconds)
     stale_jobs = await find_stale_jobs(db, older_than=older_than)
     recovered: list[str] = []
+    recovery_from_versions: dict[str, int] = {}
     for job in stale_jobs:
         version_id = job.payload.get("material_version_id")
         if not version_id:
             continue
+        recovery_from_versions[job.id] = job.version
         job.status = "queued"
         job.stage = "queued"
         job.progress = 0
         job.error = None
         job.retryable = False
         job.started_at = None
+        job.finished_at = None
         job.last_heartbeat_at = None
+        job.version += 1
+        job.checkpoint = {
+            "stage": "queued",
+            "recovery_from_version": recovery_from_versions[job.id],
+        }
         recovered.append(job.id)
     await db.commit()
+    dispatch_failures = 0
     for job_id in recovered:
         job = await db.get(Job, job_id)
         if job is None:
             continue
         version_id = job.payload["material_version_id"]
-        if job.kind == "material_parse":
-            dispatch_parse_job(job_id, version_id)
-        else:
-            dispatch_embed_job(job_id, version_id)
+        try:
+            if job.kind == "material_parse":
+                dispatch_parse_job(job_id, version_id)
+            else:
+                dispatch_embed_job(job_id, version_id)
+        except Exception:  # noqa: BLE001 - broker errors may contain credentials or host details
+            await db.rollback()
+            failed_job = await db.scalar(
+                select(Job).where(Job.id == job_id).with_for_update()
+            )
+            if (
+                failed_job is not None
+                and failed_job.status == "queued"
+                and failed_job.version == recovery_from_versions[job_id] + 1
+            ):
+                failed_job.status = "failed"
+                failed_job.stage = "dispatch_failed"
+                failed_job.retryable = True
+                failed_job.error = "任务派发失败，请稍后重试"
+                failed_job.finished_at = datetime.now(UTC)
+                failed_job.version += 1
+                failed_job.checkpoint = {
+                    "stage": "dispatch_failed",
+                    "recovery_from_version": recovery_from_versions[job_id],
+                }
+                await db.commit()
+            else:
+                await db.rollback()
+            dispatch_failures += 1
+
+    if dispatch_failures:
+        raise RuntimeError(
+            f"{dispatch_failures} 个陈旧任务重派发失败，请检查任务状态并使用受控重试"
+        ) from None
     return recovered

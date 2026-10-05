@@ -42,7 +42,7 @@ export default function CourseList({ role }: { role: CourseRole }) {
       <div className="course-card-grid">
         {courses.map((course) => <Link href={`${base}/${course.id}`} className="course-card" key={course.id}><Icon icon={role === "teacher" ? "solar:clipboard-check-bold-duotone" : "solar:book-bookmark-bold-duotone"} /><div><strong>{course.title}</strong><span>{course.term}</span><small>{course.description || (role === "teacher" ? "进入课程工作台" : "进入学习空间")}</small></div><Icon className="course-card-arrow" icon="solar:arrow-right-linear" /></Link>)}
       </div>
-      {!notice && courses.length === 0 && <section className="course-empty"><Icon icon="solar:book-linear" /><h2>{role === "teacher" ? "还没有课程" : "暂时没有可学习的课程"}</h2><p>{role === "teacher" ? "新建课程后即可上传教材并组织教学。" : "请联系教师确认你已加入课程，且课程已有发布的教材。"}</p></section>}
+      {!notice && courses.length === 0 && <section className="course-empty"><Icon icon="solar:book-linear" /><h2>{role === "teacher" ? "还没有课程" : "暂时没有可学习的课程"}</h2><p>{role === "teacher" ? "新建课程后即可查看课程资料并组织教学；教材由受控内容流程管理。" : "请联系教师确认你已加入课程，且课程已有发布的教材。"}</p></section>}
     </section>
   </main>;
 }

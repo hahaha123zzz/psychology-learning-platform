@@ -1,0 +1,76 @@
+{
+  "target": "http://127.0.0.1:3202",
+  "checks": [
+    {
+      "name": "管理员概览实时数据",
+      "detail": "真实登录后显示 health readiness、同机构账号数和进行中测评数"
+    },
+    {
+      "name": "概览 loading",
+      "detail": "延迟真实 admin health 响应期间页面显示读取状态"
+    },
+    {
+      "name": "概览失败与重试",
+      "detail": "浏览器中断一次真实代理请求，页面报告失败，随后从实际 API 重试恢复"
+    },
+    {
+      "name": "管理员读取边界",
+      "detail": "同一真实会话下教学课程详情和跨机构班级列表均返回 404"
+    },
+    {
+      "name": "窄屏只读门禁",
+      "detail": "移动视口仍可读，创建班级写入口被隐藏"
+    },
+    {
+      "name": "IAM 409 乐观锁",
+      "detail": "两个真实浏览器会话基于同一版本竞争撤权，第二次请求返回 409 并刷新列表"
+    },
+    {
+      "name": "IAM 授予回执",
+      "detail": "同机构对象、平台 Scope、角色和理由经复核后通过真实 API 授予并收到回执"
+    },
+    {
+      "name": "课程、班级与任课治理",
+      "detail": "真实 API 创建班级、加入课程学生、加入班级学生并分配已入课教师，理由和确认对话框均已执行"
+    },
+    {
+      "name": "任务版本与受控恢复",
+      "detail": "使用当前失败任务版本、理由和确认完成重试；任务转入队列，其他状态筛选展示真实空态"
+    },
+    {
+      "name": "审计过滤与无数据状态",
+      "detail": "真实审计 API 包含前序治理操作；按不匹配操作精确筛选后显示无数据状态"
+    },
+    {
+      "name": "非管理员服务端权限回归",
+      "detail": "学生会话直接请求 /admin/health 得到 HTTP 403"
+    }
+  ],
+  "screenshots": [
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-b-governance\\01-overview-live.png",
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-b-governance\\02-overview-loading.png",
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-b-governance\\03-overview-error.png",
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-b-governance\\04-course-narrow-readonly.png",
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-b-governance\\05-iam-version-conflict.png",
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-b-governance\\06-iam-confirmation.png",
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-b-governance\\07-course-class-membership.png",
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-b-governance\\08-job-retry-confirmation.png",
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-b-governance\\09-job-empty-state.png",
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-b-governance\\10-audit-real-events.png",
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-b-governance\\11-audit-empty-state.png"
+  ],
+  "expectedHttpFailures": [
+    {
+      "path": "/api/v1/admin/courses/01M433AMS45WHZB5YTVSKC9TT7/classes",
+      "status": 404
+    },
+    {
+      "path": "/api/v1/admin/role-assignments/{id}/revoke",
+      "status": 409
+    },
+    {
+      "path": "/api/v1/admin/health",
+      "status": 403
+    }
+  ]
+}

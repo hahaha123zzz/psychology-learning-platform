@@ -1,6 +1,53 @@
 from tests.conftest import create_user_sync
 
 
+def _assign_platform_role_sync(user_id: str, role: str) -> None:
+    import asyncio
+
+    from app.db.models import RoleAssignment
+    from app.db.session import session_factory
+
+    async def _assign() -> None:
+        async with session_factory() as session:
+            session.add(
+                RoleAssignment(
+                    user_id=user_id,
+                    role=role,
+                    scope_type="platform",
+                    scope_id=None,
+                    status="active",
+                    granted_by=None,
+                )
+            )
+            await session.commit()
+
+    asyncio.run(_assign())
+
+
+def _revoke_platform_role_sync(user_id: str, role: str) -> None:
+    import asyncio
+
+    from sqlalchemy import update
+
+    from app.db.models import RoleAssignment
+    from app.db.session import session_factory
+
+    async def _revoke() -> None:
+        async with session_factory() as session:
+            await session.execute(
+                update(RoleAssignment)
+                .where(
+                    RoleAssignment.user_id == user_id,
+                    RoleAssignment.role == role,
+                    RoleAssignment.scope_type == "platform",
+                )
+                .values(status="revoked")
+            )
+            await session.commit()
+
+    asyncio.run(_revoke())
+
+
 def _login(client, email: str, password: str = "correct-password"):
     return client.post(
         "/api/v1/auth/login",
@@ -68,6 +115,69 @@ def test_me_returns_platform_roles_and_memberships(client) -> None:
     assert "teacher" in data["platform_roles"]
     assert len(data["course_memberships"]) == 1
     assert data["course_memberships"][0]["role"] == "teacher"
+    assert data["capabilities"]["teacher_teaching"] is True
+    assert data["capabilities"]["course_publish"] is True
+
+
+def test_me_includes_active_platform_role_assignment(client) -> None:
+    user_id = create_user_sync(email="designer@uni.edu")
+    _assign_platform_role_sync(user_id, "course_designer")
+    _login(client, "designer@uni.edu")
+
+    response = client.get("/api/v1/me")
+
+    assert response.status_code == 200
+    assert "course_designer" in response.json()["data"]["platform_roles"]
+
+    _revoke_platform_role_sync(user_id, "course_designer")
+    response = client.get("/api/v1/me")
+    assert "course_designer" not in response.json()["data"]["platform_roles"]
+
+
+def test_user_preferences_are_explicit_and_versioned(client) -> None:
+    create_user_sync(email="preferences@uni.edu")
+    _login(client, "preferences@uni.edu")
+    defaults = client.get("/api/v1/me/preferences")
+    assert defaults.status_code == 200
+    assert defaults.json()["data"]["preferences"]["font_scale"] == "100"
+    updated = client.patch(
+        "/api/v1/me/preferences",
+        json={
+            "version": defaults.json()["data"]["version"],
+            "hint_density": "guided",
+            "font_scale": "115",
+            "reduced_motion": True,
+            "notification_in_app": False,
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["data"]["preferences"]["hint_density"] == "guided"
+    stale = client.patch(
+        "/api/v1/me/preferences",
+        json={"version": defaults.json()["data"]["version"], "font_scale": "130"},
+    )
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "RESOURCE_VERSION_CONFLICT"
+
+
+def test_platform_admin_does_not_inherit_course_teaching_scope(client) -> None:
+    create_user_sync(email="course-owner@uni.edu", is_teacher=True)
+    _login(client, "course-owner@uni.edu")
+    course = client.post(
+        "/api/v1/courses",
+        json={"title": "范围隔离课程", "term": "2026秋"},
+    )
+    assert course.status_code == 201
+    course_id = course.json()["data"]["id"]
+
+    create_user_sync(email="platform-admin@uni.edu", is_platform_admin=True)
+    _login(client, "platform-admin@uni.edu")
+    response = client.get(f"/api/v1/courses/{course_id}")
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "COURSE_NOT_FOUND"
+    listing = client.get("/api/v1/courses")
+    assert listing.status_code == 200
+    assert listing.json()["data"] == []
 
 
 def test_refresh_rotates_token_and_rejects_reuse(client) -> None:

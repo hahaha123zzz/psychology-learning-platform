@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ApiError
 from app.core.security import decode_access_token
-from app.db.models import CourseMember, User
+from app.db.models import CourseMember, RoleAssignment, User
 from app.db.session import get_db_session
 
 ACCESS_COOKIE = "pl_access"
@@ -63,8 +63,6 @@ async def require_course_role(
     roles: set[str],
 ) -> str:
     """校验用户在指定课程中的角色；无权时返回404以避免资源枚举。"""
-    if user.is_platform_admin:
-        return "teacher"
     result = await db.execute(
         select(CourseMember).where(
             CourseMember.course_id == course_id,
@@ -74,6 +72,40 @@ async def require_course_role(
         )
     )
     membership = result.scalar_one_or_none()
-    if membership is None:
+    if membership is not None:
+        return membership.role
+    scoped = await db.execute(
+        select(RoleAssignment.role).where(
+            RoleAssignment.user_id == user.id,
+            RoleAssignment.role.in_(roles),
+            RoleAssignment.scope_type == "course",
+            RoleAssignment.scope_id == course_id,
+            RoleAssignment.status == "active",
+        ).limit(1)
+    )
+    role = scoped.scalar_one_or_none()
+    if role is None:
         raise ApiError(status_code=404, code="COURSE_NOT_FOUND", message="课程不存在或无权访问")
-    return membership.role
+    return role
+
+
+async def has_course_scope(user: User, course_id: str, db: AsyncSession) -> bool:
+    """课程列表/详情使用的只读 Scope 检查；平台管理员不自动穿透课程边界。"""
+    membership = await db.scalar(
+        select(CourseMember.id).where(
+            CourseMember.course_id == course_id,
+            CourseMember.user_id == user.id,
+            CourseMember.status == "active",
+        ).limit(1)
+    )
+    if membership is not None:
+        return True
+    assignment = await db.scalar(
+        select(RoleAssignment.id).where(
+            RoleAssignment.user_id == user.id,
+            RoleAssignment.scope_type == "course",
+            RoleAssignment.scope_id == course_id,
+            RoleAssignment.status == "active",
+        ).limit(1)
+    )
+    return assignment is not None

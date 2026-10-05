@@ -4,20 +4,20 @@ import test from "node:test";
 
 const read = path => fs.readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("teacher material workflow uses real server state and five gated stages", () => {
+test("retired teacher materials component stays read-only", () => {
   const teacher = read("../components/TeacherWorkspace.tsx");
-  assert.match(teacher, /\/material-versions\/\$\{versionId\}\/workflow/);
-  assert.match(teacher, /\/courses\/\$\{id\}\/material-jobs/);
-  assert.match(teacher, /upload: "上传", parse: "解析", review: "教师审核", index: "构建索引", publish: "发布"/);
-  assert.match(teacher, /allowed_actions\[0\]/);
-  assert.match(teacher, /ready_to_publish/);
+  assert.match(teacher, /普通教师直接上传、解析、索引或发布教材/);
+  assert.match(teacher, /联系课程内容管理员/);
+  for (const legacyWrite of [
+    "uploadMaterialResumable",
+    "/material-versions/${version.id}/parse",
+    "/material-versions/${version.id}/embed",
+    "/material-versions/${version.id}/publish",
+    "/parse-review-issues/",
+  ]) assert.equal(teacher.includes(legacyWrite), false, `${legacyWrite} must stay retired`);
 });
 
-test("upload exposes real browser progress and warns before leaving", () => {
-  const teacher = read("../components/TeacherWorkspace.tsx");
-  const client = read("../lib/api.ts");
-  assert.match(teacher, /beforeunload/);
-  assert.match(teacher, /uploadProgress/);
-  assert.match(client, /XMLHttpRequest/);
-  assert.match(client, /request\.upload\.onprogress/);
+test("active teacher materials page is tested by the P2-08 read-only contract", () => {
+  const retiredContract = read("./p2-08-material-authoring-exit.test.mjs");
+  assert.match(retiredContract, /教师教材页保持只读/);
 });

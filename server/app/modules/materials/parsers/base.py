@@ -8,7 +8,7 @@ from typing import Protocol
 class ParsedObject:
     type: str  # chapter | paragraph | figure | table | formula
     raw_content: str
-    physical_page: int
+    physical_page: int | None = None
     printed_page: int | None = None
     reading_order: int = 0
     title: str | None = None
@@ -23,7 +23,7 @@ class ParsedObject:
 
 @dataclass
 class ParserResult:
-    page_count: int
+    page_count: int | None
     objects: list[ParsedObject] = field(default_factory=list)
     issues: list[str] = field(default_factory=list)
 

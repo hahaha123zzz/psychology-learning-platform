@@ -1,0 +1,352 @@
+from datetime import UTC, datetime
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models import (
+    Assessment,
+    AssessmentItem,
+    Attempt,
+    AttemptAnswer,
+    CaseSession,
+    LearningEvent,
+    LearningQualification,
+    LearningSession,
+    MiniLabSession,
+    QuestionVersion,
+    ReviewTask,
+)
+from app.modules.memory import service as memory_service
+
+ALGORITHM_VERSION = "qualification-v1"
+
+
+async def qualify_event(
+    db: AsyncSession,
+    *,
+    event_id: str,
+) -> tuple[LearningQualification, bool]:
+    """对原始事件做一次可重放的确定性资格化，不信任客户端成绩字段。"""
+
+    event = await db.scalar(
+        select(LearningEvent).where(LearningEvent.id == event_id).with_for_update()
+    )
+    if event is None:
+        raise ValueError("learning event not found")
+    existing = await db.scalar(
+        select(LearningQualification).where(LearningQualification.event_id == event.id)
+    )
+    if existing is not None:
+        return existing, True
+
+    status = "rejected"
+    reason = "event_type_not_evidence_bearing"
+    evidence_ids: list[str] = []
+    if event.event_type == "answer_submitted" and event.source_type == "assessment":
+        evidence_ids, reason = await _qualify_assessment_answer(db, event)
+        status = "qualified" if evidence_ids else "rejected"
+    elif event.event_type == "answer_submitted" and event.source_type == "review":
+        evidence_ids, reason = await _qualify_review_task(db, event)
+        status = "qualified" if evidence_ids else "rejected"
+    elif event.event_type == "answer_submitted" and event.source_type == "practice":
+        evidence_ids, reason = await _qualify_practice_case(db, event)
+        status = "qualified" if evidence_ids else "rejected"
+    elif event.event_type == "tutor_responded" and event.source_type == "tutor":
+        evidence_ids, reason = await _qualify_tutor_response(db, event)
+        status = "qualified" if evidence_ids else "rejected"
+    elif event.event_type == "lab_trial_completed" and event.source_type == "lab":
+        evidence_ids, reason = await _qualify_lab_result(db, event)
+        status = "qualified" if evidence_ids else "rejected"
+
+    event.qualification_status = status
+    event.qualification_reason = reason
+    event.qualified_at = datetime.now(UTC)
+    qualification = LearningQualification(
+        event_id=event.id,
+        user_id=event.user_id,
+        course_id=event.course_id,
+        status=status,
+        reason=reason,
+        algorithm_version=ALGORITHM_VERSION,
+        evidence_ids=evidence_ids,
+    )
+    db.add(qualification)
+    await db.flush()
+    return qualification, False
+
+
+async def _qualify_practice_case(
+    db: AsyncSession, event: LearningEvent
+) -> tuple[list[str], str]:
+    """只从服务端 CaseSession 快照生成练习证据，不信任客户端分数。"""
+    if not event.source_ref:
+        return [], "missing_authoritative_case_reference"
+    session = await db.scalar(
+        select(CaseSession).where(
+            CaseSession.id == event.source_ref,
+            CaseSession.user_id == event.user_id,
+            CaseSession.course_id == event.course_id,
+        )
+    )
+    if session is None or session.status != "completed" or not isinstance(session.outcome, dict):
+        return [], "case_session_not_completed"
+    points = session.outcome.get("points")
+    max_points = session.outcome.get("max_points")
+    if not isinstance(points, int) or not isinstance(max_points, int) or max_points <= 0:
+        return [], "case_outcome_not_authoritative"
+    evidence_ids = await memory_service.record_evidence(
+        db,
+        user_id=event.user_id,
+        course_id=event.course_id,
+        knowledge_points=[f"case:{session.case_key}"],
+        question_version_id=session.id,
+        attempt_id=session.id,
+        source_type="practice",
+        hints_used=0,
+        correct=points == max_points,
+        dimension="apply",
+        independence_status="independent",
+        context_key=f"case:{session.case_key}",
+    )
+    await memory_service.recompute_mastery(
+        db, user_id=event.user_id, course_id=event.course_id
+    )
+    session.outcome = {**session.outcome, "qualification_status": "qualified"}
+    return evidence_ids, "authoritative_case_session"
+
+
+async def _qualify_tutor_response(
+    db: AsyncSession, event: LearningEvent
+) -> tuple[list[str], str]:
+    """只接受服务端学习状态机写入的检查/练习回合。"""
+    if not event.source_ref or not isinstance(event.payload, dict):
+        return [], "missing_authoritative_tutor_reference"
+    session = await db.scalar(
+        select(LearningSession).where(
+            LearningSession.id == event.source_ref,
+            LearningSession.user_id == event.user_id,
+            LearningSession.course_id == event.course_id,
+        )
+    )
+    expected_version = event.payload.get("state_version")
+    state = event.payload.get("state")
+    correct = event.payload.get("correct")
+    if session is None or session.version != expected_version:
+        return [], "tutor_session_version_mismatch"
+    if state not in ("practice", "summary") or not isinstance(correct, bool):
+        return [], "tutor_response_not_evidence_bearing"
+    context = f"material:{session.material_version_id}"
+    if session.chapter_object_id:
+        context = f"{context}:chapter:{session.chapter_object_id}"
+    evidence_ids = await memory_service.record_evidence(
+        db,
+        user_id=event.user_id,
+        course_id=event.course_id,
+        knowledge_points=[f"tutor:{session.chapter_object_id or session.material_version_id}"],
+        question_version_id=session.id,
+        attempt_id=session.id,
+        source_type="practice",
+        hints_used=int(event.payload.get("hint_level") or 0),
+        correct=correct,
+        dimension="apply" if state == "practice" else "understand",
+        independence_status=(
+            "independent" if int(event.payload.get("hint_level") or 0) == 0 else "supported"
+        ),
+        context_key=context,
+    )
+    await memory_service.recompute_mastery(
+        db, user_id=event.user_id, course_id=event.course_id
+    )
+    return evidence_ids, "authoritative_tutor_state_machine"
+
+
+async def _qualify_lab_result(
+    db: AsyncSession, event: LearningEvent
+) -> tuple[list[str], str]:
+    """只从服务端 MiniLab 会话结果生成迁移证据。"""
+    if not event.source_ref or not isinstance(event.payload, dict):
+        return [], "missing_authoritative_lab_reference"
+    session = await db.scalar(
+        select(MiniLabSession).where(
+            MiniLabSession.id == event.source_ref,
+            MiniLabSession.user_id == event.user_id,
+            MiniLabSession.course_id == event.course_id,
+        )
+    )
+    if (
+        session is None
+        or session.status != "completed"
+        or not isinstance(session.derived_measure, dict)
+    ):
+        return [], "mini_lab_session_not_completed"
+    measure = session.derived_measure
+    if (
+        event.payload.get("trial_count") != measure.get("trial_count")
+        or event.payload.get("explanation_complete") != measure.get("explanation_complete")
+        or event.payload.get("transfer_complete") != measure.get("transfer_complete")
+    ):
+        return [], "mini_lab_measure_mismatch"
+    if not measure.get("explanation_complete") or not measure.get("transfer_complete"):
+        return [], "mini_lab_explanation_or_transfer_incomplete"
+    evidence_ids = await memory_service.record_evidence(
+        db,
+        user_id=event.user_id,
+        course_id=event.course_id,
+        knowledge_points=[f"lab:{session.lab_key}"],
+        question_version_id=session.id,
+        attempt_id=session.id,
+        source_type="practice",
+        hints_used=0,
+        correct=True,
+        dimension="transfer",
+        independence_status="independent",
+        context_key=f"lab:{session.lab_key}",
+    )
+    await memory_service.recompute_mastery(
+        db, user_id=event.user_id, course_id=event.course_id
+    )
+    session.derived_measure = {**measure, "qualification_status": "qualified"}
+    return evidence_ids, "authoritative_mini_lab_result"
+
+
+async def qualify_pending_events(db: AsyncSession, *, limit: int = 100) -> dict[str, int]:
+    """Worker 批量领取待资格化事件；行锁保证多 Worker 不重复投影。"""
+
+    event_ids = list(
+        (
+            await db.execute(
+                select(LearningEvent.id)
+                .where(LearningEvent.qualification_status == "pending")
+                .order_by(LearningEvent.occurred_at.asc(), LearningEvent.id.asc())
+                .limit(limit)
+                .with_for_update(skip_locked=True)
+            )
+        ).scalars()
+    )
+    counts = {"claimed": len(event_ids), "qualified": 0, "rejected": 0}
+    for event_id in event_ids:
+        qualification, _replay = await qualify_event(db, event_id=event_id)
+        counts[qualification.status] = counts.get(qualification.status, 0) + 1
+    await db.commit()
+    return counts
+
+
+async def _qualify_assessment_answer(
+    db: AsyncSession, event: LearningEvent
+) -> tuple[list[str], str]:
+    attempt_id = event.source_ref
+    question_version_id = event.payload.get("question_version_id")
+    if not isinstance(attempt_id, str) or not isinstance(question_version_id, str):
+        return [], "missing_authoritative_assessment_reference"
+
+    attempt_and_assessment = await db.execute(
+        select(Attempt, Assessment)
+        .join(Assessment, Assessment.id == Attempt.assessment_id)
+        .where(
+            Attempt.id == attempt_id,
+            Attempt.user_id == event.user_id,
+            Assessment.course_id == event.course_id,
+        )
+    )
+    row = attempt_and_assessment.one_or_none()
+    if row is None:
+        return [], "assessment_scope_mismatch"
+    attempt, assessment = row
+    if attempt.status not in ("submitted", "graded"):
+        return [], "assessment_attempt_not_submitted"
+
+    answer = await db.scalar(
+        select(AttemptAnswer).where(
+            AttemptAnswer.attempt_id == attempt.id,
+            AttemptAnswer.question_version_id == question_version_id,
+        )
+    )
+    if answer is None or answer.is_correct is None:
+        return [], "authoritative_answer_not_graded"
+
+    version = await db.scalar(
+        select(QuestionVersion)
+        .join(AssessmentItem, AssessmentItem.question_version_id == QuestionVersion.id)
+        .where(
+            AssessmentItem.assessment_id == assessment.id,
+            QuestionVersion.id == question_version_id,
+        )
+    )
+    if version is None:
+        return [], "question_not_in_assessment"
+    knowledge_points = [
+        kp for kp in (version.knowledge_point_ids or []) if isinstance(kp, str)
+    ][:5] or [f"{version.stem[:30]}"]
+    evidence_ids = await memory_service.record_evidence(
+        db,
+        user_id=event.user_id,
+        course_id=event.course_id,
+        knowledge_points=knowledge_points,
+        question_version_id=version.id,
+        attempt_id=attempt.id,
+        source_type="formal_quiz",
+        hints_used=0,
+        correct=answer.is_correct,
+        dimension="understand",
+        independence_status="independent",
+        context_key=f"assessment:{assessment.id}",
+    )
+    return evidence_ids, "authoritative_assessment_answer"
+
+
+async def _qualify_review_task(
+    db: AsyncSession, event: LearningEvent
+) -> tuple[list[str], str]:
+    """从到期复习题的服务端题目版本生成 retention 证据。"""
+    if not event.source_ref or not isinstance(event.payload, dict):
+        return [], "missing_authoritative_review_reference"
+    task = await db.scalar(
+        select(ReviewTask).where(
+            ReviewTask.id == event.source_ref,
+            ReviewTask.user_id == event.user_id,
+            ReviewTask.course_id == event.course_id,
+        )
+    )
+    question_id = event.payload.get("question_version_id")
+    response = event.payload.get("response")
+    if task is None or task.status != "done":
+        return [], "review_task_not_completed"
+    if not isinstance(question_id, str) or question_id != task.question_version_id:
+        return [], "review_question_mismatch"
+    if not isinstance(response, dict):
+        return [], "review_response_invalid"
+    question = await db.scalar(select(QuestionVersion).where(QuestionVersion.id == question_id))
+    if question is None:
+        return [], "review_question_not_found"
+    if question.type not in {"single", "multiple", "true_false"}:
+        return [], "review_question_not_objective"
+    answer = question.answer or {}
+    given = response.get("selected_keys")
+    if question.type == "true_false":
+        correct = isinstance(given, bool) and given == answer.get("correct")
+    else:
+        correct_keys = {str(key) for key in (answer.get("correct_keys") or [])}
+        correct = isinstance(given, list) and {str(key) for key in given} == correct_keys
+    knowledge_points = [
+        kp for kp in (question.knowledge_point_ids or []) if isinstance(kp, str)
+    ][:5] or [question.stem[:30]]
+    evidence_ids = await memory_service.record_evidence(
+        db,
+        user_id=event.user_id,
+        course_id=event.course_id,
+        knowledge_points=knowledge_points,
+        question_version_id=question.id,
+        attempt_id=task.id,
+        source_type="review",
+        hints_used=0,
+        correct=correct,
+        dimension="retention",
+        independence_status="independent",
+        context_key=f"review-question:{question.id}",
+    )
+    await memory_service.recompute_mastery(
+        db, user_id=event.user_id, course_id=event.course_id
+    )
+    task.qualification_status = "qualified"
+    task.qualification_reason = "authoritative_review_answer"
+    return evidence_ids, "authoritative_review_answer"

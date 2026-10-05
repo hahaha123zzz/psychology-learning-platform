@@ -34,7 +34,7 @@ def step(name: str, func) -> None:
 def run_migrations() -> str:
     proc = subprocess.run(
         [PY, "-m", "alembic", "upgrade", "head"],
-        cwd=SERVER, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        cwd=SERVER, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr[-400:])
@@ -44,7 +44,7 @@ def run_migrations() -> str:
 def check_migrations_match_models() -> str:
     proc = subprocess.run(
         [PY, "-m", "alembic", "check"],
-        cwd=SERVER, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        cwd=SERVER, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
     if proc.returncode != 0:
         raise RuntimeError((proc.stdout + proc.stderr)[-400:])
@@ -53,7 +53,7 @@ def check_migrations_match_models() -> str:
 
 def check_openapi_drift() -> str:
     sys.path.insert(0, str(SERVER))
-    from app.main import app  # noqa: E402
+    from app.main import app
 
     expected = json.dumps(app.openapi(), ensure_ascii=False, indent=2)
     committed = (ROOT / "contracts" / "openapi.json").read_text(encoding="utf-8")
@@ -66,7 +66,7 @@ def check_openapi_drift() -> str:
 def seed_demo() -> str:
     proc = subprocess.run(
         [PY, str(ROOT / "scripts" / "seed_demo.py")],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr[-400:])

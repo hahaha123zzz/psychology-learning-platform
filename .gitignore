@@ -9,6 +9,10 @@ server/.venv/
 # Node
 node_modules/
 .next/
+web/.next-r2-*/
+web/.next-r3-*/
+web/.r2-runtime/
+web/.r3-runtime/
 out/
 coverage/
 

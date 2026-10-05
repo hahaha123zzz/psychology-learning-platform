@@ -157,7 +157,9 @@ class StubPdfParser:
 
 def _page_layout_entries(page: pymupdf.Page, chapter_lines: set[str]) -> list[ParsedObject]:
     """提取原生文本和嵌入图片，坐标统一为 [left, bottom, right, top]。"""
-    page_height = float(page.rect.height)
+    # 文本与图像 block 的原始坐标在未旋转的 PDF 页面空间；page.rect 会随 /Rotate
+    # 改变宽高，导致旋转页面的 bottom-left bbox 被错误平移。用 MediaBox 尺寸还原原空间。
+    page_height = float(page.mediabox.height)
     entries: list[ParsedObject] = []
     for block in page.get_text("dict").get("blocks", []):
         block_type = block.get("type")

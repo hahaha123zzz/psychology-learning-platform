@@ -10,6 +10,8 @@ from app.core.config import get_settings
 from app.core.embedding import get_embedding_client
 from app.db.base import new_ulid
 from app.db.models import (
+    DomainRelease,
+    EvidencePointer,
     EvidenceTicket,
     Job,
     KnowledgeObject,
@@ -219,6 +221,18 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
             material = await session.get(Material, version.material_id)
             if material is None:
                 raise RuntimeError("缺少所属资料")
+            domain_release_id = (job.payload or {}).get("domain_release_id")
+            domain_release = None
+            if domain_release_id:
+                domain_release = await session.scalar(
+                    select(DomainRelease).where(
+                        DomainRelease.id == domain_release_id,
+                        DomainRelease.course_id == material.course_id,
+                        DomainRelease.status.in_(("published", "deprecated")),
+                    )
+                )
+                if domain_release is None:
+                    raise RuntimeError("索引指定的 DomainRelease 不存在、未发布或课程不匹配")
             objects = list(
                 (
                     await session.execute(
@@ -253,26 +267,37 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
                 await session.commit()
 
             # 先完整取得新向量，再在一个事务中替换旧索引；外部调用失败不会破坏旧索引。
-            await session.execute(
-                text(
-                    "DELETE FROM retrieval_index_entries WHERE retrieval_unit_id IN "
-                    "(SELECT id FROM retrieval_units WHERE material_version_id = :v)"
-                ),
-                {"v": version_id},
-            )
-            await session.execute(
-                text("DELETE FROM knowledge_chunks WHERE material_version_id = :v"),
-                {"v": version_id},
-            )
-            await session.execute(
-                text("DELETE FROM retrieval_units WHERE material_version_id = :v"),
-                {"v": version_id},
-            )
+            if domain_release_id is None:
+                # Preserve the pre-DomainRelease replacement behavior for legacy NULL scope.
+                await session.execute(
+                    text(
+                        "DELETE FROM retrieval_index_entries WHERE retrieval_unit_id IN "
+                        "(SELECT id FROM retrieval_units WHERE material_version_id = :v "
+                        "AND domain_release_id IS NULL)"
+                    ),
+                    {"v": version_id},
+                )
+                await session.execute(
+                    text(
+                        "DELETE FROM knowledge_chunks WHERE material_version_id = :v "
+                        "AND retrieval_unit_id IN (SELECT id FROM retrieval_units "
+                        "WHERE material_version_id = :v AND domain_release_id IS NULL)"
+                    ),
+                    {"v": version_id},
+                )
+                await session.execute(
+                    text(
+                        "DELETE FROM retrieval_units WHERE material_version_id = :v "
+                        "AND domain_release_id IS NULL"
+                    ),
+                    {"v": version_id},
+                )
             session.add_all(
                 [
                     RetrievalUnit(
                         id=row["retrieval_unit_id"],
                         material_version_id=version_id,
+                        domain_release_id=domain_release_id,
                         source_object_id=row["source_object_id"],
                         parent_object_id=row["parent_object_id"],
                         unit_type="text_child",
@@ -282,7 +307,7 @@ async def run_embed_job(job_id: str, version_id: str) -> None:
                         text_content=row["unit_text"],
                         content_hash=row["content_hash"],
                         build_strategy=RETRIEVAL_UNIT_BUILD_STRATEGY,
-                        build_version=RETRIEVAL_UNIT_BUILD_VERSION,
+                        build_version=f"{RETRIEVAL_UNIT_BUILD_VERSION}-{job.id}",
                         status="ready",
                     )
                     for row in rows
@@ -412,6 +437,8 @@ async def hybrid_search(
     chapter_scope: list[str] | None = None,
     object_types: list[str] | None = None,
     channel_priors: dict[str, float] | None = None,
+    domain_release_id: str | None = None,
+    domain_index_job_ids: dict[str, str] | None = None,
 ) -> tuple[list[dict], list[str]]:
     warnings: list[str] = []
     if not version_ids:
@@ -426,6 +453,24 @@ async def hybrid_search(
     scope_clauses: list[str] = []
     scope_params: dict[str, object] = {}
     scope_bindparams = []
+    domain_join = "JOIN retrieval_units domain_ru ON domain_ru.id = kc.retrieval_unit_id "
+    if domain_release_id:
+        scope_clauses.append("AND domain_ru.domain_release_id = :domain_release_id")
+        scope_params["domain_release_id"] = domain_release_id
+        index_scopes = []
+        for index, (material_version_id, job_id) in enumerate((domain_index_job_ids or {}).items()):
+            version_param = f"domain_version_{index}"
+            build_param = f"domain_build_{index}"
+            index_scopes.append(
+                f"(domain_ru.material_version_id = :{version_param} "
+                f"AND domain_ru.build_version = :{build_param})"
+            )
+            scope_params[version_param] = material_version_id
+            scope_params[build_param] = f"{RETRIEVAL_UNIT_BUILD_VERSION}-{job_id}"
+        scope_clauses.append(f"AND ({' OR '.join(index_scopes) or 'FALSE'})")
+    else:
+        # Legacy callers stay on unbound indexes; never blend multiple DomainRelease scopes.
+        scope_clauses.append("AND domain_ru.domain_release_id IS NULL")
     if chapter_scope:
         scope_clauses.append("AND kc.chapter_object_id IN :chapter_scope")
         scope_params["chapter_scope"] = chapter_scope
@@ -442,6 +487,7 @@ async def hybrid_search(
     bm25_statement = text(
         "SELECT kc.id, ts_rank(kc.text_tsv, to_tsquery('simple', :tsq)) AS rank, kc.text "
         "FROM knowledge_chunks kc "
+        f"{domain_join}"
         f"{scope_join}"
         f"WHERE kc.material_version_id IN ({version_list}) "
         "AND kc.text_tsv @@ to_tsquery('simple', :tsq) "
@@ -482,6 +528,7 @@ async def hybrid_search(
             vector_statement = text(
                 "SELECT kc.id, 1 - (kc.embedding <=> CAST(:vec AS vector)) AS cosine "
                 "FROM knowledge_chunks kc "
+                f"{domain_join}"
                 f"{scope_join}"
                 f"WHERE kc.material_version_id IN ({version_list}) "
                 "AND kc.embedding_version = :ev AND kc.embedding IS NOT NULL "
@@ -523,7 +570,8 @@ async def hybrid_search(
             text(
                 "SELECT kc.id, kc.material_version_id, kc.chapter_path, "
                 "kc.physical_page, kc.reading_order, kc.text, m.title, m.id, "
-                "kc.source_object_id, kc.retrieval_unit_id, ko.type, ko.bbox, ko.review_status "
+                "kc.source_object_id, kc.retrieval_unit_id, ko.type, ko.bbox, "
+                "ko.review_status, ko.parser "
                 "FROM knowledge_chunks kc "
                 "JOIN material_versions mv ON mv.id = kc.material_version_id "
                 "JOIN materials m ON m.id = mv.material_id "
@@ -546,6 +594,7 @@ async def hybrid_search(
             "object_type": row[10] or "paragraph",
             "bbox": row[11],
             "review_status": row[12] or "pending",
+            "parser": row[13],
         }
         for row in meta_rows
     }
@@ -567,26 +616,68 @@ async def hybrid_search(
         info = meta.get(chunk_id)
         if info is None:
             continue
+        page_is_unavailable = info["parser"] == "docx-xml" and info["bbox"] is None
+        physical_page = None if page_is_unavailable else info["physical_page"]
+        bbox = None if page_is_unavailable else info["bbox"]
+        coordinate_space = "pdf_user_bottom_left" if bbox is not None else "unavailable"
+        anchors = (
+            [
+                {
+                    "physical_page": physical_page,
+                    "bbox": bbox,
+                    "coordinate_space": coordinate_space,
+                    "precision": "stored_source_object_bbox",
+                }
+            ]
+            if physical_page is not None and bbox is not None
+            else []
+        )
+        excerpt = info["text"]
+        pointer = EvidencePointer(
+            id=new_ulid(),
+            course_id=course_id,
+            material_id=info["material_id"],
+            material_version_id=info["material_version_id"],
+            source_object_id=info["source_object_id"],
+            retrieval_unit_id=info["retrieval_unit_id"],
+            material_title=info["material_title"],
+            excerpt=excerpt,
+            excerpt_sha256=hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
+            chapter_path=info["chapter_path"],
+            physical_page=physical_page,
+            reading_order=info["reading_order"],
+            object_type=info["object_type"],
+            coordinate_space=coordinate_space,
+            bbox=bbox,
+            anchors=anchors,
+        )
         ticket = EvidenceTicket(
             id=new_ulid(),
             chunk_id=chunk_id,
             user_id=user_id,
             course_id=course_id,
             material_version_id=info["material_version_id"],
+            pointer_id=pointer.id,
             expires_at=expires,
         )
         item = {
             "evidence_id": ticket.id,
+            "evidence_pointer_id": pointer.id,
             "material_id": info["material_id"],
             "material_version_id": info["material_version_id"],
             "source_object_id": info["source_object_id"],
             "retrieval_unit_id": info["retrieval_unit_id"],
             "title": info["material_title"],
             "chapter_path": info["chapter_path"],
-            "physical_page": info["physical_page"],
+            "physical_page": physical_page,
             "printed_page": None,
-            "anchor": f"p{info['physical_page']}#order{info['reading_order']}",
-            "bbox": info["bbox"],
+            "anchor": (
+                f"p{physical_page}#order{info['reading_order']}"
+                if physical_page is not None
+                else None
+            ),
+            "bbox": bbox,
+            "anchors": anchors,
             "object_type": info["object_type"],
             "text": info["text"],
             "retrieval_sources": sources,
@@ -596,6 +687,7 @@ async def hybrid_search(
         if staff:
             item["score"] = round(score, 6)
         items.append(item)
+        db.add(pointer)
         db.add(ticket)
     await db.flush()
     return items, warnings

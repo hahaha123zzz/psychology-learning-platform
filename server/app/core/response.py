@@ -21,6 +21,7 @@ def ok(
     headers: dict[str, str] | None = None,
     next_cursor: str | None = None,
     has_more: bool | None = None,
+    idempotent_replay: bool | None = None,
 ) -> Response:
     from fastapi.responses import JSONResponse
 
@@ -29,6 +30,8 @@ def ok(
         extra["next_cursor"] = next_cursor
     if has_more is not None:
         extra["has_more"] = has_more
+    if idempotent_replay is not None:
+        extra["idempotent_replay"] = idempotent_replay
     return JSONResponse(
         status_code=status_code,
         content={"data": data, "meta": _meta(request, **extra)},

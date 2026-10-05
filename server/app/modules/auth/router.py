@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, Request, Response
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ApiError
 from app.core.response import ok
-from app.db.models import CourseMember, User
+from app.db.models import CourseMember, Notification, User, UserPreference
 from app.db.session import get_db_session
 from app.modules.auth import service
 from app.modules.auth.dependencies import REFRESH_COOKIE, get_current_user
@@ -13,6 +15,9 @@ from app.modules.auth.schemas import (
     LoginRequest,
     MeCourseMembership,
     MeResponse,
+    NotificationOut,
+    PreferencesOut,
+    PreferencesPatch,
     RefreshResponse,
 )
 from app.modules.auth.service import invalid_credentials
@@ -140,7 +145,115 @@ async def me(
     payload = MeResponse(
         id=user.id,
         display_name=user.display_name,
-        platform_roles=service.platform_roles(user),
+        platform_roles=await service.effective_platform_roles(db, user),
         course_memberships=memberships,
+        capabilities=await service.effective_capabilities(db, user),
     )
     return ok(request, payload.model_dump(mode="json"))
+
+
+DEFAULT_PREFERENCES = {
+    "hint_density": "standard",
+    "reduced_motion": False,
+    "font_scale": "100",
+    "notification_in_app": True,
+}
+
+
+def _preferences_out(user: User, row: UserPreference | None) -> dict:
+    preferences = {**DEFAULT_PREFERENCES, **(row.preferences if row else {})}
+    return PreferencesOut(
+        user_id=user.id,
+        preferences=preferences,
+        version=row.version if row else 1,
+        updated_at=row.updated_at if row else user.updated_at,
+    ).model_dump(mode="json")
+
+
+@router.get("/me/preferences", response_model=None)
+async def get_preferences(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    row = await db.scalar(select(UserPreference).where(UserPreference.user_id == user.id))
+    return ok(request, _preferences_out(user, row))
+
+
+@router.patch("/me/preferences", response_model=None)
+async def update_preferences(
+    body: PreferencesPatch,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    row = await db.scalar(select(UserPreference).where(UserPreference.user_id == user.id))
+    if row is None:
+        if body.version != 1:
+            raise ApiError(
+                status_code=409,
+                code="RESOURCE_VERSION_CONFLICT",
+                message="偏好版本已变化，请刷新后重试",
+                details={"expected_version": body.version, "actual_version": 1},
+            )
+        row = UserPreference(user_id=user.id, preferences={})
+        db.add(row)
+        await db.flush()
+    elif row.version != body.version:
+        raise ApiError(
+            status_code=409,
+            code="RESOURCE_VERSION_CONFLICT",
+            message="偏好版本已变化，请刷新后重试",
+            details={"expected_version": body.version, "actual_version": row.version},
+        )
+    changes = body.model_dump(exclude_none=True, exclude={"version"})
+    row.preferences = {**row.preferences, **changes}
+    row.version += 1
+    await db.commit()
+    await db.refresh(row)
+    return ok(request, _preferences_out(user, row))
+
+
+def _notification_out(item: Notification) -> dict:
+    return NotificationOut.model_validate(item, from_attributes=True).model_dump(mode="json")
+
+
+@router.get("/me/notifications", response_model=None)
+async def list_notifications(
+    request: Request,
+    unread_only: bool = Query(default=False),
+    limit: int = Query(default=30, ge=1, le=100),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    query = select(Notification).where(Notification.user_id == user.id)
+    if unread_only:
+        query = query.where(Notification.read_at.is_(None))
+    rows = (
+        await db.execute(
+            query.order_by(Notification.created_at.desc(), Notification.id.desc()).limit(limit)
+        )
+    ).scalars()
+    return ok(request, [_notification_out(item) for item in rows], has_more=False)
+
+
+@router.post("/me/notifications/{notification_id}/read", response_model=None)
+async def mark_notification_read(
+    notification_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    item = await db.scalar(
+        select(Notification).where(
+            Notification.id == notification_id,
+            Notification.user_id == user.id,
+        )
+    )
+    if item is None:
+        raise ApiError(status_code=404, code="NOTIFICATION_NOT_FOUND", message="通知不存在")
+    if item.read_at is None:
+        item.read_at = datetime.now(UTC)
+        await db.commit()
+        await db.refresh(item)
+    return ok(request, _notification_out(item))

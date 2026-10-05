@@ -16,12 +16,14 @@ test("workspaces are guarded by the account's effective role", () => {
   assert.match(adminLayout, /workspace="admin"/);
 });
 
-test("teacher issue details are rendered as text and navigation is role scoped", () => {
+test("retired teacher materials page stays informational and navigation is role scoped", () => {
   const teacher = read("../components/TeacherWorkspace.tsx");
   const student = read("../components/StudentWorkspace.tsx");
   const navigation = read("../components/V2Navigation.tsx");
 
-  assert.match(teacher, /formatIssueDetail\(issue\.detail\)/);
+  assert.match(teacher, /role="status"/);
+  assert.match(teacher, /联系课程内容管理员/);
+  assert.doesNotMatch(teacher, /formatIssueDetail|uploadMaterialResumable/);
   assert.doesNotMatch(teacher, /href="\/student"/);
   assert.doesNotMatch(student, /href="\/teacher"/);
   assert.match(navigation, /workspaceForRoles/);

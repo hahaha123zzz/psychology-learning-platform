@@ -1,0 +1,58 @@
+{
+  "target": "http://127.0.0.1:3201",
+  "course_id": "01M439Z9P0GJ8SK2C85Q6DYGP0",
+  "material_version_id": "01M439ZA6C93TK6V8FGGWT8BYQ",
+  "seed_evidence_pointer_id": "01M439ZBB23YM03D19RG5BPDTG",
+  "reader_pointer_id": "01M43A0TWHDNCXVFVK1K0YTNT2",
+  "checks": [
+    {
+      "name": "已发布教材页图与锚点高亮",
+      "detail": "浏览器显示物理页 1；定位框落在页图范围内。"
+    },
+    {
+      "name": "键盘缩放和旋转",
+      "detail": "使用焦点与 Enter 激活后，页图和高亮同层旋转 90°。"
+    },
+    {
+      "name": "窄屏与关闭",
+      "detail": "390px 视口内抽屉可见且可由可访问名称的关闭按钮关闭。"
+    },
+    {
+      "name": "刷新后重新定位",
+      "detail": "页面刷新并再次检索后，从已发布版本重新读取页图和锚点。"
+    },
+    {
+      "name": "撤权后重新鉴权",
+      "detail": "教师移除学生课程成员关系后，重新打开引用收到 404，未返回快照。"
+    }
+  ],
+  "screenshots": [
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-a-reader\\01-reader-page-highlight.png",
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-a-reader\\02-reader-zoom-rotation.png",
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-a-reader\\03-reader-narrow-screen.png",
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-a-reader\\04-reader-refresh-restored.png",
+    "E:\\项目\\心里\\web\\tests\\evidence\\r2-a-reader\\05-reader-revoked-access.png"
+  ],
+  "requests": [
+    {
+      "pathname": "/api/v1/evidence-pointers/01M43A0SG5NYW92WRR6JKAWPC8",
+      "status": 200
+    },
+    {
+      "pathname": "/api/v1/evidence-pointers/01M43A0SG5NYW92WRR6JKAWPC8/page-image",
+      "status": 200
+    },
+    {
+      "pathname": "/api/v1/evidence-pointers/01M43A0TWHDNCXVFVK1K0YTNT2",
+      "status": 200
+    },
+    {
+      "pathname": "/api/v1/evidence-pointers/01M43A0TWHDNCXVFVK1K0YTNT2/page-image",
+      "status": 200
+    },
+    {
+      "pathname": "/api/v1/evidence-pointers/01M43A0TWHDNCXVFVK1K0YTNT2",
+      "status": 404
+    }
+  ]
+}

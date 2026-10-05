@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import re
 from dataclasses import dataclass
 
 
@@ -21,10 +23,16 @@ def source_object_key(*, course_id: str, material_id: str, version_id: str, exte
     return f"{prefix}/source/source.{extension.lower()}"
 
 
-def canonical_pdf_object_key(*, course_id: str, material_id: str, version_id: str) -> str:
-    """同一资料版本唯一的标准 PDF 快照键。"""
+def canonical_pdf_object_key(
+    *,
+    course_id: str,
+    material_id: str,
+    version_id: str,
+    render_version: str | None = None,
+) -> str:
+    """同一资料版本、同一渲染配置下的标准 PDF 快照键。"""
     prefix = _asset_prefix(course_id=course_id, material_id=material_id, version_id=version_id)
-    return f"{prefix}/canonical/document.pdf"
+    return f"{prefix}/canonical/{_render_prefix(render_version)}document.pdf"
 
 
 def page_image_object_key(
@@ -34,6 +42,7 @@ def page_image_object_key(
     version_id: str,
     physical_page: int,
     image_format: str = "png",
+    render_version: str | None = None,
 ) -> str:
     """从 1 开始编号的标准页面图像键。"""
     if physical_page < 1:
@@ -41,10 +50,63 @@ def page_image_object_key(
     normalized_format = image_format.lower()
     if normalized_format not in {"png", "webp"}:
         raise ValueError("页面图像只支持 png 或 webp")
+    render_prefix = _render_prefix(render_version)
     return (
         f"{_asset_prefix(course_id=course_id, material_id=material_id, version_id=version_id)}"
-        f"/pages/page-{physical_page:04d}.{normalized_format}"
+        f"/pages/{render_prefix}page-{physical_page:04d}.{normalized_format}"
     )
+
+
+def page_image_metadata_object_key(
+    *,
+    course_id: str,
+    material_id: str,
+    version_id: str,
+    physical_page: int,
+    render_version: str,
+) -> str:
+    image_key = page_image_object_key(
+        course_id=course_id,
+        material_id=material_id,
+        version_id=version_id,
+        physical_page=physical_page,
+        render_version=render_version,
+    )
+    return f"{image_key.rsplit('.', 1)[0]}.json"
+
+
+def render_asset_version(
+    *,
+    renderer_name: str,
+    renderer_version: str,
+    configuration: dict,
+) -> str:
+    """由工具版本和完整配置生成不可变资产命名空间。"""
+    payload = json.dumps(
+        {
+            "renderer_name": renderer_name,
+            "renderer_version": renderer_version,
+            "configuration": configuration,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    digest = hashlib.sha256(payload).hexdigest()[:24]
+    slug = re.sub(
+        r"[^A-Za-z0-9._-]+",
+        "-",
+        f"{renderer_name}-{renderer_version}",
+    ).strip("-")[:48]
+    return f"{slug or 'renderer'}-{digest}"
+
+
+def _render_prefix(render_version: str | None) -> str:
+    if render_version is None:
+        return ""
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", render_version):
+        raise ValueError("render_version 格式无效")
+    return f"{render_version}/"
 
 
 def object_crop_object_key(

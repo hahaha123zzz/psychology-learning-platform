@@ -1,10 +1,10 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Icon } from "@iconify/react";
-import { api, ApiError, idempotencyKey, uploadMaterialResumable } from "../lib/api";
+import { api, ApiError } from "../lib/api";
 
 type MaterialVersion = { id: string; version_no: number; status: string; workflow_state?: string; quality_gate_status?: string; size_bytes: number };
 type Material = { id: string; title: string; material_type: string; current_version: MaterialVersion | null };
@@ -28,9 +28,6 @@ export default function TeacherMaterialsPage() {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [notice, setNotice] = useState("正在读取教材…");
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [busy, setBusy] = useState(false);
   const selected = useMemo(() => materials.find((material) => material.id === selectedId) ?? null, [materials, selectedId]);
   const version = selected?.current_version;
 
@@ -66,52 +63,18 @@ export default function TeacherMaterialsPage() {
     return () => window.clearInterval(timer);
   }, [jobs, loadCourse, loadVersion, version?.id]);
 
-  async function upload(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget; const formData = new FormData(form); const file = formData.get("file");
-    if (!(file instanceof File) || !file.size) { setNotice("请选择 PDF 或 DOCX 文件。 "); return; }
-    setUploading(true); setUploadProgress(0); setNotice(`正在准备 ${file.name}；若中断，重新选择同一文件即可继续。`);
-    try {
-      await uploadMaterialResumable(courseId, { title: String(formData.get("title") || file.name), material_type: "textbook", file }, (percent, detail) => { setUploadProgress(percent); setNotice(detail); });
-      form.reset(); setNotice("教材上传完成。请选择“开始解析”继续处理。"); await loadCourse();
-    } catch (reason) { setNotice(explain(reason)); } finally { setUploading(false); }
-  }
-
-  async function action() {
-    if (!version || !workflow) return;
-    const current = workflow.allowed_actions[0];
-    const actionMap: Record<string, { path: string; label: string }> = {
-      start_parse: { path: `/material-versions/${version.id}/parse`, label: "开始解析" }, retry_parse: { path: `/material-versions/${version.id}/parse`, label: "重新解析" }, build_index: { path: `/material-versions/${version.id}/embed`, label: "准备学习资料" }, publish: { path: `/material-versions/${version.id}/publish`, label: "发布给学生" },
-    };
-    const definition = actionMap[current];
-    if (!definition) return;
-    try {
-      setBusy(true); setNotice(`${definition.label}请求已提交…`);
-      const result = await api<{ job_id?: string }>(definition.path, { method: "POST", headers: { "Idempotency-Key": idempotencyKey() } });
-      setNotice(result.job_id ? `${definition.label}已在后台开始，可以切换页面后再回来查看。` : "教材已发布，学生刷新后即可学习。");
-      await loadCourse(); await loadVersion(version.id);
-    } catch (reason) { setNotice(explain(reason)); } finally { setBusy(false); }
-  }
-
   const primary = workflow?.allowed_actions[0];
-  const primaryLabel: Record<string, string> = { start_parse: "开始解析", retry_parse: "重新解析", build_index: "准备学习资料", publish: "发布给学生" };
   return <div className="materials-page">
-    <div className="page-heading"><div><h1>教材</h1><p>上传课程资料，核对处理结果；教材发布后，学生才能在学习空间中使用。</p></div></div>
+    <div className="page-heading"><div><h1>教材</h1><p>查看课程已发布教材与既有处理记录。教师端不开放教材上传、解析、索引或发布操作。</p></div></div>
     {notice && <p className="status-banner"><Icon icon="solar:info-circle-linear" />{notice}</p>}
-    <form className="material-upload-panel" onSubmit={upload}>
-      <div className="upload-panel-copy"><Icon icon="solar:cloud-upload-linear" /><div><strong>上传教材</strong><p>支持 PDF、DOCX，单个文件最大 200 MB。上传中断后可继续。</p></div></div>
-      <input name="title" placeholder="资料名称（默认使用文件名）" disabled={uploading} />
-      <input name="file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" disabled={uploading} required />
-      <button className="primary-button" disabled={uploading}>{uploading ? `上传中 ${uploadProgress}%` : "上传教材"}</button>
-      {uploading && <div className="material-upload-progress"><span style={{ width: `${uploadProgress}%` }} /></div>}
-    </form>
+    <section className="status-banner" role="note"><Icon icon="solar:lock-keyhole-linear" /><span>教材由受控课程内容构建流程管理；如课程缺少教材，请联系课程内容管理员。</span></section>
     <div className="materials-layout">
-      <section className="materials-list"><div className="panel-heading"><h2>课程教材</h2><span>{materials.length} 份</span></div>{materials.length ? materials.map((material) => <button key={material.id} className={material.id === selectedId ? "material-list-row active" : "material-list-row"} onClick={() => setSelectedId(material.id)}><span><strong>{material.title}</strong><small>{material.current_version ? `版本 ${material.current_version.version_no} · ${bytes(material.current_version.size_bytes)}` : "尚未上传版本"}</small></span><em className={`status-tag ${material.current_version?.workflow_state ?? material.current_version?.status ?? "draft"}`}>{STATE[material.current_version?.workflow_state ?? material.current_version?.status ?? ""] ?? "草稿"}</em></button>) : <p className="empty-state">暂无教材。上传 PDF 或 DOCX 后将在这里显示。</p>}</section>
+      <section className="materials-list"><div className="panel-heading"><h2>课程教材</h2><span>{materials.length} 份</span></div>{materials.length ? materials.map((material) => <button key={material.id} className={material.id === selectedId ? "material-list-row active" : "material-list-row"} onClick={() => setSelectedId(material.id)}><span><strong>{material.title}</strong><small>{material.current_version ? `版本 ${material.current_version.version_no} · ${bytes(material.current_version.size_bytes)}` : "无可用发布版本"}</small></span><em className={`status-tag ${material.current_version?.workflow_state ?? material.current_version?.status ?? "draft"}`}>{STATE[material.current_version?.workflow_state ?? material.current_version?.status ?? ""] ?? "草稿"}</em></button>) : <p className="empty-state">当前课程没有可读取的已发布教材。请联系课程内容管理员。</p>}</section>
       <section className="material-detail">{selected && version && workflow ? <>
         <div className="material-detail-heading"><div><span className="detail-overline">当前教材</span><h2>{selected.title}</h2><p>版本 {version.version_no} · {bytes(version.size_bytes)}</p></div><span className={`status-tag ${workflow.state}`}>{STATE[workflow.state] ?? workflow.state}</span></div>
         <ol className="material-stepper">{workflow.steps.map((step, index) => <li className={step.status} key={step.key}><span>{step.status === "completed" ? <Icon icon="solar:check-circle-bold" /> : index + 1}</span><strong>{STEP[step.key]}</strong><small>{step.status === "current" ? `${step.progress}%` : step.status === "completed" ? "已完成" : step.status === "blocked" ? "需处理" : "未开始"}</small></li>)}</ol>
         {workflow.blockers.length > 0 && <div className="material-blockers">{workflow.blockers.map((blocker) => <article key={`${blocker.code}-${blocker.message}`}><Icon icon="solar:danger-triangle-linear" /><div><strong>{blocker.code === "QUALITY_WARNING" ? "教材需要核对" : "当前无法继续"}</strong><p>{blocker.message}</p></div></article>)}</div>}
-        <section className="material-next-action"><div><strong>{primary === "review_issues" ? "有内容需要你的关注" : workflow.state === "published" ? "教材已发布" : "下一步"}</strong><p>{primary === "review_issues" ? "处理已发现的问题后，才能继续准备并发布教材。" : workflow.state === "published" ? "学生端将只显示这个已发布版本。" : "按当前状态完成下一步，系统会在后台持续处理。"}</p></div>{primary === "review_issues" ? <Link className="primary-button" href="#material-issues">查看问题</Link> : primary && <button className="primary-button" disabled={busy} onClick={() => void action()}>{primaryLabel[primary] ?? "继续"}</button>}</section>
+        <section className="material-next-action"><div><strong>{workflow.state === "published" ? "教材已发布" : "受控内容流程"}</strong><p>{workflow.state === "published" ? "学生端仅使用已发布版本；本页仅展示状态与历史任务。" : "该版本不处于可供学生使用的已发布状态。教师不能通过旧入口继续处理，请联系课程内容管理员。"}</p></div>{primary === "review_issues" && <Link className="secondary-button" href="#material-issues">查看问题</Link>}</section>
       </> : <div className="material-no-selection"><Icon icon="solar:book-2-linear" /><p>选择一份教材，查看它的处理状态和下一步操作。</p></div>}</section>
     </div>
     <div className="material-support-grid">

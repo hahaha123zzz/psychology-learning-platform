@@ -1,0 +1,77 @@
+"use client";
+
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { useParams } from "next/navigation";
+import { Icon } from "@iconify/react";
+import { api, ApiError, streamChatTurn } from "../lib/api";
+import StudentInterventionRunsPanel from "./StudentInterventionRunsPanel";
+import EvidencePointerDrawer from "./learning/EvidencePointerDrawer";
+
+type Material = { id: string; title: string; current_version: null | { id: string; version_no: number; status: string } };
+type SearchItem = { text?: string; title?: string; physical_page?: number | null; evidence_id?: string; evidence_pointer_id?: string };
+type Citation = { pointerId?: string; label: string };
+type Turn = { role: "student" | "tutor"; content: string; citations: Citation[] };
+function reasonText(reason: unknown): string { return reason instanceof ApiError ? reason.message : "请求未完成，请检查本地服务后重试。"; }
+
+export default function StudentLearnPage() {
+  const { courseId } = useParams<{ courseId: string }>();
+  const [materials, setMaterials] = useState<Material[]>([]); const [query, setQuery] = useState(""); const [results, setResults] = useState<SearchItem[]>([]); const [question, setQuestion] = useState(""); const [turns, setTurns] = useState<Turn[]>([]); const [sessionId, setSessionId] = useState(""); const [notice, setNotice] = useState("正在读取可学习教材…"); const [sending, setSending] = useState(false);
+  const pendingTurn = useRef<{ sessionId: string; content: string; clientTurnId: string } | null>(null);
+  useEffect(() => { api<Material[]>(`/courses/${courseId}/materials`).then((items) => { setMaterials(items); setNotice(items.length ? "" : "当前课程还没有已发布的教材。教师发布后，你可以在这里开始学习。"); }).catch((reason) => setNotice(reasonText(reason))); }, [courseId]);
+  async function search(event: FormEvent) { event.preventDefault(); if (!query.trim()) return; try { const result = await api<{ items: SearchItem[] }>("/knowledge/search", { method: "POST", body: JSON.stringify({ course_id: courseId, query, top_k: 8, purpose: "course_qa" }) }); setResults(result.items); setNotice(result.items.length ? "" : "当前课程教材中没有找到足够依据，请尝试章节名或教材内概念。 "); } catch (reason) { setNotice(reasonText(reason)); } }
+  async function send(event: FormEvent) {
+    event.preventDefault();
+    const content = question.trim();
+    if (!content || sending) return;
+    setNotice("");
+    setSending(true);
+    setTurns((items) => [...items, { role: "student", content, citations: [] }, { role: "tutor", content: "", citations: [] }]);
+    try {
+      let activeSession = sessionId;
+      if (!activeSession) {
+        const created = await api<{ id: string }>("/chat/sessions", {
+          method: "POST",
+          body: JSON.stringify({ course_id: courseId, mode: "course_qa", title: "教材学习" }),
+        });
+        activeSession = created.id;
+        setSessionId(activeSession);
+      }
+      const previous = pendingTurn.current;
+      const clientTurnId = previous?.sessionId === activeSession && previous.content === content
+        ? previous.clientTurnId
+        : crypto.randomUUID();
+      pendingTurn.current = { sessionId: activeSession, content, clientTurnId };
+      await streamChatTurn(activeSession, content, (eventData) => {
+        if (eventData.event === "delta") {
+          const text = String(eventData.data.text ?? "");
+          setTurns((items) => items.map((item, index) => index === items.length - 1
+            ? { ...item, content: item.content + text }
+            : item));
+        }
+        if (eventData.event === "citation") {
+          const citation = {
+            label: String(eventData.data.label ?? "教材证据"),
+            pointerId: typeof eventData.data.evidence_pointer_id === "string"
+              ? eventData.data.evidence_pointer_id
+              : undefined,
+          };
+          setTurns((items) => items.map((item, index) => index === items.length - 1
+            ? { ...item, citations: [...item.citations, citation] }
+            : item));
+        }
+        if (eventData.event === "error") {
+          setNotice(String(eventData.data.message ?? "暂时无法完成回答。"));
+        }
+      }, clientTurnId);
+      pendingTurn.current = null;
+      setQuestion("");
+    } catch (reason) {
+      setTurns((items) => items.slice(0, -2));
+      setQuestion(content);
+      setNotice(reasonText(reason));
+    } finally {
+      setSending(false);
+    }
+  }
+  return <div className="student-learn-page"><div className="page-heading"><div><h1>学习</h1><p>从已发布教材中检索内容，并基于教材证据提问。</p></div></div>{notice && <p className="status-banner"><Icon icon="solar:info-circle-linear" />{notice}</p>}<StudentInterventionRunsPanel courseId={courseId} /><div className="learn-layout"><aside className="learn-materials"><h2>课程教材</h2>{materials.length ? materials.map((material) => <div className="learn-material-row" key={material.id}><Icon icon="solar:book-bookmark-linear" /><span><strong>{material.title}</strong><small>版本 {material.current_version?.version_no ?? "—"}</small></span></div>) : <p className="empty-state">暂时没有可学习教材。</p>}</aside><section className="learn-evidence"><form className="learn-search" onSubmit={search}><label htmlFor="course-search">搜索教材</label><div><input id="course-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="输入概念、章节或问题" disabled={!materials.length} /><button className="primary-button" disabled={!materials.length}>搜索</button></div></form>{results.length ? <section className="evidence-list"><h2>教材依据</h2>{results.map((item, index) => <article key={item.evidence_id ?? index}><strong>{item.title ?? "教材内容"}{item.physical_page ? ` · 第 ${item.physical_page} 页` : ""}</strong><p>{item.text ?? "未返回可显示的教材片段。"}</p><small>{item.evidence_id ? "已找到教材依据" : "教材结果"}</small>{item.evidence_pointer_id && <EvidencePointerDrawer label="查看固定来源快照" pointerId={item.evidence_pointer_id} />}</article>)}</section> : <section className="learn-empty"><Icon icon="solar:book-2-linear" /><h2>从教材开始学习</h2><p>输入课程内的概念或问题，系统会先查找教材依据。</p></section>}</section><section className="learn-tutor"><header><div><h2>学习助手</h2><p>回答以当前课程教材为依据。</p></div><Icon icon="solar:chat-round-dots-linear" /></header><div className="learn-turns">{turns.length ? turns.map((turn, index) => <article className={`learn-turn ${turn.role}`} key={index}><strong>{turn.role === "student" ? "我" : "学习助手"}</strong><p>{turn.content || "正在整理教材依据…"}</p>{turn.citations.map((citation, citationIndex) => <div className="learn-citation" key={`${citation.pointerId ?? citation.label}-${citationIndex}`}><small><Icon icon="solar:book-bookmark-linear" />{citation.label}</small>{citation.pointerId && <EvidencePointerDrawer label="打开引用" pointerId={citation.pointerId} />}</div>)}</article>) : <p className="empty-state">你可以围绕当前教材提问；证据不足时会明确说明。</p>}</div><form className="learn-composer" onSubmit={send}><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="围绕教材提问…" disabled={!materials.length || sending} /><button type="submit" disabled={!materials.length || sending} aria-label="发送问题"><Icon icon="solar:plain-2-bold" /></button></form></section></div></div>;
+}

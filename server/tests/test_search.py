@@ -1,12 +1,25 @@
 import asyncio
+import hashlib
 import time
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
-from app.db.models import KnowledgeObject, Material, MaterialVersion, ObjectRelation, RetrievalUnit
+from app.db.base import new_ulid
+from app.db.models import (
+    DomainRelease,
+    EvidenceTicket,
+    KnowledgeObject,
+    Material,
+    MaterialVersion,
+    ObjectRelation,
+    PublicationSnapshot,
+    RetrievalUnit,
+)
 from app.db.session import session_factory
 from app.modules.knowledge.service import _has_hash_keyword_anchor, _search_tokens
-from tests.conftest import make_pdf
+from app.modules.materials.service import _clear_parse_outputs
+from tests.conftest import create_user_sync, make_pdf
 from tests.test_materials import _login, _setup_course, _upload
 
 TWO_CHAPTER_PDF = make_pdf(
@@ -220,6 +233,227 @@ def test_embed_persists_one_retrieval_unit_per_source_object(client) -> None:
     assert all(unit.unit_type == "text_child" for unit in units)
 
 
+def test_domain_release_search_uses_only_its_bound_index_job(client) -> None:
+    course_id, _, version_id = _prepare(client, publish=True)
+    teacher_id = client.get("/api/v1/me").json()["data"]["id"]
+    release_a_id = new_ulid()
+    release_b_id = new_ulid()
+
+    async def create_domain_releases() -> None:
+        async with session_factory() as db:
+            db.add_all(
+                [
+                    DomainRelease(
+                        id=release_a_id,
+                        course_id=course_id,
+                        version_no=1,
+                        manifest={"domain_pack": {}},
+                        pack_sha256="a" * 64,
+                        status="published",
+                        version=1,
+                        created_by=teacher_id,
+                        published_by=teacher_id,
+                        published_at=datetime.now(UTC),
+                    ),
+                    DomainRelease(
+                        id=release_b_id,
+                        course_id=course_id,
+                        version_no=2,
+                        manifest={"domain_pack": {}},
+                        pack_sha256="b" * 64,
+                        status="published",
+                        version=1,
+                        created_by=teacher_id,
+                        published_by=teacher_id,
+                        published_at=datetime.now(UTC),
+                    ),
+                ]
+            )
+            await db.commit()
+
+    asyncio.run(create_domain_releases())
+    def build_domain_index(domain_release_id: str) -> str:
+        embed = client.post(
+            f"/api/v1/material-versions/{version_id}/embed?domain_release_id={domain_release_id}"
+        )
+        assert embed.status_code == 202, embed.text
+        job_id = embed.json()["data"]["job_id"]
+        deadline = time.time() + 20
+        while time.time() < deadline:
+            job = client.get(f"/api/v1/jobs/{job_id}").json()["data"]
+            if job["status"] in ("succeeded", "failed"):
+                break
+            time.sleep(0.3)
+        assert job["status"] == "succeeded", job
+        return job_id
+
+    index_job_id = build_domain_index(release_a_id)
+    unbound_index_job_id = build_domain_index(release_b_id)
+
+    current_snapshot_id: str | None = None
+    historical_snapshot_id = new_ulid()
+
+    async def bind_publication_snapshot() -> None:
+        nonlocal current_snapshot_id
+        async with session_factory() as db:
+            snapshot = await db.scalar(
+                select(PublicationSnapshot)
+                .where(PublicationSnapshot.material_version_id == version_id)
+                .order_by(PublicationSnapshot.published_at.desc())
+                .limit(1)
+            )
+            assert snapshot is not None
+            snapshot.domain_release_id = release_a_id
+            snapshot.index_job_id = index_job_id
+            current_snapshot_id = snapshot.id
+            historical_published_at = snapshot.published_at - timedelta(days=1)
+            db.add(
+                PublicationSnapshot(
+                    id=historical_snapshot_id,
+                    material_id=snapshot.material_id,
+                    material_version_id=snapshot.material_version_id,
+                    parse_job_id=snapshot.parse_job_id,
+                    index_job_id=index_job_id,
+                    domain_release_id=release_a_id,
+                    embedding_version=snapshot.embedding_version,
+                    published_by=snapshot.published_by,
+                    published_at=historical_published_at,
+                    superseded_at=snapshot.published_at,
+                )
+            )
+            await db.commit()
+
+    asyncio.run(bind_publication_snapshot())
+    assert current_snapshot_id is not None
+
+    async def load_bound_units() -> set[str]:
+        async with session_factory() as db:
+            rows = await db.execute(
+                select(RetrievalUnit.id, RetrievalUnit.domain_release_id).where(
+                    RetrievalUnit.material_version_id == version_id,
+                    RetrievalUnit.domain_release_id.in_([release_a_id, release_b_id]),
+                )
+            )
+            return {unit_id for unit_id, domain_id in rows if domain_id == release_a_id}
+
+    release_a_unit_ids = asyncio.run(load_bound_units())
+    assert release_a_unit_ids
+
+    _login(client, "mt@uni.edu")
+    search_a = client.post(
+        "/api/v1/knowledge/search",
+        json={
+            "course_id": course_id,
+            "query": "independent variable validity",
+            "domain_release_id": release_a_id,
+        },
+    )
+    assert search_a.status_code == 200, search_a.text
+    data_a = search_a.json()["data"]
+    assert data_a["domain_release"]["index_job_ids"] == {version_id: index_job_id}
+    assert data_a["items"]
+    assert {item["retrieval_unit_id"] for item in data_a["items"]} <= release_a_unit_ids
+    snapshots_a = data_a["domain_release"]["publication_snapshots"]
+    assert len(snapshots_a) == 2
+    assert {snapshot["publication_snapshot_id"] for snapshot in snapshots_a} == {
+        current_snapshot_id,
+        historical_snapshot_id,
+    }
+    assert all(
+        set(snapshot)
+        == {
+            "material_id",
+            "material_version_id",
+            "publication_snapshot_id",
+            "index_job_id",
+            "embedding_version",
+            "domain_release_id",
+        }
+        for snapshot in snapshots_a
+    )
+
+    search_b_staff = client.post(
+        "/api/v1/knowledge/search",
+        json={
+            "course_id": course_id,
+            "query": "independent variable validity",
+            "domain_release_id": release_b_id,
+        },
+    )
+    assert search_b_staff.status_code == 200, search_b_staff.text
+    data_b_staff = search_b_staff.json()["data"]
+    assert data_b_staff["domain_release"]["index_job_ids"] == {
+        version_id: unbound_index_job_id
+    }
+    assert data_b_staff["domain_release"]["publication_snapshots"] == []
+
+    other_course = client.post(
+        "/api/v1/courses", json={"title": "另一门课", "term": "2026秋"}
+    ).json()["data"]
+    other_release_id = new_ulid()
+
+    async def create_other_course_release() -> None:
+        async with session_factory() as db:
+            db.add(
+                DomainRelease(
+                    id=other_release_id,
+                    course_id=other_course["id"],
+                    version_no=1,
+                    manifest={"domain_pack": {}},
+                    pack_sha256="c" * 64,
+                    status="published",
+                    version=1,
+                    created_by=teacher_id,
+                    published_by=teacher_id,
+                    published_at=datetime.now(UTC),
+                )
+            )
+            await db.commit()
+
+    asyncio.run(create_other_course_release())
+    cross_course_search = client.post(
+        "/api/v1/knowledge/search",
+        json={
+            "course_id": course_id,
+            "query": "independent variable validity",
+            "domain_release_id": other_release_id,
+        },
+    )
+    assert cross_course_search.status_code == 404
+    assert cross_course_search.json()["error"]["code"] == "DOMAIN_RELEASE_NOT_FOUND"
+
+    _login(client, "ms@uni.edu")
+    student_search_a = client.post(
+        "/api/v1/knowledge/search",
+        json={
+            "course_id": course_id,
+            "query": "independent variable validity",
+            "domain_release_id": release_a_id,
+        },
+    )
+    assert student_search_a.status_code == 200, student_search_a.text
+    student_data_a = student_search_a.json()["data"]
+    assert student_data_a["domain_release"]["index_job_ids"] == {version_id: index_job_id}
+    assert student_data_a["items"]
+    assert "score" not in student_data_a["items"][0]
+    student_snapshots_a = student_data_a["domain_release"]["publication_snapshots"]
+    assert len(student_snapshots_a) == 1
+    assert student_snapshots_a[0]["publication_snapshot_id"] == current_snapshot_id
+
+    search_b = client.post(
+        "/api/v1/knowledge/search",
+        json={
+            "course_id": course_id,
+            "query": "independent variable validity",
+            "domain_release_id": release_b_id,
+        },
+    )
+    assert search_b.status_code == 200, search_b.text
+    assert search_b.json()["data"]["domain_release"]["index_job_ids"] == {}
+    assert search_b.json()["data"]["domain_release"]["publication_snapshots"] == []
+    assert search_b.json()["data"]["items"] == []
+
+
 def test_hash_embedding_rejects_question_without_textbook_keyword_anchor(client) -> None:
     course_id, _, _ = _prepare(client, publish=False)
     _login(client, "mt@uni.edu")
@@ -350,11 +584,106 @@ def test_evidence_ticket_binds_to_owner(client) -> None:
     assert body["text"]
     assert body["material_title"]
     assert body["expires_at"]
+    assert body["evidence_pointer_id"]
+    assert body["coordinate_space"] in {"pdf_user_bottom_left", "unavailable"}
 
     _login(client, "mt@uni.edu")
     forbidden = client.get(f"/api/v1/evidence/{evidence_id}")
     assert forbidden.status_code == 404
     assert forbidden.json()["error"]["code"] == "EVIDENCE_NOT_FOUND"
+
+
+def test_evidence_pointer_restores_immutable_reference_after_ticket_expiry(client) -> None:
+    course_id, _, version_id = _prepare(client, publish=True)
+    _login(client, "ms@uni.edu")
+    search = client.post(
+        "/api/v1/knowledge/search",
+        json={"course_id": course_id, "query": "participants"},
+    )
+    assert search.status_code == 200
+    item = search.json()["data"]["items"][0]
+    pointer_id = item["evidence_pointer_id"]
+
+    async def expire_ticket() -> None:
+        async with session_factory() as db:
+            ticket = await db.get(EvidenceTicket, item["evidence_id"])
+            assert ticket is not None
+            ticket.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+            await db.commit()
+
+    asyncio.run(expire_ticket())
+    expired = client.get(f"/api/v1/evidence/{item['evidence_id']}")
+    assert expired.status_code == 404
+
+    restored = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
+    assert restored.status_code == 200
+    body = restored.json()["data"]
+    assert body["evidence_pointer_id"] == pointer_id
+    assert body["material_version_id"] == version_id
+    assert body["excerpt"] == item["text"]
+    assert body["restored"] is True
+    assert body["excerpt_sha256"] == hashlib.sha256(item["text"].encode("utf-8")).hexdigest()
+
+    create_user_sync(email="evidence-outsider@uni.edu")
+    _login(client, "evidence-outsider@uni.edu")
+    forbidden = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
+    assert forbidden.status_code == 404
+
+
+def test_evidence_pointer_keeps_published_historical_version_after_roll_forward(client) -> None:
+    course_id, _, version_id = _prepare(client, publish=True)
+    _login(client, "ms@uni.edu")
+    search = client.post(
+        "/api/v1/knowledge/search",
+        json={"course_id": course_id, "query": "participants"},
+    )
+    pointer_id = search.json()["data"]["items"][0]["evidence_pointer_id"]
+
+    async def publish_new_current_version() -> None:
+        async with session_factory() as db:
+            previous = await db.get(MaterialVersion, version_id)
+            assert previous is not None
+            material = await db.get(Material, previous.material_id)
+            assert material is not None
+            newer = MaterialVersion(
+                id=new_ulid(),
+                material_id=previous.material_id,
+                version_no=previous.version_no + 1,
+                status="parsed",
+                created_by=previous.created_by,
+            )
+            db.add(newer)
+            await db.flush()
+            material.current_version_id = newer.id
+            await db.commit()
+
+    asyncio.run(publish_new_current_version())
+    restored = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
+    assert restored.status_code == 200
+    assert restored.json()["data"]["material_version_id"] == version_id
+
+
+def test_evidence_pointer_survives_reparse_object_cleanup(client) -> None:
+    course_id, _, version_id = _prepare(client, publish=True)
+    _login(client, "ms@uni.edu")
+    search = client.post(
+        "/api/v1/knowledge/search",
+        json={"course_id": course_id, "query": "participants"},
+    )
+    pointer = search.json()["data"]["items"][0]
+
+    async def clear_old_parse() -> None:
+        async with session_factory() as db:
+            await _clear_parse_outputs(db, version_id)
+            await db.commit()
+            assert await db.get(KnowledgeObject, pointer["source_object_id"]) is None
+
+    asyncio.run(clear_old_parse())
+    restored = client.get(f"/api/v1/evidence-pointers/{pointer['evidence_pointer_id']}")
+    assert restored.status_code == 200
+    body = restored.json()["data"]
+    assert body["source_object_id"] == pointer["source_object_id"]
+    assert body["excerpt"] == pointer["text"]
 
 
 def test_student_evidence_is_revoked_when_material_archived(client) -> None:
@@ -365,6 +694,7 @@ def test_student_evidence_is_revoked_when_material_archived(client) -> None:
         json={"course_id": course_id, "query": "participants"},
     )
     evidence_id = search.json()["data"]["items"][0]["evidence_id"]
+    pointer_id = search.json()["data"]["items"][0]["evidence_pointer_id"]
 
     _login(client, "mt@uni.edu")
 
@@ -383,6 +713,9 @@ def test_student_evidence_is_revoked_when_material_archived(client) -> None:
     revoked = client.get(f"/api/v1/evidence/{evidence_id}")
     assert revoked.status_code == 404
     assert revoked.json()["error"]["code"] == "EVIDENCE_NOT_FOUND"
+    revoked_pointer = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
+    assert revoked_pointer.status_code == 404
+    assert revoked_pointer.json()["error"]["code"] == "EVIDENCE_NOT_FOUND"
 
 
 def test_search_unknown_course_404(client) -> None:

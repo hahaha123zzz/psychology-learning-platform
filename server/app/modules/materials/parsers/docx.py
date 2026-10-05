@@ -1,7 +1,8 @@
 """DOCX 结构解析器：提取标题、段落、表格、图片和公式对象。
 
 DOCX 本身是流式排版格式，本解析器不伪造 bbox。真实页面坐标需由版面解析
-供应商或 Office/PDF 渲染链产生，因此结果会附带 layout_bbox_unavailable 告警。
+适配器和固定 PDF 产生。DOCX 逻辑顺序、显式分页符及 lastRenderedPageBreak
+都不能单独证明最终物理页，因此对象物理页与页数保持未知。
 """
 
 from __future__ import annotations
@@ -36,11 +37,13 @@ class DocxParser:
         root = ElementTree.fromstring(document)
         body = root.find(f"{W}body")
         if body is None:
-            return ParserResult(page_count=1, issues=["no_text_extracted"])
+            return ParserResult(
+                page_count=None,
+                issues=["no_text_extracted", "physical_page_unavailable"],
+            )
 
         objects: list[ParsedObject] = []
         order = 0
-        page = 1
         chapter_counter = 0
         chapter_path = ""
 
@@ -58,7 +61,7 @@ class DocxParser:
                             type="chapter",
                             title=text[:200],
                             raw_content=text,
-                            physical_page=page,
+                            physical_page=None,
                             reading_order=order,
                             chapter_path=chapter_path,
                             confidence=0.9,
@@ -71,7 +74,7 @@ class DocxParser:
                             ParsedObject(
                                 type="paragraph",
                                 raw_content=text[start : start + MAX_PARAGRAPH_CHARS],
-                                physical_page=page,
+                                physical_page=None,
                                 reading_order=order,
                                 chapter_path=chapter_path,
                                 confidence=0.85,
@@ -83,8 +86,8 @@ class DocxParser:
                     objects.append(
                         ParsedObject(
                             type="formula",
-                            raw_content=text or "[Word 公式]",
-                            physical_page=page,
+                            raw_content=_formula_text(element),
+                            physical_page=None,
                             reading_order=order,
                             chapter_path=chapter_path,
                             confidence=0.65,
@@ -97,13 +100,12 @@ class DocxParser:
                             type="figure",
                             title=_drawing_title(drawing),
                             raw_content=_drawing_title(drawing),
-                            physical_page=page,
+                            physical_page=None,
                             reading_order=order,
                             chapter_path=chapter_path,
                             confidence=0.65,
                         )
                     )
-                page += _page_break_count(element)
             elif element.tag == f"{W}tbl":
                 table_text = _table_text(element)
                 if table_text:
@@ -112,19 +114,18 @@ class DocxParser:
                         ParsedObject(
                             type="table",
                             raw_content=table_text,
-                            physical_page=page,
+                            physical_page=None,
                             reading_order=order,
                             chapter_path=chapter_path,
                             confidence=0.8,
                         )
                     )
-                page += _page_break_count(element)
 
-        issues = ["layout_bbox_unavailable"]
+        issues = ["layout_bbox_unavailable", "physical_page_unavailable"]
         if not any(item.raw_content.strip() for item in objects):
             issues.append("no_text_extracted")
         return ParserResult(
-            page_count=max(page, 1),
+            page_count=None,
             objects=objects,
             issues=issues,
         )
@@ -151,6 +152,10 @@ def _table_text(table: ElementTree.Element) -> str:
     return "\n".join(rows)
 
 
+def _formula_text(paragraph: ElementTree.Element) -> str:
+    return "".join(node.text or "" for node in paragraph.findall(f".//{M}t")).strip()
+
+
 def _drawing_title(drawing: ElementTree.Element) -> str:
     properties = drawing.find(f".//{WP}docPr")
     if properties is not None:
@@ -164,13 +169,3 @@ def _drawing_title(drawing: ElementTree.Element) -> str:
     if non_visual is not None:
         return non_visual.get("descr") or non_visual.get("name") or "Word 图片"
     return "Word 图片"
-
-
-def _page_break_count(element: ElementTree.Element) -> int:
-    explicit = sum(
-        1
-        for node in element.findall(f".//{W}br")
-        if node.get(f"{W}type") == "page"
-    )
-    rendered = len(element.findall(f".//{W}lastRenderedPageBreak"))
-    return explicit + rendered

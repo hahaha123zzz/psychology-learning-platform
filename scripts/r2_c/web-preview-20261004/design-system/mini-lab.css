@@ -1,0 +1,56 @@
+.mini-lab-runtime {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-default);
+}
+
+.mini-lab-display:empty {
+  display: none;
+}
+
+.mini-lab-trial {
+  display: grid;
+  gap: 18px;
+}
+
+.mini-lab-screen {
+  display: grid;
+  gap: 8px;
+}
+
+.mini-lab-screen h2,
+.mini-lab-screen p {
+  margin: 0;
+}
+
+.mini-lab-kicker {
+  color: var(--text-secondary);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mini-lab-status {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.mini-lab-status.error {
+  color: var(--attention-action);
+}
+
+.jspsych-btn {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.jspsych-btn:hover {
+  border-color: var(--state-stable);
+}

@@ -1,7 +1,7 @@
 import asyncio
 import time
 
-from app.db.models import Material, ParsedPage
+from app.db.models import DomainRelease, Job, Material, ParsedPage, PublicationSnapshot
 from app.db.session import session_factory
 from tests.conftest import create_user_sync, make_pdf
 from tests.test_materials import _login, _setup_course, _upload
@@ -25,10 +25,125 @@ def _wait_job(client, job_id: str, timeout: float = 20.0) -> dict:
     raise AssertionError(f"任务未在{timeout}s内完成: {last}")
 
 
-def _embed_and_wait(client, version_id: str) -> dict:
-    response = client.post(f"/api/v1/material-versions/{version_id}/embed")
+def _embed_and_wait(client, version_id: str, *, domain_release_id: str | None = None) -> dict:
+    params = {"domain_release_id": domain_release_id} if domain_release_id else None
+    response = client.post(f"/api/v1/material-versions/{version_id}/embed", params=params)
     assert response.status_code == 202
     return _wait_job(client, response.json()["data"]["job_id"])
+
+
+def test_domain_release_is_fixed_across_index_publication_and_course_release(client) -> None:
+    course_id, _ = _setup_course(client)
+    data = _upload_one(
+        client,
+        course_id,
+        title="领域快照教材",
+        content=make_pdf([["Domain release indexing snapshot evidence for testing"]]),
+    )
+    parse_job_id = _parse(client, data["version_id"]).json()["data"]["job_id"]
+    assert _wait_job(client, parse_job_id)["status"] == "succeeded"
+    creator_id = client.get("/api/v1/me").json()["data"]["id"]
+    domain_pack = {"knowledge_points": [{"key": "kp-a", "title": "注意"}]}
+
+    async def create_published_domain_release() -> str:
+        async with session_factory() as db:
+            release = DomainRelease(
+                course_id=course_id,
+                version_no=1,
+                manifest={"domain_pack": domain_pack},
+                pack_sha256="a" * 64,
+                status="published",
+                created_by=creator_id,
+                published_by=creator_id,
+            )
+            db.add(release)
+            await db.commit()
+            return release.id
+
+    domain_release_id = asyncio.run(create_published_domain_release())
+    index_job = _embed_and_wait(
+        client,
+        data["version_id"],
+        domain_release_id=domain_release_id,
+    )
+    assert index_job["status"] == "succeeded", index_job
+
+    published = client.post(
+        f"/api/v1/material-versions/{data['version_id']}/publish",
+        params={"domain_release_id": domain_release_id},
+    )
+    assert published.status_code == 200, published.text
+    snapshot_id = published.json()["data"]["publication_snapshot_id"]
+    assert published.json()["data"]["domain_release_id"] == domain_release_id
+
+    async def assert_snapshot_and_units() -> None:
+        from sqlalchemy import select
+
+        from app.db.models import RetrievalUnit
+
+        async with session_factory() as db:
+            snapshot = await db.get(PublicationSnapshot, snapshot_id)
+            assert snapshot is not None
+            assert snapshot.domain_release_id == domain_release_id
+            assert snapshot.index_job_id == index_job["job_id"]
+            saved_job = await db.get(Job, snapshot.index_job_id)
+            assert saved_job is not None
+            assert saved_job.payload["material_version_id"] == data["version_id"]
+            assert saved_job.payload["domain_release_id"] == domain_release_id
+            rows = await db.execute(
+                select(RetrievalUnit).where(
+                    RetrievalUnit.material_version_id == data["version_id"],
+                    RetrievalUnit.domain_release_id == domain_release_id,
+                    RetrievalUnit.build_version == f"v1-{index_job['job_id']}",
+                    RetrievalUnit.status == "ready",
+                )
+            )
+            assert len(list(rows.scalars())) > 0
+
+    asyncio.run(assert_snapshot_and_units())
+
+    course_release = client.post(
+        f"/api/v1/courses/{course_id}/releases",
+        json={
+            "name": "固定领域与教材索引快照",
+            "material_ids": [data["material_id"]],
+            "domain_release_id": domain_release_id,
+        },
+    )
+    assert course_release.status_code == 201, course_release.text
+    release_data = course_release.json()["data"]
+    assert release_data["domain_release_id"] == domain_release_id
+    assert release_data["manifest"]["domain_pack"] == domain_pack
+    gate = client.get(
+        f"/api/v1/courses/{course_id}/releases/{release_data['id']}/gate"
+    )
+    assert gate.status_code == 200, gate.text
+    gate_codes = {item["code"] for item in gate.json()["data"]["errors"]}
+    assert not gate_codes.intersection(
+        {
+            "RELEASE_DOMAIN_SNAPSHOT_REQUIRED",
+            "RELEASE_DOMAIN_SNAPSHOT_INVALID",
+            "RELEASE_DOMAIN_SNAPSHOT_MISMATCH",
+            "RELEASE_PUBLICATION_DOMAIN_SNAPSHOT_MISMATCH",
+            "RELEASE_DOMAIN_INDEX_JOB_MISMATCH",
+            "RELEASE_DOMAIN_RETRIEVAL_SNAPSHOT_MISSING",
+        }
+    )
+
+    async def corrupt_snapshot_domain_binding() -> None:
+        async with session_factory() as db:
+            snapshot = await db.get(PublicationSnapshot, snapshot_id)
+            assert snapshot is not None
+            snapshot.domain_release_id = None
+            await db.commit()
+
+    asyncio.run(corrupt_snapshot_domain_binding())
+    blocked_gate = client.get(
+        f"/api/v1/courses/{course_id}/releases/{release_data['id']}/gate"
+    )
+    assert blocked_gate.status_code == 200, blocked_gate.text
+    blocked_codes = {item["code"] for item in blocked_gate.json()["data"]["errors"]}
+    assert "RELEASE_PUBLICATION_DOMAIN_SNAPSHOT_MISMATCH" in blocked_codes
 
 
 def _upload_one(client, course_id: str, **kwargs):

@@ -87,10 +87,21 @@ def generate_candidates(
             {"key": "B", "text": _truncate(distractor_sources[0]), "is_correct": False},
             {"key": "C", "text": _truncate(distractor_sources[1]), "is_correct": False},
         ]
-        stem = (
-            f"下列关于“{_truncate(chunk['material_title'], 30)}”的表述，"
-            f"哪一项来自教材第{chunk['page']}页的内容？"
-        )
+        if chunk["page"] is None:
+            stem = (
+                f"下列关于“{_truncate(chunk['material_title'], 30)}”的表述，"
+                "哪一项能被提供的教材片段支持？"
+            )
+            explanation = f"该表述与教材片段一致：{_truncate(correct_sentence, 120)}"
+        else:
+            stem = (
+                f"下列关于“{_truncate(chunk['material_title'], 30)}”的表述，"
+                f"哪一项来自教材第{chunk['page']}页的内容？"
+            )
+            explanation = (
+                f"该表述出自教材第{chunk['page']}页："
+                f"{_truncate(correct_sentence, 120)}"
+            )
         pair = (chunk["chunk_id"], _stem_hash(stem + correct_sentence))
         if pair in used_pairs:
             continue
@@ -102,10 +113,7 @@ def generate_candidates(
                 "stem": stem,
                 "options": options,
                 "answer": {"correct_keys": ["A"]},
-                "explanation": (
-                    f"该表述出自教材第{chunk['page']}页："
-                    f"{_truncate(correct_sentence, 120)}"
-                ),
+                "explanation": explanation,
                 "difficulty": difficulty,
                 "evidence_chunk_ids": [chunk["chunk_id"]],
                 "difficulty_reason": "按证据句位置与词汇密度分配",

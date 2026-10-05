@@ -15,12 +15,11 @@ from pathlib import Path
 SERVER = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVER))
 
-from sqlalchemy import select  # noqa: E402
-
-from app.core.config import get_settings  # noqa: E402
-from app.db.models import CourseMember, User  # noqa: E402
-from app.db.session import session_factory  # noqa: E402
-from app.modules.knowledge import service as knowledge_service  # noqa: E402
+from app.core.config import get_settings
+from app.db.models import CourseMember
+from app.db.session import session_factory
+from app.modules.knowledge import service as knowledge_service
+from sqlalchemy import select
 
 EVAL_SET = [
     {"query": "independent variable control", "expect_page": 1},

@@ -6,7 +6,9 @@
 
 本项目是面向《实验心理学》课程的 B/S 智能学习平台，目标是形成“教师发布可信课程资料 → 学生基于教材学习、提问和练习 → 系统保存证据、掌握状态与复习任务 → 教师据此调整教学”的闭环。
 
-截至 2026-09-26，后端已实现执行计划 D1—D40 的主要代码与测试，当前主干最新迁移为 `0013_reliable_upload_sessions.py`。已有能力包括：
+> **2026-10-05 17:26 +08:00 状态覆盖（优先于下方较早快照）：** 共享迁移 head `0051_bind_chat_sessions_to_course_releases.py`。CourseRelease 草稿现在 pin 每份材料的 MaterialVersion 与 PublicationSnapshot/IndexJob/Embedding/DomainRelease；只在显式重选材料时刷新。新隔离库全量后端 **364 passed、2 warnings**，0051 `alembic check` 无差异，全仓 Ruff 通过；OpenAPI 156 paths/SHA `A7E85EF6A81C2D2CEF673E87EEB2D54C7D63C29C28975B737DFC46B155322743`；Web Node 56/56、TypeScript、production build 24/24 通过，ESLint 0 error/2 warnings。R3-B 历史 superseded snapshot 正向 Claim 与 Branch child pin 仍待其按共享状态交付/验证。用户可查看的隔离演示 API 8000 与 Web 3000 已通：新 DB `psychology_learning_v1_preview_20261005` (0051)、Redis DB2、MinIO bucket `psych-preview-root-20261005`，健康/就绪、页面与代理均 200，合成教师登录可读取 1 门课程；未迁移 `.env` 中的旧 `psychology_learning`（只读查为 0038）。Docker CLI 管理管道仍权限拒绝，不据 TCP 推断容器状态。真实教材/机构政策/学生答案授权及生产、真实班级验收仍未完成，R3/V1 不作整体完成结论。
+
+以下段落是 R3 之前的历史快照，不可作为当前迁移、OpenAPI、全量测试或资源状态依据。R2 集成全量隔离回归 **294 passed** 与 P2-08 专项 **43 passed** 为历史结果。V1 功能与验收边界如下，最新实施状态以本文件顶部覆盖和 `docs/v1/implementation-status.md`、`acceptance-report.md` 为准。主预览数据库 `psychology_learning_privacy_target` 仍严禁迁移或调用依赖新 schema 的管理/隐私端点。已有能力包括：
 
 - 平台账号、HttpOnly Cookie 会话、RBAC、课程和成员、审计、幂等与乐观锁。
 - 教材上传、MinIO 存储、版本、解析任务、知识对象、教师修正、质量门禁、发布与归档。
@@ -14,6 +16,7 @@
 - 课程问答、SSE 回合、证据包、主张校验、AI 教师状态机和 RAG 基线脚本。
 - 题库、审核发布、测验、作答评分、出题任务、局部分支会话、确认合并和复习任务。
 - 学习证据、掌握状态、分层记忆、模型网关、管理健康检查和隐私删除请求。
+- 隐私删除具备持久 queued/running/failed/completed 工作单、同事务个人数据清除、账号即时停用、调用方预生成回执编号/随机状态凭证、凭证限时状态核验与可重派发；凭证只存哈希，保留成绩/审计/任课历史仍需机构政策，生产备份擦除不在本地验收范围。
 - V3 评测数据合同、对象/表示/关系/RetrievalUnit 模型、不可变资产键与 bbox 坐标变换合同；新建文本 Chunk 已稳定关联来源对象与 RetrievalUnit。
 - OpenAI-compatible 教材约束生成适配器；可通过配置切换单一供应商，未配置时保留确定性测试替身。
 - OpenAI-compatible Embedding 适配器、模型版本隔离与失败时 BM25 降级；索引替换在新向量全部成功后提交。
@@ -21,14 +24,16 @@
 - 向量检索必须应用 `RETRIEVAL_MIN_VECTOR_SIMILARITY` 门槛；最近邻不等于教材证据，低于门槛时须拒答或仅保留 BM25 命中。
 - 教师课程学情聚合接口提供参与、测验、掌握、章节、常见错题与复习积压口径，不返回学生私聊或记忆正文。
 - 学生测验发现只列出已发布测验；草稿详情返回 404，未到开放时间或已关闭时不下发题目内容。
-- 教材发布工作流现由服务端统一聚合上传、解析、审核、索引、可发布与已发布状态；教师端展示真实任务阶段、进度、失败原因、唯一下一步操作和课程后台任务列表。
-- 教材上传已改为可恢复分片上传（V3.2）：服务端 `upload_sessions`/`upload_parts` 会话管理、MinIO Multipart 预签名直传、ETag 记录、完成合并与校验（大小、SHA-256、重复、配额）、取消与过期清理；浏览器记录会话并支持重进页面恢复未完成上传，前端显示真实分片进度与离页告警；单次上传接口保留但不再是主路径。
-- 解析/索引任务已接入持久任务派发（V3.2）：`TASK_BACKEND` 可切换 `celery`（默认）与 `in_process`（测试固定）；Celery Worker 由 `scripts/dev.ps1` 受管启动；`jobs` 记录心跳、尝试次数、检查点与执行后端；`app/core/job_recovery.py` + `scripts/requeue_stale_jobs.py` 提供陈旧任务扫描与安全重派发；Celery 任务运行在 `app/core/task_loop.py` 的持久事件循环上（修复了每任务 `asyncio.run` 关闭循环导致连接池跨循环复用崩溃的问题）。
+- 历史教材发布工作流、分片上传、解析、索引和质量审核能力仍在服务端代码中，但普通教师直接教材编写/上传现已由 `MATERIAL_LEGACY_AUTHORING_API_ENABLED=false` 默认关闭；直传、分片启动/上传/完成、解析、索引、修正、发布和归档写接口返回稳定 410。仅上传会话创建者可取消自己残留的未完成会话。隔离工程/测试可显式打开开关；这不代表课程内容管理员的新建构建工作台已完成。教师教材页现为只读状态提示。
+- 解析/索引任务已接入持久任务派发（V3.2）：`TASK_BACKEND` 可切换 `celery`（默认）与 `in_process`（测试固定）；Celery Worker 由 `scripts/dev.ps1` 受管启动；`jobs` 记录心跳、尝试次数、检查点与执行后端；`app/core/job_recovery.py` + `scripts/requeue_stale_jobs.py` 提供陈旧任务扫描与安全重派发。派发异常且任务仍停留在本次恢复版本的 queued 状态时，会持久记录为脱敏的 `failed/dispatch_failed/retryable=true`，供受控重试；broker 已接收但确认响应丢失等模糊结果仍需单独做幂等/Outbox 故障验证。Celery 任务运行在 `app/core/task_loop.py` 的持久事件循环上（修复了每任务 `asyncio.run` 关闭循环导致连接池跨循环复用崩溃的问题）。
 - 每次新发布会创建不可变 `PublicationSnapshot`，绑定教材版本、最近成功解析任务、成功索引任务与 Embedding 版本；历史已发布资料在没有快照时仍保持可用。
+- V1 新增课程/班级运行 Scope、事件资格化、可恢复学习任务、案例推理、干预、TeacherObservation、Mini Lab 与 TeachingAsset 版本；详细状态和证据见 `docs/v1/implementation-status.md`。
+- 管理员角色授予/撤销支持同机构 Scope、理由、幂等和审计；受控任务恢复仅覆盖允许重试的教材解析/索引失败任务。新课程/班级/成员治理接口采用同机构过滤、版本冲突、幂等/理由、审计和 Outbox；没有把平台管理员提升为隐式课程教师。R2 Admin 工作台的五入口与首批隔离浏览器治理操作已通过；完整 Designer/Publisher、Release assignment 与策略仍未完成，撤权后目标账号 `/me` 未验。
+- 当前学生独立正式测评页支持单选、多选、判断、简答/论述、刷新恢复和逐题保存；SSE 只有收到服务端 `done/saved=true` 才视为完成，同 `client_turn_id` 对已提交回合可安全回放。R2-C 已在隔离环境验证双标签、离线保存失败、版本冲突、截止尾端、真实 TCP SSE 中断、Celery 隐私删除 Worker 回滚重投和独立 Redis 恢复；这些是本地工程故障证据，不等于生产恢复验收。
 
-V2 前端已具备真实登录与同源 API 代理；教师端已接入课程/成员、资料上传、解析、解析问题处理、索引构建、发布、课程聚合学情、题库审核发布、出题任务和测验创建发布；学生端已接入已发布资料、教材检索、SSE 有据问答、服务端学习状态机、测验作答与结果、分支会话确认合并、复习任务、掌握度、记忆详情与隐私删除；管理员页已接入健康与审计查询。前端以 `/me` 的有效工作区（管理员优先、其次教师、否则学生）限制导航、登录落点和路由访问，不能以页面入口绕过后端 RBAC。未实现的能力不得以静态示例代替。根 `README.md` 和首页中的“基础框架/规划中”文案已落后于后端实际进度；判断完成度时以代码、迁移、测试和最近提交为准，不要把旧文案当作当前状态。
+V2/V1 前端已具备真实登录、同源 API 代理和学生/教师/管理员/课程设计工作区；学生正式测评单独使用 Assessment Shell，不挂普通学习导航。普通教师教材页现为只读，后端旧写接口默认关闭；Admin 五区治理路径已接入真实 API，并由 R2-B 进行隔离浏览器验收。前端以 `/me` 的有效工作区限制导航、登录落点和路由访问；服务端仍需对每个动作重做 Scope 校验。Next API rewrite 可配置目标，Next 输出目录可用白名单配置隔离；独立构建应使用物理源码快照，避免并行 Next 改写共享 `next-env.d.ts` 或 Turbopack 丢失 junction 路由。未实现的能力不得以静态示例代替。根 `README.md` 和首页中的“基础框架/规划中”文案已落后于当前进度；判断完成度时以代码、迁移、测试和验收报告为准，不要把旧文案当作当前状态。
 
-V2 的 D1—D40 本地业务闭环已收口。当前进入 V3 的“真实开放教材评测与选型”阶段：先以可复现的开放教材语料完成解析质量、文本检索、引用定位、拒答和候选模型/融合策略的对照，再决定是否新增解析、视觉索引或模型能力；不得反向以演示效果替代评测结果。首批语料和下载边界见 `docs/v3/2026-09-22-oer-test-corpus.md`，教材二进制只存入 Git 忽略的 `data/oer-textbooks/`。所有来源默认仅作本地解析和检索评测；未经逐本许可确认、供应商不留存/不训练承诺和用户明确授权，禁止把教材正文、图像或表格发送给外部生成或嵌入 API。尤其 OpenStax《Psychology 2e》官方页面明确禁止将教材摄入大语言模型或生成式 AI 服务，故只能用于本地离线对照，不能进入任何外部模型调用路径。用户当前明确不考虑 D41—D50 的生产部署、监控告警、备份恢复、性能/容量验证、教师预验收和小范围试用；这些事项保留为未来范围，不能阻塞当前 V3 本地评测，也不得据此宣称生产就绪或真实班级验收完成。
+V2 的 D1—D40 本地业务闭环与既有 V3 离线教材检索评测结果仍可复用；当前执行用户已批准的 V1 迁移计划，以 `docs/v1/implementation-status.md` 和 `docs/v1/acceptance-report.md` 记录每项实现/验收。课程教材默认仅作本地解析和检索评测；未经逐本许可确认、供应商不留存/不训练承诺和用户明确授权，禁止把教材正文、图像或表格发送给外部生成或嵌入 API。尤其 OpenStax《Psychology 2e》官方页面明确禁止将教材摄入大语言模型或生成式 AI 服务，故只能用于本地离线对照，不能进入任何外部模型调用路径。用户当前明确不考虑生产部署、监控告警、备份恢复、性能/容量验证、教师预验收、小范围试用和学习效果验证；这些事项保留为未来范围，不得据本地验证宣称生产就绪、真实班级或学习效果验收完成。
 
 OpenStax《Psychology 2e》首轮本地 `hybrid-v1 + hash-v1` 基线已完成，结果见 `docs/v3/2026-09-22-openstax-local-hybrid-v1-baseline.md`。页级 Recall@5 为 1.0、NDCG@5 为 0.926186，但教材外问题未拒答；精确对象、视觉、bbox、引用和生成指标尚不可评测。该历史基线暴露的 `RetrievalUnit → KnowledgeObject` 稳定映射和绝对拒答门槛问题已在后续 V2 处理。
 
@@ -99,12 +104,13 @@ compose.yaml  PostgreSQL/pgvector、Redis、MinIO 本地依赖
 
 ## 5. 常用验证命令
 
-后端测试依赖正在运行的 PostgreSQL、Redis 和 MinIO；测试会创建并迁移 `psychology_learning_test` 数据库。
+后端测试依赖正在运行的 PostgreSQL、Redis 和 MinIO；测试会创建并迁移 `psychology_learning_test` 数据库。测试 Redis 通过 `PSYCHOLOGY_TEST_REDIS_URL` 配置，默认使用 DB15；夹具拒绝 Redis DB0（本地预览）和 DB1（Celery broker/result），禁止测试清理共享预览或任务队列状态。并行测试应分别指定独立 PostgreSQL 与 Redis DB。
 
 ```powershell
 docker compose up -d postgres redis minio
 
 Set-Location server
+$env:PSYCHOLOGY_TEST_REDIS_URL='redis://127.0.0.1:6379/15'
 .venv\Scripts\python.exe -m ruff check .
 .venv\Scripts\python.exe -m pytest -q
 .venv\Scripts\python.exe -m alembic upgrade head
@@ -177,7 +183,7 @@ pnpm build
 - 问答已具备 OpenAI-compatible 外部生成适配器和教材证据回退；尚未配置真实 Key 做供应商联调。教学状态机和出题仍以本地确定性逻辑为主。
 - 异步解析/索引已有本地 Celery Worker（受管脚本启动）与陈旧任务重派发；跨进程崩溃恢复只覆盖心跳超时场景，尚无生产级监控告警、队列积压观测与多 Worker 扩缩容验证。
 - `infra/` 只有初步 Nginx 说明，尚缺生产 Compose、HTTPS、监控、备份、恢复和回滚验证。
-- 前端只有 `/student`、`/teacher`、`/admin` 工作区骨架，完整业务页面、OpenAPI 客户端和浏览器 E2E 仍待实现。
+- 前端已具有学生/教师/管理员/课程设计工作区、多项真实 API 投影与命令、Assessment Shell、Read-only 教材页及部分真实浏览器/Playwright 验收；仍缺完整 Designer/Publisher 工作流、全面 OpenAPI 客户端生成和 P0—P10 全需求浏览器 E2E。具体范围见 `docs/v1/remaining-scope-audit-2026-10-04.md`。
 
 扩展这些能力时应保留现有适配器边界和确定性测试替身，不要让外部服务调用渗透到业务模块或让单元测试依赖公网。
 

@@ -1,15 +1,27 @@
 import os
 import pathlib
+import re
 import sys
+from urllib.parse import urlparse
 
 SERVER_ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVER_ROOT))
 
+TEST_DB = os.environ.get("PSYCHOLOGY_TEST_DB", "psychology_learning_test")
+if not re.fullmatch(r"[a-zA-Z0-9_]+", TEST_DB):
+    raise ValueError("PSYCHOLOGY_TEST_DB must contain only letters, digits, and underscores")
 os.environ["DATABASE_URL"] = (
-    "postgresql+asyncpg://psychology:change-me@127.0.0.1:5432/psychology_learning_test"
+    f"postgresql+asyncpg://psychology:change-me@127.0.0.1:5432/{TEST_DB}"
 )
+TEST_REDIS_URL = os.environ.get(
+    "PSYCHOLOGY_TEST_REDIS_URL", "redis://127.0.0.1:6379/15"
+)
+if urlparse(TEST_REDIS_URL).path.strip("/") in {"0", "1"}:
+    raise ValueError("PSYCHOLOGY_TEST_REDIS_URL must not use preview Redis DB0 or Celery DB1")
+os.environ["REDIS_URL"] = TEST_REDIS_URL
 os.environ["JWT_SECRET"] = "test-secret-key-for-hmac-sha256-32bytes!"
 os.environ["APP_ENV"] = "test"
+os.environ["MATERIAL_LEGACY_AUTHORING_API_ENABLED"] = "true"
 os.environ["TASK_BACKEND"] = "in_process"
 
 import asyncio  # noqa: E402
@@ -24,10 +36,14 @@ from app.core.security import hash_password  # noqa: E402
 from app.db.models import User  # noqa: E402
 from app.db.session import engine, session_factory  # noqa: E402
 
-TEST_DB = "psychology_learning_test"
-
 TABLES_TO_TRUNCATE = (
+    "interventions",
+    "learning_qualifications",
+    "learning_events",
+    "outbox_consumer_receipts",
+    "outbox_events",
     "idempotency_records",
+    "privacy_deletion_requests",
     "audit_logs",
     "course_members",
     "courses",
@@ -86,7 +102,10 @@ def _cleanup_data() -> None:
 
     import redis as redis_lib
 
-    r = redis_lib.from_url("redis://127.0.0.1:6379/0")
+    from app.core.config import get_settings
+
+    # 清理当前测试所配置的 Redis 实例/数据库，不触碰共享预览环境的登录限流状态。
+    r = redis_lib.from_url(get_settings().redis_url)
     for key in r.scan_iter("login_fail:*"):
         r.delete(key)
     r.close()
@@ -119,6 +138,70 @@ def create_user_sync(
             return user.id
 
     return asyncio.run(_create())
+
+
+def publish_course_release_for_test(client, course_id: str, release_id: str) -> dict:
+    """通过独立审核者和受控请求发布测试用课程版本。"""
+    from app.db.models import CourseRelease, RoleAssignment
+
+    async def _release_context() -> tuple[str, int]:
+        async with session_factory() as session:
+            release = await session.get(CourseRelease, release_id)
+            assert release is not None
+            author = await session.get(User, release.created_by)
+            return author.email, release.version
+
+    author_email, version = asyncio.run(_release_context())
+    preview_response = client.get(
+        f"/api/v1/courses/{course_id}/releases/{release_id}/preview"
+    )
+    assert preview_response.status_code == 200, preview_response.text
+    preview = preview_response.json()["data"]
+    reviewer_email = f"release-reviewer-{release_id}@example.com"
+    reviewer_id = create_user_sync(email=reviewer_email)
+
+    async def _grant_reviewer() -> None:
+        async with session_factory() as session:
+            session.add(
+                RoleAssignment(
+                    user_id=reviewer_id,
+                    role="course_publisher",
+                    scope_type="course",
+                    scope_id=course_id,
+                    status="active",
+                    granted_by=preview["release"]["created_by"],
+                )
+            )
+            await session.commit()
+
+    asyncio.run(_grant_reviewer())
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": reviewer_email, "password": "correct-password"},
+    )
+    assert login.status_code == 200, login.text
+    review = client.post(
+        f"/api/v1/courses/{course_id}/releases/{release_id}/reviews",
+        headers={"Idempotency-Key": f"test-review:{release_id}"},
+        json={
+            "expected_version": version,
+            "manifest_sha256": preview["manifest_sha256"],
+            "decision": "approved",
+            "reason": "自动化测试的独立审核",
+        },
+    )
+    assert review.status_code == 201, review.text
+    published = client.post(
+        f"/api/v1/courses/{course_id}/releases/{release_id}/publish",
+        headers={"Idempotency-Key": f"test-publish:{release_id}"},
+        json={"expected_version": version},
+    )
+    client.post(
+        "/api/v1/auth/login",
+        json={"email": author_email, "password": "correct-password"},
+    )
+    assert published.status_code == 200, published.text
+    return published.json()["data"]
 
 
 def _pdf_escape(text: str) -> str:

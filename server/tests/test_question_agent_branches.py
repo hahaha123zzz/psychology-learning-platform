@@ -1,6 +1,9 @@
-import json
 import time
 
+import pytest
+from pydantic import ValidationError
+
+from app.modules.question_agent.router import BranchMerge
 from tests.conftest import make_pdf
 from tests.test_materials import _login, _setup_course, _upload
 from tests.test_question_bank import QUESTION_BODY
@@ -17,6 +20,11 @@ TWO_CHAPTER_PDF = make_pdf(
         ],
     ]
 )
+
+
+def test_branch_merge_rejects_blank_confirmation_note() -> None:
+    with pytest.raises(ValidationError, match="合并说明不能为空"):
+        BranchMerge(note=" \t ", merge_key="merge-branch-blank", confirmed=True)
 
 
 def _prepare_indexed(client):
@@ -164,14 +172,10 @@ def test_branch_conversation_isolated_and_merge_confirmed_only(client) -> None:
         json={"content": "internal validity 是什么", "client_turn_id": "branch-base-1"},
     )
     assert turn.status_code == 200
-    events = turn.content.decode("utf-8").split("\n\n")
-    done_block = [b for b in events if '"done"' in b or "done" in b.split("\n")[0]][0]
-    done_data = None
-    for line in done_block.split("\n"):
-        if line.startswith("data: "):
-            done_data = line[6:]
-    done = json.loads(done_data)
-    source_turn_id = done["turn_id"]
+    assert "event: done" in turn.text
+    turns = client.get(f"/api/v1/chat/sessions/{session['id']}").json()["data"]["turns"]
+    source_turn = next(item for item in turns if item["role"] == "student")
+    source_turn_id = source_turn["id"]
 
     branch = client.post(
         f"/api/v1/chat/sessions/{session['id']}/branches",
@@ -195,20 +199,397 @@ def test_branch_conversation_isolated_and_merge_confirmed_only(client) -> None:
 
     merge = client.post(
         f"/api/v1/chat/sessions/{session['id']}/branches/{branch_id}/merge",
-        json={"note": "已理解内部效度概念"},
+        json={"note": "已理解内部效度概念", "confirmed": True, "merge_key": "merge-branch-001"},
     )
     assert merge.status_code == 200
+    receipt = merge.json()["data"]
+    assert receipt["result_turn_id"]
+    assert receipt["replayed"] is False
 
     parent_detail = client.get(f"/api/v1/chat/sessions/{session['id']}")
-    contents = [t["content"] for t in parent_detail.json()["data"]["turns"]]
-    assert any("分支结论（用户确认）" in c for c in contents)
+    merged_turn = next(
+        t for t in parent_detail.json()["data"]["turns"] if t["id"] == receipt["result_turn_id"]
+    )
+    assert merged_turn["role"] == "student"
+    assert "学生确认带回的选区" in merged_turn["content"]
+    assert "分支结论" not in merged_turn["content"]
 
     branch_detail = client.get(f"/api/v1/chat/sessions/{branch_id}")
     assert branch_detail.json()["data"]["status"] == "closed"
 
     merge_again = client.post(
         f"/api/v1/chat/sessions/{session['id']}/branches/{branch_id}/merge",
-        json={"note": "重复合并"},
+        json={"note": "已理解内部效度概念", "confirmed": True, "merge_key": "merge-branch-001"},
     )
-    assert merge_again.status_code == 409
-    assert merge_again.json()["error"]["code"] == "BRANCH_ALREADY_MERGED"
+    assert merge_again.status_code == 200
+    assert merge_again.json()["data"]["replayed"] is True
+    assert merge_again.json()["data"]["result_turn_id"] == receipt["result_turn_id"]
+
+    changed_payload = client.post(
+        f"/api/v1/chat/sessions/{session['id']}/branches/{branch_id}/merge",
+        json={"note": "改写合并文本", "confirmed": True, "merge_key": "merge-branch-001"},
+    )
+    assert changed_payload.status_code == 409
+    assert changed_payload.json()["error"]["code"] == "BRANCH_MERGE_CONFLICT"
+
+    changed_key = client.post(
+        f"/api/v1/chat/sessions/{session['id']}/branches/{branch_id}/merge",
+        json={"note": "已理解内部效度概念", "confirmed": True, "merge_key": "merge-branch-002"},
+    )
+    assert changed_key.status_code == 409
+    assert changed_key.json()["error"]["code"] == "BRANCH_MERGE_CONFLICT"
+
+
+def test_branch_rejects_cross_session_source_and_unconfirmed_merge(client) -> None:
+    course_id, _, _ = _prepare_indexed(client)
+    _login(client, "mt@uni.edu")
+    parent = client.post(
+        "/api/v1/chat/sessions",
+        json={"course_id": course_id, "mode": "course_qa"},
+    ).json()["data"]
+    other = client.post(
+        "/api/v1/chat/sessions",
+        json={"course_id": course_id, "mode": "course_qa"},
+    ).json()["data"]
+
+    parent_turn = client.post(
+        f"/api/v1/chat/sessions/{parent['id']}/turns",
+        json={"content": "internal validity 是什么", "client_turn_id": "branch-parent-01"},
+    )
+    other_turn = client.post(
+        f"/api/v1/chat/sessions/{other['id']}/turns",
+        json={"content": "between subjects design 是什么", "client_turn_id": "branch-other-01"},
+    )
+    assert parent_turn.status_code == 200
+    assert other_turn.status_code == 200
+
+    parent_student_turn = next(
+        turn
+        for turn in client.get(f"/api/v1/chat/sessions/{parent['id']}").json()["data"]["turns"]
+        if turn["role"] == "student"
+    )
+    other_student_turn = next(
+        turn
+        for turn in client.get(f"/api/v1/chat/sessions/{other['id']}").json()["data"]["turns"]
+        if turn["role"] == "student"
+    )
+
+    cross_session_source = client.post(
+        f"/api/v1/chat/sessions/{parent['id']}/branches",
+        json={"source_turn_id": other_student_turn["id"], "selection": "between subjects"},
+    )
+    assert cross_session_source.status_code == 404
+    assert cross_session_source.json()["error"]["code"] == "BRANCH_SOURCE_NOT_FOUND"
+
+    missing_selection = client.post(
+        f"/api/v1/chat/sessions/{parent['id']}/branches",
+        json={"source_turn_id": parent_student_turn["id"], "selection": "not in source"},
+    )
+    assert missing_selection.status_code == 404
+    assert missing_selection.json()["error"]["code"] == "BRANCH_SOURCE_NOT_FOUND"
+
+    branch = client.post(
+        f"/api/v1/chat/sessions/{parent['id']}/branches",
+        json={"source_turn_id": parent_student_turn["id"], "selection": "internal validity"},
+    )
+    assert branch.status_code == 201
+    branch_id = branch.json()["data"]["id"]
+    unconfirmed = client.post(
+        f"/api/v1/chat/sessions/{parent['id']}/branches/{branch_id}/merge",
+        json={"note": "用户尚未确认", "confirmed": False, "merge_key": "merge-branch-no"},
+    )
+    assert unconfirmed.status_code == 422
+    assert unconfirmed.json()["error"]["code"] == "BRANCH_MERGE_CONFIRMATION_REQUIRED"
+
+
+def test_branch_inherits_release_binding_and_keeps_it_after_assignment_rotation(client) -> None:
+    import asyncio
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from app.db.models import (
+        ChatSession,
+        ClassMember,
+        CourseClass,
+        CourseRelease,
+        CourseReleaseAssignment,
+    )
+    from app.db.session import session_factory
+    from tests.conftest import create_user_sync
+
+    course_id, student_id = _setup_course(client)
+    teacher_id = client.get("/api/v1/me").json()["data"]["id"]
+
+    async def seed_release_assignment() -> tuple[str, str, str]:
+        async with session_factory() as db:
+            course_class = CourseClass(
+                course_id=course_id,
+                code="BRANCH-PIN",
+                name="Branch 固定版本班",
+                created_by=teacher_id,
+            )
+            db.add(course_class)
+            await db.flush()
+            db.add(ClassMember(class_id=course_class.id, user_id=student_id))
+            release = CourseRelease(
+                course_id=course_id,
+                version_no=1,
+                name="Branch parent release",
+                status="published",
+                manifest={
+                    "materials": ["01ARZ3NDEKTSV4RRFFQ69G5FAV"],
+                    "material_version_ids": ["01ARZ3NDEKTSV4RRFFQ69G5FAW"],
+                    "publication_snapshots": [
+                        {
+                            "material_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                            "material_version_id": "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+                            "publication_snapshot_id": "01ARZ3NDEKTSV4RRFFQ69G5FAX",
+                            "index_job_id": "01ARZ3NDEKTSV4RRFFQ69G5FAY",
+                            "embedding_version": "hash-v1",
+                            "domain_release_id": "01ARZ3NDEKTSV4RRFFQ69G5FAZ",
+                        }
+                    ],
+                },
+                created_by=teacher_id,
+                published_by=teacher_id,
+            )
+            db.add(release)
+            await db.flush()
+            assignment = CourseReleaseAssignment(
+                course_id=course_id,
+                class_id=course_class.id,
+                course_release_id=release.id,
+                status="active",
+                assigned_by=teacher_id,
+            )
+            db.add(assignment)
+            await db.commit()
+            return course_class.id, assignment.id, release.id
+
+    class_id, assignment_id, release_id = asyncio.run(seed_release_assignment())
+    _login(client, "ms@uni.edu")
+    parent = client.post(
+        "/api/v1/chat/sessions",
+        json={"course_id": course_id, "mode": "course_qa"},
+    )
+    assert parent.status_code == 201
+    parent_id = parent.json()["data"]["id"]
+    parent_turn_response = client.post(
+        f"/api/v1/chat/sessions/{parent_id}/turns",
+        json={"content": "教材问题", "client_turn_id": "branch-pin-parent-turn"},
+    )
+    assert parent_turn_response.status_code == 200
+    student_turn = next(
+        turn
+        for turn in client.get(f"/api/v1/chat/sessions/{parent_id}").json()["data"]["turns"]
+        if turn["role"] == "student"
+    )
+    created_branch = client.post(
+        f"/api/v1/chat/sessions/{parent_id}/branches",
+        json={"source_turn_id": student_turn["id"], "selection": "教材问题"},
+    )
+    assert created_branch.status_code == 201
+    branch_id = created_branch.json()["data"]["id"]
+
+    outsider_id = create_user_sync(email="branch-release-outsider@uni.edu")
+    _login(client, "branch-release-outsider@uni.edu")
+    cross_user = client.post(
+        f"/api/v1/chat/sessions/{parent_id}/branches",
+        json={"source_turn_id": student_turn["id"], "selection": "教材问题"},
+    )
+    assert cross_user.status_code == 404
+    assert cross_user.json()["error"]["code"] == "CHAT_SESSION_NOT_FOUND"
+    assert outsider_id != student_id
+
+    async def rotate_assignment() -> str:
+        async with session_factory() as db:
+            old_assignment = await db.get(CourseReleaseAssignment, assignment_id)
+            old_release = await db.get(CourseRelease, release_id)
+            assert old_assignment is not None and old_release is not None
+            old_assignment.status = "closed"
+            old_assignment.closed_at = datetime.now(UTC)
+            old_assignment.close_reason = "Branch child inheritance test"
+            old_release.status = "deprecated"
+            replacement = CourseRelease(
+                course_id=course_id,
+                version_no=2,
+                name="Branch replacement release",
+                status="published",
+                manifest={
+                        "materials": ["01ARZ3NDEKTSV4RRFFQ69G5FAV"],
+                        "material_version_ids": ["01ARZ3NDEKTSV4RRFFQ69G5FAW"],
+                        "publication_snapshots": [
+                            {
+                                "material_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                                "material_version_id": "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+                                "publication_snapshot_id": "01ARZ3NDEKTSV4RRFFQ69G5FAX",
+                                "index_job_id": "01ARZ3NDEKTSV4RRFFQ69G5FAY",
+                                "embedding_version": "hash-v1",
+                                "domain_release_id": "01ARZ3NDEKTSV4RRFFQ69G5FAZ",
+                            }
+                        ],
+                },
+                created_by=teacher_id,
+                published_by=teacher_id,
+            )
+            db.add(replacement)
+            await db.flush()
+            db.add(
+                CourseReleaseAssignment(
+                    course_id=course_id,
+                    class_id=class_id,
+                    course_release_id=replacement.id,
+                    status="active",
+                    assigned_by=teacher_id,
+                    supersedes_id=assignment_id,
+                )
+            )
+            await db.commit()
+            return replacement.id
+
+    replacement_release_id = asyncio.run(rotate_assignment())
+    _login(client, "ms@uni.edu")
+    recovered = client.get(f"/api/v1/chat/sessions/{branch_id}")
+    assert recovered.status_code == 200
+    branch_turn = client.post(
+        f"/api/v1/chat/sessions/{branch_id}/turns",
+        json={"content": "继续讨论", "client_turn_id": "branch-pin-child-turn"},
+    )
+    assert branch_turn.status_code == 200
+    child_data = client.get(f"/api/v1/chat/sessions/{branch_id}").json()["data"]
+    claim = child_data["turns"][-1]["verification"]["domain_claim"]
+    assert claim["scope"]["course_release_assignment_id"] == assignment_id
+    assert claim["scope"]["course_release_id"] == release_id
+    assert claim["refusal_reason"] == "release_domain_snapshot_missing"
+
+    async def read_child_binding() -> tuple[str | None, str | None]:
+        async with session_factory() as db:
+            row = await db.get(ChatSession, branch_id)
+            assert row is not None
+            return row.course_release_assignment_id, row.course_release_id
+
+    assert asyncio.run(read_child_binding()) == (assignment_id, release_id)
+    assert replacement_release_id != release_id
+
+    merged = client.post(
+        f"/api/v1/chat/sessions/{parent_id}/branches/{branch_id}/merge",
+        json={"note": "保留分支想法", "confirmed": True, "merge_key": "branch-pin-merge"},
+    )
+    assert merged.status_code == 200
+    assert merged.json()["data"]["replayed"] is False
+    assert asyncio.run(read_child_binding()) == (assignment_id, release_id)
+
+    async def revoke_membership() -> None:
+        async with session_factory() as db:
+            member = await db.scalar(
+                select(ClassMember).where(
+                    ClassMember.class_id == class_id,
+                    ClassMember.user_id == student_id,
+                )
+            )
+            assert member is not None
+            member.status = "removed"
+            member.removed_at = datetime.now(UTC)
+            await db.commit()
+
+    asyncio.run(revoke_membership())
+    assert client.get(f"/api/v1/chat/sessions/{branch_id}").status_code == 404
+    revoked_merge = client.post(
+        f"/api/v1/chat/sessions/{parent_id}/branches/{branch_id}/merge",
+        json={"note": "重放", "confirmed": True, "merge_key": "branch-pin-merge"},
+    )
+    assert revoked_merge.status_code == 404
+
+
+def test_branch_preserves_null_parent_binding_after_assignment_appears(client) -> None:
+    import asyncio
+
+    from app.db.models import (
+        ChatSession,
+        ClassMember,
+        CourseClass,
+        CourseRelease,
+        CourseReleaseAssignment,
+    )
+    from app.db.session import session_factory
+
+    course_id, student_id = _setup_course(client)
+    teacher_id = client.get("/api/v1/me").json()["data"]["id"]
+    _login(client, "ms@uni.edu")
+    parent = client.post(
+        "/api/v1/chat/sessions",
+        json={"course_id": course_id, "mode": "course_qa"},
+    )
+    assert parent.status_code == 201
+    parent_id = parent.json()["data"]["id"]
+    assert parent.json()["data"].get("course_release_id") is None
+    source_response = client.post(
+        f"/api/v1/chat/sessions/{parent_id}/turns",
+        json={"content": "历史会话来源文本", "client_turn_id": "branch-null-parent-turn"},
+    )
+    assert source_response.status_code == 200
+    source_turn = next(
+        turn
+        for turn in client.get(f"/api/v1/chat/sessions/{parent_id}").json()["data"]["turns"]
+        if turn["role"] == "student"
+    )
+
+    async def assign_current_release() -> None:
+        async with session_factory() as db:
+            course_class = CourseClass(
+                course_id=course_id,
+                code="BRANCH-NULL",
+                name="NULL 兼容班级",
+                created_by=teacher_id,
+            )
+            db.add(course_class)
+            await db.flush()
+            db.add(ClassMember(class_id=course_class.id, user_id=student_id))
+            release = CourseRelease(
+                course_id=course_id,
+                version_no=1,
+                name="Branch current release",
+                status="published",
+                manifest={
+                    "materials": [],
+                    "material_version_ids": [],
+                    "publication_snapshots": [],
+                },
+                created_by=teacher_id,
+                published_by=teacher_id,
+            )
+            db.add(release)
+            await db.flush()
+            db.add(
+                CourseReleaseAssignment(
+                    course_id=course_id,
+                    class_id=course_class.id,
+                    course_release_id=release.id,
+                    status="active",
+                    assigned_by=teacher_id,
+                )
+            )
+            await db.commit()
+
+    asyncio.run(assign_current_release())
+    branch_response = client.post(
+        f"/api/v1/chat/sessions/{parent_id}/branches",
+        json={"source_turn_id": source_turn["id"], "selection": "来源文本"},
+    )
+    assert branch_response.status_code == 201
+    branch_id = branch_response.json()["data"]["id"]
+
+    async def read_bindings() -> tuple[
+        tuple[str | None, str | None], tuple[str | None, str | None]
+    ]:
+        async with session_factory() as db:
+            parent_row = await db.get(ChatSession, parent_id)
+            branch_row = await db.get(ChatSession, branch_id)
+            assert parent_row is not None and branch_row is not None
+            return (
+                (parent_row.course_release_assignment_id, parent_row.course_release_id),
+                (branch_row.course_release_assignment_id, branch_row.course_release_id),
+            )
+
+    assert asyncio.run(read_bindings()) == ((None, None), (None, None))

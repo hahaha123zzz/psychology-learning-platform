@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SERVER = ROOT / "server"
 sys.path.insert(0, str(SERVER))
 
-from app.modules.knowledge.evaluation_dataset import (  # noqa: E402
+from app.modules.knowledge.evaluation_dataset import (
     EvaluationDataError,
     score_run,
 )

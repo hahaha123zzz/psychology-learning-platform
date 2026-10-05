@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     login_fail_window_seconds: int = 900
 
     upload_max_mb: int = 200
+    # 旧版教师教材写入 API 仅供隔离测试/内部工程诊断；产品默认关闭。
+    material_legacy_authoring_api_enabled: bool = False
     course_storage_quota_gb: int = 20
     upload_part_size_mb: int = 8
     upload_session_ttl_hours: int = 24
@@ -42,6 +44,7 @@ class Settings(BaseSettings):
     task_backend: Literal["celery", "in_process"] = "celery"
     celery_broker_url: str = "redis://127.0.0.1:6379/1"
     celery_result_backend: str = "redis://127.0.0.1:6379/1"
+    outbox_stream: str = "psychology:outbox"
     task_heartbeat_seconds: int = 10
     task_stale_seconds: int = 1800
 

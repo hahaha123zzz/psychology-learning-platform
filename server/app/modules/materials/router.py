@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Form, Header, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, Response, UploadFile
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,12 +9,14 @@ from app.core.response import ok
 from app.core.storage import put_object
 from app.core.task_dispatcher import dispatch_parse_job
 from app.db.models import (
+    DomainRelease,
     Job,
     Material,
     MaterialVersion,
     ParsedPage,
     ParseReviewIssue,
     PublicationSnapshot,
+    RetrievalUnit,
     User,
 )
 from app.db.session import get_db_session
@@ -23,6 +25,7 @@ from app.modules.courses import service as course_service
 from app.modules.materials import service as materials_service
 from app.modules.materials import uploads as uploads_service
 from app.modules.materials import workflow as workflow_service
+from app.modules.materials.policy import ensure_legacy_material_authoring_api_enabled
 from app.modules.materials.schemas import (
     KnowledgeObjectCorrection,
     MaterialUploadForm,
@@ -46,6 +49,7 @@ async def create_upload_session(
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
     await require_course_role(course_id, user, db, roles={"teacher"})
+    ensure_legacy_material_authoring_api_enabled()
     await materials_service.get_course_or_404(db, course_id)
     session = await uploads_service.create_session(
         db,
@@ -102,6 +106,7 @@ async def get_upload_part_url(
 ) -> Response:
     session = await uploads_service.get_session_or_404(db, session_id)
     await require_course_role(session.course_id, user, db, roles={"teacher"})
+    ensure_legacy_material_authoring_api_enabled()
     data = await uploads_service.get_part_url(db, session, part_number)
     await db.commit()
     return ok(request, data)
@@ -118,6 +123,7 @@ async def complete_upload_part(
 ) -> Response:
     session = await uploads_service.get_session_or_404(db, session_id)
     await require_course_role(session.course_id, user, db, roles={"teacher"})
+    ensure_legacy_material_authoring_api_enabled()
     await uploads_service.record_part(
         db, session, part_number=part_number, etag=body.etag, size_bytes=body.size_bytes
     )
@@ -137,6 +143,7 @@ async def complete_upload_session(
 ) -> Response:
     session = await uploads_service.get_session_or_404(db, session_id)
     await require_course_role(session.course_id, user, db, roles={"teacher"})
+    ensure_legacy_material_authoring_api_enabled()
     material, version = await uploads_service.complete_session(db, session, user.id)
     await course_service.write_audit(
         db,
@@ -174,6 +181,11 @@ async def cancel_upload_session(
 ) -> Response:
     session = await uploads_service.get_session_or_404(db, session_id)
     await require_course_role(session.course_id, user, db, roles={"teacher"})
+    if (
+        not get_settings().material_legacy_authoring_api_enabled
+        and session.created_by != user.id
+    ):
+        raise ApiError(status_code=404, code="UPLOAD_SESSION_NOT_FOUND", message="上传任务不存在")
     await uploads_service.cancel_session(db, session)
     await db.commit()
     return ok(request, {"upload_session_id": session.id, "status": session.status})
@@ -192,6 +204,7 @@ async def upload_material(
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
     await require_course_role(course_id, user, db, roles={"teacher"})
+    ensure_legacy_material_authoring_api_enabled()
     await materials_service.get_course_or_404(db, course_id)
 
     form = MaterialUploadForm(title=title, material_type=material_type, visibility=visibility)
@@ -348,6 +361,10 @@ async def trigger_parse(
 ) -> Response:
     version, material = await materials_service.get_version_with_material_or_404(db, version_id)
     await require_course_role(material.course_id, user, db, roles={"teacher"})
+    ensure_legacy_material_authoring_api_enabled()
+    version, material = await materials_service.get_version_with_material_or_404(
+        db, version_id, lock=True
+    )
     if idempotency_key:
         existing = await materials_service.find_parse_job_by_idempotency_key(db, idempotency_key)
         if existing is not None:
@@ -421,15 +438,24 @@ async def get_job_status(
     job = (await db.execute(select(Job).where(Job.id == job_id).limit(1))).scalar_one_or_none()
     if job is None:
         raise ApiError(status_code=404, code="JOB_NOT_FOUND", message="任务不存在")
-    if job.created_by != user.id and not user.is_platform_admin:
-        version_id = (job.payload or {}).get("material_version_id")
-        if version_id:
-            version, material = await materials_service.get_version_with_material_or_404(
-                db, version_id
-            )
-            await require_course_role(material.course_id, user, db, roles={"teacher"})
-        else:
+    payload = job.payload or {}
+    if job.kind in {"material_parse", "material_embed"}:
+        version_id = payload.get("material_version_id")
+        if not version_id:
             raise ApiError(status_code=404, code="JOB_NOT_FOUND", message="任务不存在")
+        _version, material = await materials_service.get_version_with_material_or_404(
+            db, version_id
+        )
+        await require_course_role(
+            material.course_id, user, db, roles={"teacher", "assistant"}
+        )
+    elif job.kind == "question_generation":
+        course_id = payload.get("course_id")
+        if not course_id:
+            raise ApiError(status_code=404, code="JOB_NOT_FOUND", message="任务不存在")
+        await require_course_role(course_id, user, db, roles={"teacher"})
+    elif job.created_by != user.id:
+        raise ApiError(status_code=404, code="JOB_NOT_FOUND", message="任务不存在")
     return ok(request, materials_service.job_out(job))
 
 
@@ -441,7 +467,7 @@ async def list_materials(
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
     role = await require_course_role(course_id, user, db, roles={"teacher", "assistant", "student"})
-    is_staff = role in ("teacher", "assistant") or user.is_platform_admin
+    is_staff = role in ("teacher", "assistant")
     query = (
         select(Material, MaterialVersion)
         .outerjoin(MaterialVersion, Material.current_version_id == MaterialVersion.id)
@@ -549,6 +575,7 @@ async def list_material_jobs(
 async def publish_version(
     version_id: str,
     request: Request,
+    domain_release_id: str | None = Query(default=None, min_length=26, max_length=26),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
@@ -556,6 +583,7 @@ async def publish_version(
 
     version, material = await materials_service.get_version_with_material_or_404(db, version_id)
     await require_course_role(material.course_id, user, db, roles={"teacher"})
+    ensure_legacy_material_authoring_api_enabled()
     # 发布事务重新锁定事实，避免并发审核、归档或发布产生半新半旧状态。
     version = (
         await db.execute(
@@ -629,22 +657,54 @@ async def publish_version(
             message="当前模型版本的教材索引尚未就绪，请先构建索引",
             details={"embedding_version": embedding_version},
         )
-    index_job_id = await db.scalar(
-        select(Job.id)
-        .where(
-            Job.kind == "material_embed",
-            Job.status == "succeeded",
-            Job.payload["material_version_id"].as_string() == version_id,
-        )
-        .order_by(Job.finished_at.desc())
-        .limit(1)
+    index_job_query = select(Job).where(
+        Job.kind == "material_embed",
+        Job.status == "succeeded",
+        Job.payload["material_version_id"].as_string() == version_id,
     )
-    if index_job_id is None:
+    if domain_release_id is not None:
+        index_job_query = index_job_query.where(
+            Job.payload["domain_release_id"].as_string() == domain_release_id
+        )
+    index_job = await db.scalar(
+        index_job_query.order_by(Job.finished_at.desc(), Job.id.desc()).limit(1)
+    )
+    if index_job is None:
         raise ApiError(
             status_code=409,
             code="MATERIAL_INDEX_JOB_NOT_READY",
             message="未找到当前教材版本成功完成的索引任务",
         )
+    index_job_payload = index_job.payload if isinstance(index_job.payload, dict) else {}
+    snapshot_domain_release_id = index_job_payload.get("domain_release_id")
+    if snapshot_domain_release_id is not None:
+        domain_release = await db.scalar(
+            select(DomainRelease).where(
+                DomainRelease.id == snapshot_domain_release_id,
+                DomainRelease.course_id == material.course_id,
+                DomainRelease.status == "published",
+            )
+        )
+        if domain_release is None:
+            raise ApiError(
+                status_code=409,
+                code="MATERIAL_DOMAIN_SNAPSHOT_INVALID",
+                message="索引任务绑定的 DomainRelease 已失效或不属于当前课程",
+            )
+        retrieval_unit_count = await db.scalar(
+            select(func.count(RetrievalUnit.id)).where(
+                RetrievalUnit.material_version_id == version.id,
+                RetrievalUnit.domain_release_id == snapshot_domain_release_id,
+                RetrievalUnit.build_version == f"v1-{index_job.id}",
+                RetrievalUnit.status == "ready",
+            )
+        )
+        if not retrieval_unit_count:
+            raise ApiError(
+                status_code=409,
+                code="MATERIAL_DOMAIN_INDEX_SNAPSHOT_MISSING",
+                message="指定 DomainRelease 的检索单元快照未就绪",
+            )
     parse_job_id = await db.scalar(
         select(Job.id)
         .where(
@@ -670,6 +730,7 @@ async def publish_version(
         current_snapshot is not None
         and current_snapshot.material_version_id == version.id
         and current_snapshot.embedding_version == embedding_version
+        and current_snapshot.domain_release_id == snapshot_domain_release_id
     ):
         return ok(
             request,
@@ -679,6 +740,7 @@ async def publish_version(
                 "published_at": current_snapshot.published_at.isoformat(),
                 "index_job_id": current_snapshot.index_job_id,
                 "publication_snapshot_id": current_snapshot.id,
+                "domain_release_id": current_snapshot.domain_release_id,
             },
         )
     material.visibility = "published"
@@ -691,7 +753,8 @@ async def publish_version(
         material_id=material.id,
         material_version_id=version.id,
         parse_job_id=parse_job_id,
-        index_job_id=index_job_id,
+        index_job_id=index_job.id,
+        domain_release_id=snapshot_domain_release_id,
         embedding_version=embedding_version,
         published_by=user.id,
         published_at=published_at,
@@ -705,7 +768,11 @@ async def publish_version(
         resource_type="material_version",
         resource_id=version.id,
         course_id=material.course_id,
-        detail={"published_at": published_at.isoformat()},
+        detail={
+            "published_at": published_at.isoformat(),
+            "domain_release_id": snapshot_domain_release_id,
+            "index_job_id": index_job.id,
+        },
     )
     await db.commit()
     return ok(
@@ -714,8 +781,9 @@ async def publish_version(
             "material_id": material.id,
             "version_id": version.id,
             "published_at": published_at.isoformat(),
-            "index_job_id": index_job_id,
+            "index_job_id": index_job.id,
             "publication_snapshot_id": snapshot.id,
+            "domain_release_id": snapshot_domain_release_id,
         },
     )
 
@@ -776,6 +844,7 @@ async def resolve_parse_review_issue(
         db, issue.material_version_id
     )
     await require_course_role(material.course_id, user, db, roles={"teacher"})
+    ensure_legacy_material_authoring_api_enabled()
     if issue.status != "open":
         raise ApiError(
             status_code=409,
@@ -863,6 +932,7 @@ async def correct_knowledge_object(
         db, knowledge_object.material_version_id
     )
     await require_course_role(material.course_id, user, db, roles={"teacher"})
+    ensure_legacy_material_authoring_api_enabled()
     if knowledge_object.version != body.version:
         raise ApiError(
             status_code=409,
@@ -934,6 +1004,7 @@ async def archive_material(
     if material is None:
         raise ApiError(status_code=404, code="MATERIAL_NOT_FOUND", message="资料不存在或无权访问")
     await require_course_role(material.course_id, user, db, roles={"teacher"})
+    ensure_legacy_material_authoring_api_enabled()
     if material.status == "archived":
         raise ApiError(status_code=409, code="MATERIAL_ALREADY_ARCHIVED", message="资料已归档")
     material.status = "archived"

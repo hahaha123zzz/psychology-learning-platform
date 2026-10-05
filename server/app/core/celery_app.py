@@ -11,7 +11,13 @@ def create_celery() -> Celery:
         backend=settings.celery_result_backend,
     )
     app.conf.update(
-        imports=("app.modules.materials.tasks", "app.modules.knowledge.tasks"),
+        imports=(
+            "app.modules.materials.tasks",
+            "app.modules.knowledge.tasks",
+            "app.modules.learning_events.tasks",
+            "app.modules.memory.tasks",
+            "app.modules.outbox_tasks",
+        ),
         task_serializer="json",
         result_serializer="json",
         accept_content=["json"],

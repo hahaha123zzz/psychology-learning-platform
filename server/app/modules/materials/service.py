@@ -241,99 +241,146 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
                 await session.commit()
 
             objects_by_page: dict[int, list] = {}
-            for parsed_object in result.objects:
-                objects_by_page.setdefault(parsed_object.physical_page, []).append(parsed_object)
+            if result.page_count is not None:
+                for parsed_object in result.objects:
+                    if parsed_object.physical_page is None:
+                        raise RuntimeError("解析器声明了物理页数，却返回了无物理页的对象")
+                    objects_by_page.setdefault(parsed_object.physical_page, []).append(
+                        parsed_object
+                    )
 
             completed_object_count = sum(row.object_count for row in completed_rows)
             completed_asset_count = sum(row.asset_count for row in completed_rows)
-            for page_no in range(1, result.page_count + 1):
-                if page_no in completed_pages:
-                    continue
-                current_page = page_no
-                page_objects = objects_by_page.get(page_no, [])
+            if result.page_count is None:
+                if any(item.physical_page is not None for item in result.objects):
+                    raise RuntimeError("未固定版面的解析结果不得声明推测物理页")
+                if any(item.asset_bytes for item in result.objects):
+                    raise RuntimeError("缺少固定页定位时不能保存页区域派生资产")
                 rows = [
                     KnowledgeObject(
                         material_version_id=version_id,
                         type=parsed.type,
                         title=parsed.title,
                         chapter_path=parsed.chapter_path,
-                        physical_page=parsed.physical_page,
+                        physical_page=None,
                         printed_page=parsed.printed_page,
                         reading_order=parsed.reading_order,
-                        bbox=parsed.bbox,
+                        bbox=None,
                         raw_content=parsed.raw_content,
                         parser=parser.name,
                         parser_version=parser.version,
                         confidence=parsed.confidence,
                         review_status="pending",
                     )
-                    for parsed in page_objects
+                    for parsed in result.objects
                 ]
                 session.add_all(rows)
                 await session.flush()
-                asset_count = 0
-                for parsed, row in zip(page_objects, rows, strict=True):
-                    if not parsed.asset_bytes:
-                        continue
-                    digest = hashlib.sha256(parsed.asset_bytes).hexdigest()
-                    key = layout_asset_key(
-                        version_id=version_id,
-                        parser_version=parser.version,
-                        physical_page=page_no,
-                        object_id=row.id,
-                        sha256=digest,
-                    )
-                    await put_object(
-                        key=key,
-                        data=io.BytesIO(parsed.asset_bytes),
-                        length=len(parsed.asset_bytes),
-                        content_type=parsed.asset_mime_type or "application/octet-stream",
-                    )
-                    session.add(
-                        ObjectAsset(
-                            material_version_id=version_id,
-                            knowledge_object_id=row.id,
-                            asset_type="object_crop",
-                            object_key=key,
-                            mime_type=parsed.asset_mime_type or "application/octet-stream",
-                            sha256=digest,
-                            physical_page=page_no,
-                            bbox=parsed.bbox,
-                            width=parsed.asset_width,
-                            height=parsed.asset_height,
-                            render_version=parser.version,
-                            status="ready",
-                        )
-                    )
-                    asset_count += 1
-                page_hash = _parsed_page_hash(page_objects)
-                session.add(
-                    ParsedPage(
-                        material_version_id=version_id,
-                        parser_version=parser.version,
-                        physical_page=page_no,
-                        status="completed",
-                        object_count=len(rows),
-                        asset_count=asset_count,
-                        content_hash=page_hash,
-                    )
-                )
-                completed_pages.add(page_no)
-                completed_object_count += len(rows)
-                completed_asset_count += asset_count
-                job.progress = max(job.progress, 30 + int(50 * page_no / max(result.page_count, 1)))
-                job.stage = "parse_pages"
+                completed_object_count = len(rows)
+                job.progress = max(job.progress, 80)
+                job.stage = "parse_objects"
                 job.last_heartbeat_at = datetime.now(UTC)
                 job.checkpoint = {
-                    "stage": "parse_pages",
+                    "stage": "parse_objects",
                     "parser_version": parser.version,
-                    "completed_pages": len(completed_pages),
-                    "total_pages": result.page_count,
-                    "last_page": page_no,
+                    "completed_pages": 0,
+                    "total_pages": None,
                     "object_count": completed_object_count,
                     "asset_count": completed_asset_count,
                 }
                 await session.commit()
+            else:
+                for page_no in range(1, result.page_count + 1):
+                    if page_no in completed_pages:
+                        continue
+                    current_page = page_no
+                    page_objects = objects_by_page.get(page_no, [])
+                    rows = [
+                        KnowledgeObject(
+                            material_version_id=version_id,
+                            type=parsed.type,
+                            title=parsed.title,
+                            chapter_path=parsed.chapter_path,
+                            physical_page=parsed.physical_page,
+                            printed_page=parsed.printed_page,
+                            reading_order=parsed.reading_order,
+                            bbox=parsed.bbox,
+                            raw_content=parsed.raw_content,
+                            parser=parser.name,
+                            parser_version=parser.version,
+                            confidence=parsed.confidence,
+                            review_status="pending",
+                        )
+                        for parsed in page_objects
+                    ]
+                    session.add_all(rows)
+                    await session.flush()
+                    asset_count = 0
+                    for parsed, row in zip(page_objects, rows, strict=True):
+                        if not parsed.asset_bytes:
+                            continue
+                        digest = hashlib.sha256(parsed.asset_bytes).hexdigest()
+                        key = layout_asset_key(
+                            version_id=version_id,
+                            parser_version=parser.version,
+                            physical_page=page_no,
+                            object_id=row.id,
+                            sha256=digest,
+                        )
+                        await put_object(
+                            key=key,
+                            data=io.BytesIO(parsed.asset_bytes),
+                            length=len(parsed.asset_bytes),
+                            content_type=parsed.asset_mime_type or "application/octet-stream",
+                        )
+                        session.add(
+                            ObjectAsset(
+                                material_version_id=version_id,
+                                knowledge_object_id=row.id,
+                                asset_type="object_crop",
+                                object_key=key,
+                                mime_type=parsed.asset_mime_type or "application/octet-stream",
+                                sha256=digest,
+                                physical_page=page_no,
+                                bbox=parsed.bbox,
+                                width=parsed.asset_width,
+                                height=parsed.asset_height,
+                                render_version=parser.version,
+                                status="ready",
+                            )
+                        )
+                        asset_count += 1
+                    page_hash = _parsed_page_hash(page_objects)
+                    session.add(
+                        ParsedPage(
+                            material_version_id=version_id,
+                            parser_version=parser.version,
+                            physical_page=page_no,
+                            status="completed",
+                            object_count=len(rows),
+                            asset_count=asset_count,
+                            content_hash=page_hash,
+                        )
+                    )
+                    completed_pages.add(page_no)
+                    completed_object_count += len(rows)
+                    completed_asset_count += asset_count
+                    job.progress = max(
+                        job.progress,
+                        30 + int(50 * page_no / max(result.page_count, 1)),
+                    )
+                    job.stage = "parse_pages"
+                    job.last_heartbeat_at = datetime.now(UTC)
+                    job.checkpoint = {
+                        "stage": "parse_pages",
+                        "parser_version": parser.version,
+                        "completed_pages": len(completed_pages),
+                        "total_pages": result.page_count,
+                        "last_page": page_no,
+                        "object_count": completed_object_count,
+                        "asset_count": completed_asset_count,
+                    }
+                    await session.commit()
 
             job.progress = max(job.progress, 85)
             job.stage = "quality"
@@ -348,8 +395,11 @@ async def run_parse_job(job_id: str, version_id: str) -> None:
             }
             await session.commit()
 
-            empty_pages = result.page_count - len(
-                {page for page, entries in objects_by_page.items() if entries}
+            empty_pages = (
+                result.page_count
+                - len({page for page, entries in objects_by_page.items() if entries})
+                if result.page_count is not None
+                else None
             )
             low_confidence = sum(1 for o in result.objects if o.confidence < 0.5)
             quality_report = {
@@ -566,14 +616,17 @@ def job_out(job: Job) -> dict:
 
 
 async def get_version_with_material_or_404(
-    db: AsyncSession, version_id: str
+    db: AsyncSession, version_id: str, *, lock: bool = False
 ) -> tuple[MaterialVersion, Material]:
-    result = await db.execute(
+    query = (
         select(MaterialVersion, Material)
         .join(Material, Material.id == MaterialVersion.material_id)
         .where(MaterialVersion.id == version_id)
         .limit(1)
     )
+    if lock:
+        query = query.with_for_update(of=MaterialVersion)
+    result = await db.execute(query)
     row = result.first()
     if row is None:
         raise ApiError(

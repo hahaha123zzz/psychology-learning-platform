@@ -12,7 +12,7 @@ from app.core.security import (
     generate_refresh_token,
     hash_refresh_token,
 )
-from app.db.models import AuthSession, User
+from app.db.models import AuthSession, CourseMember, RoleAssignment, User
 
 ACCESS_COOKIE = "pl_access"
 REFRESH_COOKIE = "pl_refresh"
@@ -174,3 +174,53 @@ def platform_roles(user: User) -> list[str]:
     if user.is_platform_admin:
         roles.append("admin")
     return roles
+
+
+async def effective_platform_roles(db: AsyncSession, user: User) -> list[str]:
+    """返回用户当前有效的平台角色；课程级授权不提升为平台工作区角色。"""
+    roles = platform_roles(user)
+    result = await db.execute(
+        select(RoleAssignment.role).where(
+            RoleAssignment.user_id == user.id,
+            RoleAssignment.scope_type == "platform",
+            RoleAssignment.scope_id.is_(None),
+            RoleAssignment.status == "active",
+            RoleAssignment.role.in_({"assistant", "course_designer", "course_publisher"}),
+        )
+    )
+    for role in result.scalars():
+        if role not in roles:
+            roles.append(role)
+    return roles
+
+
+async def effective_capabilities(db: AsyncSession, user: User) -> dict[str, bool]:
+    """把角色映射为不越过课程 Scope 的导航与动作能力。"""
+    memberships = list(
+        (
+            await db.execute(
+                select(CourseMember.role).where(
+                    CourseMember.user_id == user.id,
+                    CourseMember.status == "active",
+                )
+            )
+        ).scalars()
+    )
+    scoped_roles = list(
+        (
+            await db.execute(
+                select(RoleAssignment.role).where(
+                    RoleAssignment.user_id == user.id,
+                    RoleAssignment.status == "active",
+                )
+            )
+        ).scalars()
+    )
+    available = set(memberships) | set(scoped_roles) | set(await effective_platform_roles(db, user))
+    return {
+        "student_learning": "student" in available,
+        "teacher_teaching": bool({"teacher", "assistant"} & available),
+        "course_design": "course_designer" in available,
+        "course_publish": "course_publisher" in available or "teacher" in available,
+        "admin_audit": user.is_platform_admin,
+    }

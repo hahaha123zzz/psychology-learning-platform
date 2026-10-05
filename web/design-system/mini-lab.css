@@ -1,0 +1,105 @@
+.mini-lab-runtime {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-default);
+}
+
+.mini-lab-display:empty {
+  display: none;
+}
+
+.mini-lab-display,
+.mini-lab-trial,
+.mini-lab-screen {
+  min-width: 0;
+}
+
+.mini-lab-trial {
+  display: grid;
+  gap: 18px;
+}
+
+.mini-lab-screen {
+  display: grid;
+  gap: 8px;
+}
+
+.mini-lab-screen h2,
+.mini-lab-screen p {
+  margin: 0;
+}
+
+.mini-lab-kicker {
+  color: var(--text-secondary);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mini-lab-status {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.mini-lab-status.error {
+  color: var(--attention-action);
+}
+
+.mini-lab-invalidation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  margin-block: 12px;
+}
+
+.mini-lab-invalidation textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .mini-lab-invalidation {
+    grid-template-columns: 1fr;
+  }
+}
+
+.jspsych-btn {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.mini-lab-invalidation button:focus-visible,
+.mini-lab-invalidation textarea:focus-visible,
+.jspsych-btn:focus-visible,
+.teaching-asset-text-fallback summary:focus-visible {
+  outline: 2px solid var(--border-focus, #1675ad);
+  outline-offset: 3px;
+}
+
+#jspsych-html-button-response-btngroup {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.jspsych-btn-group-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+}
+
+.mini-lab-trial .jspsych-btn {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.jspsych-btn:hover {
+  border-color: var(--state-stable);
+}

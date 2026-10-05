@@ -7,12 +7,11 @@ from pathlib import Path
 SERVER = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVER))
 
-from sqlalchemy import select  # noqa: E402
-
-from app.core.config import get_settings  # noqa: E402
-from app.core.security import hash_password  # noqa: E402
-from app.db.models import Course, CourseMember, User  # noqa: E402
-from app.db.session import engine, session_factory  # noqa: E402
+from app.core.config import get_settings
+from app.core.security import hash_password
+from app.db.models import Course, CourseMember, User
+from app.db.session import engine, session_factory
+from sqlalchemy import select
 
 DEMO_TEACHER_EMAIL = "teacher@demo.edu"
 DEMO_STUDENT_EMAIL = "student@demo.edu"

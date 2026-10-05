@@ -3,6 +3,7 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import select
 
 from app.core.config import get_settings
@@ -83,11 +84,50 @@ def test_stale_running_jobs_are_requeued_and_fresh_are_kept(client) -> None:
     assert jobs[stale_parse].progress == 0
     assert jobs[stale_parse].stage == "queued"
     assert jobs[stale_parse].last_heartbeat_at is None
+    assert jobs[stale_parse].version == 2
     assert jobs[no_heartbeat].status == "queued"
+    assert jobs[no_heartbeat].version == 2
     assert jobs[fresh_embed].status == "running"
     assert jobs[fresh_embed].progress == 40
     # 测试环境固定 in_process：重派发立即在本进程执行，验证派发路径可用。
     assert get_settings().task_backend == "in_process"
+
+
+def test_stale_job_dispatch_failure_is_persisted_as_retryable(client, monkeypatch) -> None:
+    from app.core import job_recovery
+
+    job_id = _insert_job("running", heartbeat_age_seconds=3600, kind="material_parse")
+    broker_secret = "redis://private-user:private-password@broker.internal:6379/1"
+
+    def fail_dispatch(_job_id: str, _version_id: str) -> None:
+        raise RuntimeError(f"cannot connect to {broker_secret}")
+
+    monkeypatch.setattr(job_recovery, "dispatch_parse_job", fail_dispatch)
+
+    async def recover() -> list[str]:
+        async with session_factory() as db:
+            return await job_recovery.requeue_stale_jobs(db)
+
+    with pytest.raises(RuntimeError) as dispatch_error:
+        asyncio.run(recover())
+
+    async def read_job() -> Job:
+        async with session_factory() as db:
+            return await db.get(Job, job_id)
+
+    job = asyncio.run(read_job())
+    assert job.status == "failed"
+    assert job.stage == "dispatch_failed"
+    assert job.retryable is True
+    assert job.error == "任务派发失败，请稍后重试"
+    assert job.finished_at is not None
+    assert job.version == 3
+    assert job.checkpoint == {
+        "stage": "dispatch_failed",
+        "recovery_from_version": 1,
+    }
+    assert broker_secret not in str(dispatch_error.value)
+    assert "重派发失败" in str(dispatch_error.value)
 
 
 def test_find_stale_jobs_ignores_other_kinds(client) -> None:

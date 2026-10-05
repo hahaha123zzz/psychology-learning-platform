@@ -11,8 +11,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "server"))
 
-from app.core.job_recovery import find_stale_jobs, requeue_stale_jobs  # noqa: E402
-from app.db.session import session_factory  # noqa: E402
+from app.core.job_recovery import find_stale_jobs, requeue_stale_jobs
+from app.db.session import session_factory
 
 
 async def main() -> int:
