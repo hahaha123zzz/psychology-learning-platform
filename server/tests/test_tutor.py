@@ -917,6 +917,82 @@ def test_learning_session_state_machine_flow(client) -> None:
     assert current.json()["data"]["state_version"] == learning["state_version"] + 1
 
 
+def test_learning_microcycle_repairs_misconceptions_and_uses_grounded_example_fallback(
+    client,
+) -> None:
+    course_id, _, version_id = _prepare(client, publish=True)
+    _login(client, "ms@uni.edu")
+    outline = client.get(f"/api/v1/material-versions/{version_id}/outline")
+    chapter_id = outline.json()["data"][0]["id"]
+    learning = client.post(
+        "/api/v1/learning-sessions",
+        json={
+            "course_id": course_id,
+            "material_version_id": version_id,
+            "chapter_object_id": chapter_id,
+        },
+    ).json()["data"]
+
+    def respond(content: str) -> dict:
+        nonlocal learning
+        response = client.post(
+            f"/api/v1/learning-sessions/{learning['id']}/responses",
+            json={"state_version": learning["state_version"], "content": content},
+        )
+        assert response.status_code == 200, response.text
+        learning = response.json()["data"]
+        return learning
+
+    assert respond("继续")["state"] == "teach"
+    repair = respond("我不知道")
+    assert repair["hint_level"] == 1
+    assert "回到教材" in repair["message"]
+    assert respond("Independent variable control improves internal validity in experiments.")[
+        "state"
+    ] == "check"
+    repair = respond("我不知道")
+    assert repair["state"] == "hint"
+    assert "不急着判断对错" in repair["message"]
+    example = respond("我不知道")
+    assert example["state"] == "practice"
+    assert example["action"] == "show_example"
+    assert "当前教材段落没有明确标记的例子" in example["message"]
+    assert "研究者控制参与者" not in example["message"]
+
+
+def test_active_formal_assessment_fails_closed_for_learning_response(client) -> None:
+    from tests.test_assessment_reliability import (
+        OBJECTIVE_QUESTION,
+        _create_assessment,
+        _create_published_question,
+    )
+
+    course_id, _, version_id = _prepare(client, publish=True)
+    _login(client, "ms@uni.edu")
+    learning = client.post(
+        "/api/v1/learning-sessions",
+        json={"course_id": course_id, "material_version_id": version_id},
+    ).json()["data"]
+
+    _login(client, "mt@uni.edu")
+    question = _create_published_question(client, course_id, OBJECTIVE_QUESTION)
+    assessment_id = _create_assessment(client, course_id, [question["id"]])
+    _login(client, "ms@uni.edu")
+    attempt = client.post(f"/api/v1/assessments/{assessment_id}/attempts")
+    assert attempt.status_code == 201, attempt.text
+
+    blocked = client.post(
+        f"/api/v1/learning-sessions/{learning['id']}/responses",
+        json={"state_version": learning["state_version"], "content": "从零开始"},
+    )
+
+    assert blocked.status_code == 403
+    assert blocked.json()["error"]["code"] == "EXAM_AI_SUPPORT_RESTRICTED"
+    current = client.get(f"/api/v1/learning-sessions/{learning['id']}")
+    assert current.json()["data"]["state_version"] == learning["state_version"]
+    assert current.json()["data"]["state"] == learning["state"]
+
+
 def test_learning_session_pins_unique_course_release_assignment(client) -> None:
     import asyncio
 

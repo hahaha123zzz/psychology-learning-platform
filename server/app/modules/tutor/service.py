@@ -891,8 +891,12 @@ def apply_presentation_preferences(
         marker in query for marker in ("例子", "举例", "例如", "比如", "案例")
     )
     if example_order == "EXAMPLE_FIRST" or adaptive_example_first:
-        markers = ("例如", "比如", "举例", "案例")
-        sentences.sort(key=lambda sentence: not any(marker in sentence for marker in markers))
+        markers = ("例如", "比如", "举例", "案例", "for example", "for instance", "e.g.")
+        sentences.sort(
+            key=lambda sentence: not any(
+                marker in sentence.lower() for marker in markers
+            )
+        )
     if response_length == "CONCISE":
         sentences = sentences[:1]
     elif response_length == "BALANCED":
@@ -1261,17 +1265,50 @@ def check_question(keywords: list[str]) -> str:
     return f"检查一下理解：请用自己的话解释“{focus}”之间的关系或区别。"
 
 
-HINT_LADDER = [
-    "先想想这一节主要讨论的是哪两个概念的对比。",
-    "提示：关注“控制”与“有效性”之间的因果关系。",
-    "示例：研究者控制参与者的分组方式，观察结果差异，由此推断因果。",
-]
+def hint_message(level: int, keywords: list[str]) -> str:
+    """给递进但不引入教材外心理学事实的提示。"""
+    focus = "、".join(keywords[:2]) if keywords else "本节核心概念"
+    if level <= 1:
+        prompt = f"先回到教材，找出与“{focus}”有关的定义或关键句。"
+    elif level == 2:
+        prompt = f"把“{focus}”分别用一句话解释，再比较它们的联系或区别。"
+    else:
+        prompt = f"请对照教材中关于“{focus}”的段落，先复述依据，再回答检查题。"
+    return f"提示{min(max(level, 1), MAX_HINT_LEVEL)}：{prompt}"
 
 
-def hint_message(level: int) -> str:
-    if level <= len(HINT_LADDER):
-        return f"提示{level}：{HINT_LADDER[level - 1]}"
-    return "提示已用完，下面给出完整讲解，请认真学习后进入练习。"
+def example_message(texts: list[str], keywords: list[str]) -> str:
+    """仅复用教材里明确标记的例子；没有例子时不编造。"""
+    example_markers = ("例如", "比如", "举例", "案例", "for example", "for instance", "e.g.")
+    candidates = [
+        sentence.strip()
+        for text in texts
+        for sentence in SENTENCE_RE.findall(text)
+        if any(marker in sentence.lower() for marker in example_markers)
+    ]
+    if candidates:
+        focus = set(keywords[:3])
+        candidates.sort(
+            key=lambda sentence: sum(
+                keyword in sentence.lower() for keyword in focus
+            ),
+            reverse=True,
+        )
+        return f"教材中的例子：{candidates[0]}"
+    if not texts:
+        return "当前章节没有可用教材文本，暂不提供例子；请返回教材阅读页确认资料是否可用。"
+    return "当前教材段落没有明确标记的例子。请先依据上面的教材要点，尝试构造自己的例子。"
+
+
+def misconception_repair_message(texts: list[str], keywords: list[str]) -> str:
+    """把错误回答引回教材证据和概念比较，不猜测学生的具体误解。"""
+    focus = "、".join(keywords[:2]) if keywords else "本节核心概念"
+    if not texts:
+        return f"当前没有可用教材段落来核对“{focus}”，请先确认本节资料可用后再继续。"
+    return (
+        f"我们先回到教材核对“{focus}”，不急着判断对错。请分别复述相关概念，"
+        "指出你刚才的回答和教材依据哪里相同或不同，再用自己的话重答。"
+    )
 
 
 def full_explanation(texts: list[str]) -> str:
@@ -1348,9 +1385,9 @@ async def respond_learning_session(
         else:
             state = "teach"
             session_row.hint_level = min(session_row.hint_level + 1, MAX_HINT_LEVEL)
-            session_row.tutor_message = (
-                hint_message(session_row.hint_level) + "\n" + teach_message(texts)
-            )
+            session_row.tutor_message = hint_message(
+                session_row.hint_level, keywords
+            ) + "\n" + misconception_repair_message(texts, keywords)
     elif state == "check":
         if correct:
             state = "practice"
@@ -1360,14 +1397,19 @@ async def respond_learning_session(
             if session_row.hint_level >= MAX_HINT_LEVEL:
                 state = "practice"
                 action = "show_example"
-                full_note = full_explanation(texts)
-                session_row.tutor_message = full_note + "\n" + practice_question(keywords)
+                session_row.tutor_message = (
+                    example_message(texts, keywords)
+                    + "\n"
+                    + full_explanation(texts)
+                    + "\n"
+                    + practice_question(keywords)
+                )
                 session_row.hint_level = MAX_HINT_LEVEL
             else:
                 state = "hint"
                 session_row.tutor_message = hint_message(
-                    session_row.hint_level
-                ) + "\n" + check_question(keywords)
+                    session_row.hint_level, keywords
+                ) + "\n" + misconception_repair_message(texts, keywords)
     elif state == "hint":
         if correct:
             state = "practice"
@@ -1377,13 +1419,17 @@ async def respond_learning_session(
             if session_row.hint_level >= MAX_HINT_LEVEL:
                 state = "practice"
                 action = "show_example"
-                session_row.tutor_message = full_explanation(texts) + "\n" + practice_question(
-                    keywords
+                session_row.tutor_message = (
+                    example_message(texts, keywords)
+                    + "\n"
+                    + full_explanation(texts)
+                    + "\n"
+                    + practice_question(keywords)
                 )
             else:
                 session_row.tutor_message = hint_message(
-                    session_row.hint_level
-                ) + "\n" + check_question(keywords)
+                    session_row.hint_level, keywords
+                ) + "\n" + misconception_repair_message(texts, keywords)
     elif state == "practice":
         state = "summary"
         verdict = "回答正确" if correct else "回答有偏差，已记录为待巩固"

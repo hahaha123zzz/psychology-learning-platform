@@ -2,6 +2,9 @@ from app.modules.tutor.planner import decide_progress
 from app.modules.tutor.service import (
     apply_presentation_preferences,
     build_learning_blocks,
+    example_message,
+    hint_message,
+    misconception_repair_message,
 )
 
 
@@ -83,3 +86,16 @@ def test_adaptive_example_order_responds_to_example_question() -> None:
 
     assert example_question.startswith("根据教材：例如，教材中的例子。")
     assert concept_question.startswith("根据教材：概念定义。")
+
+
+def test_tutor_microcycle_uses_chapter_terms_and_does_not_invent_examples() -> None:
+    texts = [
+        "Classical conditioning pairs stimuli. For example, a bell may be paired with food."
+    ]
+
+    assert "Classical conditioning" in hint_message(1, ["Classical conditioning"])
+    assert "教材中的例子" in example_message(texts, ["conditioning"])
+    assert "For example" in example_message(texts, ["conditioning"])
+    assert "不急着判断对错" in misconception_repair_message(texts, ["conditioning"])
+    assert "暂不提供例子" in example_message([], [])
+    assert "明确标记的例子" in example_message(["Concept definition."], [])
