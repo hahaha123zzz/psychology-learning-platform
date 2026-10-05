@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@iconify/react";
 import { ApiError, api } from "../lib/api";
 
@@ -35,17 +35,28 @@ function errorText(reason: unknown) {
 export default function StudentHomeDashboard() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [projection, setProjection] = useState<HomeProjection | null>(null);
-  const [notice, setNotice] = useState("正在整理你的学习安排…");
+  const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    Promise.all([api<Course[]>("/courses"), api<HomeProjection>("/student/home")])
-      .then(([courseItems, home]) => {
-        setCourses(courseItems);
-        setProjection(home);
-        setNotice("");
-      })
-      .catch((reason) => setNotice(errorText(reason)));
+  const loadHome = useCallback(async () => {
+    setLoading(true);
+    setNotice("");
+    try {
+      const [courseItems, home] = await Promise.all([
+        api<Course[]>("/courses"),
+        api<HomeProjection>("/student/home"),
+      ]);
+      setCourses(courseItems);
+      setProjection(home);
+    } catch (reason) {
+      setProjection(null);
+      setNotice(errorText(reason));
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { void loadHome(); }, [loadHome]);
 
   function resume(taskId: string) {
     window.sessionStorage.setItem("student-learning-task", taskId);
@@ -54,6 +65,8 @@ export default function StudentHomeDashboard() {
   const current = projection?.current_task ?? null;
   const currentCourse = courses.find((course) => course.id === current?.course_id);
   const otherTasks = projection?.task_queue.filter((task) => task.task_id !== current?.id) ?? [];
+  const practiceCourseId = current?.course_id ?? projection?.due_reviews[0]?.course_id ?? courses[0]?.id;
+  const learningTaskId = current?.task_id ?? current?.id;
 
   return (
     <main className="course-list-page">
@@ -64,9 +77,9 @@ export default function StudentHomeDashboard() {
       <section className="course-list-content student-home-content">
         <div className="page-heading">
           <div><h1>继续你的学习</h1><p>当前任务和到期复习来自已授权课程的服务端状态。</p></div>
-          <Link className="primary-button" href="/student/learning"><Icon icon="solar:play-circle-linear" />开始引导学习</Link>
         </div>
-        {notice && <p className="status-banner" role="status">{notice}</p>}
+        {loading && <p className="status-banner" role="status" aria-live="polite">正在读取你的学习安排…</p>}
+        {!loading && notice && <div className="student-home-error" role="alert"><p className="status-banner">{notice}</p><button className="secondary-button" type="button" onClick={() => void loadHome()}>重试</button></div>}
         {projection && <>
           <section className="student-home-focus">
             <div className="student-home-focus-copy">
@@ -74,11 +87,18 @@ export default function StudentHomeDashboard() {
               <h2>{projection.progress_decision.reason}</h2>
               {current ? <p>{currentCourse?.title ?? "当前课程"} · {stateLabels[current.state] ?? "学习任务"} · {current.status === "paused" ? "已暂停" : "进行中"}</p> : <p>目前没有进行中的学习任务，可以从已发布教材开始一个新任务。</p>}
             </div>
-            {current && <Link className="primary-button" href="/student/learning" onClick={() => resume(current.id)}>
+            {current && learningTaskId ? <Link className="primary-button" href="/student/learning" onClick={() => resume(learningTaskId)}>
               <Icon icon={current.status === "paused" ? "solar:play-circle-linear" : "solar:arrow-right-circle-linear"} />
-              {current.status === "paused" ? "恢复任务" : "继续任务"}
-            </Link>}
+              {current.status === "paused" ? "恢复当前任务" : "继续当前任务"}
+            </Link> : courses.length > 0 ? <Link className="primary-button" href="/student/learning"><Icon icon="solar:play-circle-linear" />开始引导学习</Link> : <span className="student-home-no-course">等待课程授权</span>}
           </section>
+
+          <nav className="student-home-shortcuts" aria-label="复习和练习入口">
+            {practiceCourseId ? <>
+              <Link className="secondary-button" href={`/student/courses/${practiceCourseId}/practice`}>查看待复习</Link>
+              <Link className="secondary-button" href={`/student/courses/${practiceCourseId}/practice`}>进入练习</Link>
+            </> : <span className="empty-state">获得课程授权后，可使用复习和练习。</span>}
+          </nav>
 
           <div className="student-home-grid">
             <section className="support-panel">

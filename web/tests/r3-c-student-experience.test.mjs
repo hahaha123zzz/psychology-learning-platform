@@ -56,3 +56,16 @@ test("case workbench has a dedicated student route separate from Branch", () => 
   assert.match(route, /StudentCaseWorkbench/);
   assert.match(home, /\/student\/cases\?course_id=/);
 });
+
+test("student home has one service-backed learning action plus retry and practice shortcuts", () => {
+  const home = read("../components/StudentHomeDashboard.tsx");
+  assert.match(home, /api<Course\[]>\("\/courses"\)/);
+  assert.match(home, /api<HomeProjection>\("\/student\/home"\)/);
+  assert.match(home, /current\?\.task_id \?\? current\?\.id/);
+  assert.match(home, /恢复当前任务/);
+  assert.match(home, /开始引导学习/);
+  assert.match(home, /onClick=\{\(\) => void loadHome\(\)\}>重试/);
+  assert.match(home, /aria-label="复习和练习入口"/);
+  assert.match(home, /student-home-no-course/);
+  assert.doesNotMatch(home, /fixture|mock/i);
+});
