@@ -495,6 +495,12 @@ def test_branch_inherits_release_binding_and_keeps_it_after_assignment_rotation(
 
     asyncio.run(revoke_membership())
     assert client.get(f"/api/v1/chat/sessions/{branch_id}").status_code == 404
+    revoked_turn = client.post(
+        f"/api/v1/chat/sessions/{branch_id}/turns",
+        json={"content": "撤权后尝试继续分支", "client_turn_id": "branch-pin-revoked-turn"},
+    )
+    assert revoked_turn.status_code == 404
+    assert revoked_turn.json()["error"]["code"] == "CHAT_SESSION_NOT_FOUND"
     revoked_merge = client.post(
         f"/api/v1/chat/sessions/{parent_id}/branches/{branch_id}/merge",
         json={"note": "重放", "confirmed": True, "merge_key": "branch-pin-merge"},
