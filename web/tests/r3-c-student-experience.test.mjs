@@ -72,7 +72,7 @@ test("student home has one service-backed learning action plus retry and practic
   assert.match(home, /current\?\.task_id \?\? current\?\.id/);
   assert.match(home, /恢复当前任务/);
   assert.match(home, /开始引导学习/);
-  assert.match(home, /onClick=\{\(\) => void loadHome\(\)\}>重试/);
+  assert.match(home, /onClick=\{\(\) => \{ setLoading\(true\); setNotice\(""\); void loadHome\(\); \}\}>重试/);
   assert.match(home, /aria-label="复习和练习入口"/);
   assert.match(home, /student-home-no-course/);
   assert.doesNotMatch(home, /fixture|mock/i);

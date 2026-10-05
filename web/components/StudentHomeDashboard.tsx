@@ -38,14 +38,16 @@ export default function StudentHomeDashboard() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
 
+  const fetchHome = useCallback(() => Promise.all([
+    api<Course[]>("/courses"),
+    api<HomeProjection>("/student/home"),
+  ]), []);
+
   const loadHome = useCallback(async () => {
     setLoading(true);
     setNotice("");
     try {
-      const [courseItems, home] = await Promise.all([
-        api<Course[]>("/courses"),
-        api<HomeProjection>("/student/home"),
-      ]);
+      const [courseItems, home] = await fetchHome();
       setCourses(courseItems);
       setProjection(home);
     } catch (reason) {
@@ -54,9 +56,24 @@ export default function StudentHomeDashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchHome]);
 
-  useEffect(() => { void loadHome(); }, [loadHome]);
+  useEffect(() => {
+    let active = true;
+    fetchHome()
+      .then(([courseItems, home]) => {
+        if (!active) return;
+        setCourses(courseItems);
+        setProjection(home);
+      })
+      .catch((reason) => {
+        if (!active) return;
+        setProjection(null);
+        setNotice(errorText(reason));
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [fetchHome]);
 
   function resume(taskId: string) {
     window.sessionStorage.setItem("student-learning-task", taskId);
@@ -79,7 +96,7 @@ export default function StudentHomeDashboard() {
           <div><h1>继续你的学习</h1><p>当前任务和到期复习来自已授权课程的服务端状态。</p></div>
         </div>
         {loading && <p className="status-banner" role="status" aria-live="polite">正在读取你的学习安排…</p>}
-        {!loading && notice && <div className="student-home-error" role="alert"><p className="status-banner">{notice}</p><button className="secondary-button" type="button" onClick={() => void loadHome()}>重试</button></div>}
+        {!loading && notice && <div className="student-home-error" role="alert"><p className="status-banner">{notice}</p><button className="secondary-button" type="button" onClick={() => { setLoading(true); setNotice(""); void loadHome(); }}>重试</button></div>}
         {projection && <>
           <section className="student-home-focus">
             <div className="student-home-focus-copy">
