@@ -31,6 +31,10 @@ test("preference edits stay controlled and retryable when a save response is los
   const source = read("../components/StudentPreferencesPanel.tsx");
   assert.match(source, /value=\{p\.hint_density\}/);
   assert.match(source, /checked=\{p\.reduced_motion\}/);
+  assert.match(source, /value=\{p\.response_length\}/);
+  assert.match(source, /value=\{p\.example_order\}/);
+  assert.match(source, /reason\.code === "RESOURCE_VERSION_CONFLICT"/);
+  assert.match(source, /已刷新版本并保留本次修改/);
   assert.match(source, /当前选择仍保留，可重试保存/);
   assert.match(source, /role="status" aria-live="polite"/);
 });
