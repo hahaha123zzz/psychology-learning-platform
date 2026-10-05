@@ -1,6 +1,13 @@
 # V1 本地实施验收报告
 
-更新时间：2026-10-05
+更新时间：2026-10-06
+
+## 2026-10-06 学生核心页面 P0-04 局部复核
+
+- **结果：** 学生 Home、Tutor Learn、课程首页、Reader、Practice、Growth、Preference 共 7 个路由，在 Chromium production build 下按 360/393/768 CSS px 检查，21 个组合均无横向溢出或页面异常；所有页面 Tab 首焦点可见，系统 `prefers-reduced-motion: reduce` 生效。`/student/learning` 顶栏与 Practice Mini Lab 选择框的窄屏溢出已修复。
+- **自动化：** Web Node 58/58、TypeScript 通过、ESLint 0 errors/2 existing warnings、production build 24/24 routes。逐项记录见 [`学生核心页面本地可访问性复核`](student-core-local-accessibility-review-2026-10-06.md)。
+- **追踪状态：** Acceptance matrix 的 UI-04/UI-05 仅有学生核心 7 路由的布局、首焦点和 reduced-motion 子集证据；键盘全页正反向遍历、Drawer 焦点恢复、44px 触控、读屏器、缩放、颜色对比、其余 11 组代表页和目标稿视觉签收仍未验收。记为 **P0-04 partial**，不可外推为 WCAG 或 V1 完成。
+- **范围：** 使用本地合成学生数据；未读取或发送教材正文、图像、表格。此工程可用性抽查不代表真实课程、真实班级或生产验收。
 
 本报告只覆盖当前工作树已经编码并能在本机复现的结果。真实教材效果、外部模型质量和生产运行能力不在本报告中虚构。
 
