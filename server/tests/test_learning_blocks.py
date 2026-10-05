@@ -1,8 +1,14 @@
+import asyncio
+from types import SimpleNamespace
+
+from app.modules.tutor import service as tutor_service
 from app.modules.tutor.planner import decide_progress
 from app.modules.tutor.service import (
+    EvidencePackage,
     apply_presentation_preferences,
     build_learning_blocks,
     example_message,
+    generate_grounded_answer,
     hint_message,
     misconception_repair_message,
 )
@@ -86,6 +92,58 @@ def test_adaptive_example_order_responds_to_example_question() -> None:
 
     assert example_question.startswith("根据教材：例如，教材中的例子。")
     assert concept_question.startswith("根据教材：概念定义。")
+
+
+def test_internal_grounded_answer_applies_preferences_before_joining_sentences(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        tutor_service, "get_settings", lambda: SimpleNamespace(llm_provider="internal")
+    )
+    package = EvidencePackage(
+        package_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        course_id="01ARZ3NDEKTSV4RRFFQ69G5FAA",
+        query="independent variable manipulated researcher for example",
+        retrieval_version="test-v1",
+        items=[
+            {
+                "text": (
+                    "An independent variable is manipulated by the researcher. "
+                    "For example, the researcher changes study time."
+                )
+            }
+        ],
+    )
+
+    concise, provider = asyncio.run(
+        generate_grounded_answer(
+            None,
+            query=package.query,
+            package=package,
+            user_id="01ARZ3NDEKTSV4RRFFQ69G5FABB",
+            purpose="course_qa",
+            response_length="CONCISE",
+            example_order="EXAMPLE_FIRST",
+        )
+    )
+    detailed, _ = asyncio.run(
+        generate_grounded_answer(
+            None,
+            query=package.query,
+            package=package,
+            user_id="01ARZ3NDEKTSV4RRFFQ69G5FABB",
+            purpose="course_qa",
+            response_length="DETAILED",
+            example_order="CONCEPT_FIRST",
+        )
+    )
+
+    assert provider == "internal"
+    assert concise.startswith("根据教材：For example,")
+    assert "independent variable" not in concise
+    assert detailed.startswith("根据教材：An independent variable")
+    assert "For example" in detailed
+    assert "independent variable" in detailed
 
 
 def test_tutor_microcycle_uses_chapter_terms_and_does_not_invent_examples() -> None:

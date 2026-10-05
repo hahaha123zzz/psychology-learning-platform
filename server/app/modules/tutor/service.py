@@ -880,8 +880,20 @@ def generate_answer(
         marker in query for marker in ("例子", "举例", "例如", "比如", "案例")
     )
     if example_order == "EXAMPLE_FIRST" or adaptive_example_first:
-        example_markers = ("例如", "比如", "举例", "案例")
-        picked.sort(key=lambda sentence: not any(marker in sentence for marker in example_markers))
+        example_markers = (
+            "例如",
+            "比如",
+            "举例",
+            "案例",
+            "for example",
+            "for instance",
+            "e.g.",
+        )
+        picked.sort(
+            key=lambda sentence: not any(
+                marker in sentence.lower() for marker in example_markers
+            )
+        )
     if response_length == "CONCISE":
         picked = picked[:1]
     elif response_length == "BALANCED":
@@ -924,11 +936,21 @@ async def generate_grounded_answer(
     package: EvidencePackage,
     user_id: str,
     purpose: str,
+    response_length: str = "BALANCED",
+    example_order: str = "CONCEPT_FIRST",
 ) -> tuple[str, str]:
     """按部署配置调用单一供应商；失败时退回教材抽取式答案。"""
     settings = get_settings()
     if settings.llm_provider == "internal" or not package.items:
-        return generate_answer(query, package), "internal"
+        return (
+            generate_answer(
+                query,
+                package,
+                response_length=response_length,
+                example_order=example_order,
+            ),
+            "internal",
+        )
     try:
         provider = OpenAICompatibleLLM(
             base_url=settings.llm_base_url,
@@ -937,7 +959,15 @@ async def generate_grounded_answer(
             timeout_seconds=settings.llm_timeout_seconds,
         )
     except ValueError:
-        return generate_answer(query, package), "internal_configuration_fallback"
+        return (
+            generate_answer(
+                query,
+                package,
+                response_length=response_length,
+                example_order=example_order,
+            ),
+            "internal_configuration_fallback",
+        )
 
     async def invoke():
         generated = await provider.generate_grounded_answer(
@@ -955,9 +985,25 @@ async def generate_grounded_answer(
             user_id=user_id,
         )
     except Exception:  # noqa: BLE001 外部失败不得破坏教材约束回答
-        return generate_answer(query, package), "internal_fallback"
+        return (
+            generate_answer(
+                query,
+                package,
+                response_length=response_length,
+                example_order=example_order,
+            ),
+            "internal_fallback",
+        )
     if result.status != "ok" or result.output is None:
-        return generate_answer(query, package), "internal_fallback"
+        return (
+            generate_answer(
+                query,
+                package,
+                response_length=response_length,
+                example_order=example_order,
+            ),
+            "internal_fallback",
+        )
     return result.output.answer, settings.llm_provider
 
 
@@ -1107,6 +1153,8 @@ async def run_turn_stream(
         package=package,
         user_id=session_row.user_id,
         purpose=purpose,
+        response_length=response_length,
+        example_order=example_order,
     )
     answer = apply_presentation_preferences(
         answer,

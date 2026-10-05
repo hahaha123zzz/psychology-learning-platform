@@ -50,11 +50,7 @@ export function StudentPracticePage() {
       errors.push(message(reviewResult.reason));
     }
     setNotice(errors.join("；"));
-    const activeAttempt = nextAssessments.find(
-      (assessment) => assessment.availability === "open" && assessment.current_attempt_id,
-    );
-    if (activeAttempt) await open(activeAttempt);
-  }, [courseId, open]);
+  }, [courseId]);
   // 此 effect 仅发起路由课程对应的外部 API 加载，状态在异步请求完成后更新。
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, [load]);

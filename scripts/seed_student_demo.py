@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -29,9 +30,10 @@ STUDENT_EMAIL = "student@student-demo.edu"
 DEMO_PASSWORD = "student-demo-local-only-20261005"
 COURSE_TITLE = "实验心理学｜学生端合成演示"
 COURSE_TERM = "V0.9 Demo"
-MATERIAL_TITLE = "合成教材：实验设计基础"
-QUESTION_STEM = "【本地合成演示】实验中由研究者操纵的变量是什么？"
-ASSESSMENT_TITLE = "合成练习：实验变量辨析"
+MATERIAL_TITLE = "合成教材：实验设计与图表（原生定位版）"
+QUESTION_STEM = "【本地合成演示】研究者操纵的变量是什么？"
+ASSESSMENT_TITLE = "合成练习：实验变量辨析（图表版）"
+TABLE_TEXT = "Measure | Score\nRecall | 42"
 
 
 def validate_environment() -> None:
@@ -71,7 +73,7 @@ def synthetic_pdf() -> bytes:
     import pymupdf
 
     document = pymupdf.open()
-    page = document.new_page(width=612, height=792)
+    page = document.new_page()
     lines = [
         (72, 72, "Synthetic Demo Chapter 1: Experimental Variables", 15),
         (
@@ -89,19 +91,34 @@ def synthetic_pdf() -> bytes:
         ),
         (
             72,
-            234,
+            480,
             "A control group gives researchers a comparison for an intervention.",
             11,
         ),
         (
             72,
-            282,
+            520,
             "These sentences are synthetic course material for local software testing.",
             10,
         ),
     ]
     for x, y, text, size in lines:
         page.insert_text((x, y), text, fontsize=size)
+    page.insert_text((72, 560), "The surrounding paragraph explains the measured result.")
+    for x in (72, 172, 272):
+        page.draw_line((x, 335), (x, 435))
+    for y in (335, 385, 435):
+        page.draw_line((72, y), (272, y))
+    for point, text in (
+        ((82, 365), "Measure"),
+        ((182, 365), "Score"),
+        ((82, 415), "Recall"),
+        ((182, 415), "42"),
+    ):
+        page.insert_text(point, text)
+    pixmap = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 4, 4), False)
+    pixmap.clear_with(255)
+    page.insert_image(pymupdf.Rect(72, 220, 172, 320), stream=pixmap.tobytes("png"))
     data = document.tobytes()
     document.close()
     return data
@@ -158,11 +175,12 @@ async def ensure_database() -> None:
 
 
 async def ensure_users() -> None:
+    from sqlalchemy import select
+
     from app.core.config import get_settings
     from app.core.security import hash_password
     from app.db.models import User
     from app.db.session import engine, session_factory
-    from sqlalchemy import select
 
     settings = get_settings()
     async with session_factory() as db:
@@ -194,9 +212,30 @@ async def ensure_users() -> None:
     await engine.dispose()
 
 
+async def make_synthetic_reviews_due(course_id: str) -> None:
+    """让专属合成课程中的待复习错题能在同一轮演示里复习。"""
+    from sqlalchemy import update
+
+    from app.db.models import ReviewTask
+    from app.db.session import session_factory
+
+    async with session_factory() as db:
+        await db.execute(
+            update(ReviewTask)
+            .where(
+                ReviewTask.course_id == course_id,
+                ReviewTask.reason == "wrong_answer",
+                ReviewTask.status == "pending",
+            )
+            .values(due_at=datetime.now(UTC) - timedelta(seconds=1))
+        )
+        await db.commit()
+
+
 def seed_api_data() -> dict[str, str]:
-    from app.main import app
     from fastapi.testclient import TestClient
+
+    from app.main import app
 
     with TestClient(app) as client:
         login(client, TEACHER_EMAIL)
@@ -243,7 +282,12 @@ def seed_api_data() -> dict[str, str]:
             "list synthetic materials",
         )
         material = next(
-            (item for item in materials if item["title"] == MATERIAL_TITLE), None
+            (
+                item
+                for item in materials
+                if item["title"] == MATERIAL_TITLE and item["status"] == "active"
+            ),
+            None,
         )
         if material is None:
             uploaded = expect(
@@ -297,6 +341,7 @@ def seed_api_data() -> dict[str, str]:
                 "/api/v1/knowledge/search",
                 json={
                     "course_id": course_id,
+                    "material_version_ids": [version_id],
                     "query": "independent variable manipulated researcher",
                     "top_k": 8,
                     "purpose": "course_qa",
@@ -324,6 +369,71 @@ def seed_api_data() -> dict[str, str]:
         )
         if pointer["material_version_id"] != version_id:
             raise RuntimeError("题目候选证据指针未绑定本次合成教材版本")
+
+        table_search = expect(
+            client.post(
+                "/api/v1/knowledge/search",
+                json={
+                    "course_id": course_id,
+                    "material_version_ids": [version_id],
+                    "query": "measure score recall",
+                    "object_types": ["table"],
+                    "top_k": 8,
+                    "purpose": "course_qa",
+                },
+            ),
+            200,
+            "retrieve synthetic native table",
+        )
+        table_item = next(
+            (
+                item
+                for item in table_search["items"]
+                if item.get("object_type") == "table"
+                and item.get("evidence_pointer_id")
+                and TABLE_TEXT in (item.get("text") or "")
+            ),
+            None,
+        )
+        if table_item is None:
+            raise RuntimeError("合成 PDF 的原生表格未按稀疏词项检索到")
+        figure_item = next(
+            (
+                item
+                for item in table_item.get("closure", [])
+                if item.get("object_type") == "figure"
+                and item.get("evidence_pointer_id")
+            ),
+            None,
+        )
+        if figure_item is None:
+            raise RuntimeError("原生表格的已审核阅读顺序闭包未生成图像 EvidencePointer")
+        table_pointer = expect(
+            client.get(f"/api/v1/evidence-pointers/{table_item['evidence_pointer_id']}"),
+            200,
+            "validate synthetic table EvidencePointer",
+        )
+        figure_pointer = expect(
+            client.get(f"/api/v1/evidence-pointers/{figure_item['evidence_pointer_id']}"),
+            200,
+            "validate synthetic figure EvidencePointer",
+        )
+        if (
+            table_pointer["material_version_id"] != version_id
+            or table_pointer["object_type"] != "table"
+        ):
+            raise RuntimeError("表格指针没有固定到预期教材版本和对象类型")
+        if (
+            figure_pointer["material_version_id"] != version_id
+            or figure_pointer["object_type"] != "figure"
+        ):
+            raise RuntimeError("图像指针没有固定到预期教材版本和对象类型")
+        page_image = client.get(
+            f"/api/v1/evidence-pointers/{figure_item['evidence_pointer_id']}/page-image",
+            params={"physical_page": figure_item["physical_page"]},
+        )
+        if page_image.status_code != 200 or not page_image.content.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise RuntimeError("合成图像指针无法读取固定版本的 Reader 页图")
 
         login(client, TEACHER_EMAIL)
         questions = expect(
@@ -413,17 +523,40 @@ def seed_api_data() -> dict[str, str]:
         else:
             assessment_id = assessment["id"]
 
+        published_questions = expect(
+            client.get(f"/api/v1/courses/{course_id}/questions?status=published"),
+            200,
+            "reload published synthetic question",
+        )
+        published_question = next(
+            (
+                item
+                for item in published_questions
+                if item.get("current_version", {}).get("stem") == QUESTION_STEM
+            ),
+            None,
+        )
+        question_version_id = (
+            (published_question or {}).get("current_version", {}).get("id")
+        )
+        if not question_version_id:
+            raise RuntimeError("无法取得已发布合成题的固定版本 ID")
+
     return {
         "course_id": course_id,
         "material_version_id": version_id,
         "assessment_id": assessment_id,
+        "question_version_id": question_version_id,
+        "table_pointer_id": table_item["evidence_pointer_id"],
+        "figure_pointer_id": figure_item["evidence_pointer_id"],
     }
 
 
 def main() -> None:
     validate_environment()
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
     from app.db.session import engine
 
     asyncio.run(ensure_database())
@@ -432,6 +565,7 @@ def main() -> None:
     command.upgrade(alembic, "head")
     asyncio.run(ensure_users())
     seeded = seed_api_data()
+    asyncio.run(make_synthetic_reviews_due(seeded["course_id"]))
     print(
         json.dumps(
             {
@@ -440,6 +574,7 @@ def main() -> None:
                 "minio_bucket": EXPECTED_BUCKET,
                 "synthetic_only": True,
                 "external_models": False,
+                "synthetic_reviews_due_immediately": True,
                 "teacher_email": TEACHER_EMAIL,
                 "student_email": STUDENT_EMAIL,
                 **seeded,
