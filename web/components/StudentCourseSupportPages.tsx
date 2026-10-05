@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Icon } from "@iconify/react";
@@ -101,9 +101,37 @@ export function StudentPracticePage() {
 
 export function StudentGrowthPage() {
   const { courseId } = useParams<{ courseId: string }>(); const [knowledge, setKnowledge] = useState<GrowthKnowledge[]>([]); const [tabs, setTabs] = useState<GrowthTabs | null>(null); const [tab, setTab] = useState<keyof GrowthTabs>("knowledge"); const [reviews, setReviews] = useState<Review[]>([]); const [focus, setFocus] = useState<{ knowledge_point: string; state: string; state_reason: string; next_step: string } | null>(null); const [dueCount, setDueCount] = useState(0); const [notice, setNotice] = useState("正在读取成长信息…");
+  const tabKeys = ["knowledge", "skills", "misconceptions", "trajectory"] as const;
+  const tabRefs = useRef<Partial<Record<(typeof tabKeys)[number], HTMLButtonElement>>>({});
   useEffect(() => { Promise.all([api<{ focus: { knowledge_point: string; state: string; state_reason: string; next_step: string } | null; attention: { due_review_count: number } }>(`/student/growth/overview?course_id=${courseId}`), api<GrowthKnowledge[]>(`/student/growth/knowledge?course_id=${courseId}`), api<GrowthTabs>(`/student/growth/tabs?course_id=${courseId}`), api<Review[]>("/review-tasks?due_only=false")]).then(([overview, nextKnowledge, nextTabs, nextReviews]) => { setFocus(overview.focus); setDueCount(overview.attention.due_review_count); setKnowledge(nextKnowledge); setTabs(nextTabs); setReviews(nextReviews); setNotice(""); }).catch((reason) => setNotice(message(reason))); }, [courseId]);
   const tabLabels: Record<keyof GrowthTabs, string> = { knowledge: "知识", skills: "技能", misconceptions: "误区", trajectory: "轨迹" };
-  return <div className="student-support-page"><div className="page-heading"><div><h1>成长</h1><p>根据你的学习与练习记录，查看当前掌握状态、依据和下一步行动。</p></div></div>{notice && <p className="status-banner" role="status">{notice}</p>}<section className="support-panel growth-panel"><div className="panel-heading"><h2>下一步</h2><span>{dueCount ? `${dueCount} 项到期复习` : "状态已更新"}</span></div>{focus ? <div className="growth-focus"><strong>{focus.knowledge_point}</strong><small>{focus.state} · {focus.next_step}</small><small>{focus.state_reason}</small></div> : <p className="empty-state">完成学习或测验后，这里会生成可解释的成长建议。</p>}</section><section className="support-panel growth-panel"><div className="growth-tabs" role="tablist" aria-label="成长信息类别">{(Object.keys(tabLabels) as (keyof GrowthTabs)[]).map((key) => <button type="button" className={key === tab ? "secondary-button active" : "secondary-button"} key={key} role="tab" aria-selected={key === tab} aria-controls="growth-tab-panel" id={`growth-tab-${key}`} onClick={() => setTab(key)}>{tabLabels[key]}</button>)}</div><div id="growth-tab-panel" role="tabpanel" aria-labelledby={`growth-tab-${tab}`}>{tab === "knowledge" && (knowledge.length ? knowledge.map((item) => <div className="growth-row" key={item.knowledge_point}><span><strong>{item.knowledge_point}</strong><small>{item.state} · 依据 {item.evidence_count} 条</small><small>{item.state_reason}</small><small>更新于 {new Date(item.updated_at).toLocaleDateString("zh-CN")} · 规则 {item.algorithm_version}</small></span><em>{item.next_step}</em></div>) : <p className="empty-state">当前还没有足够的学习证据。</p>)}{tab === "skills" && <p className="empty-state">当前服务端只有知识点掌握记录，没有独立技能证据；此处不会把知识点状态当作技能结论。</p>}{tab === "misconceptions" && <p className="empty-state">当前没有经确认的误区定义；待复核的学习记忆不作为误区结论展示。</p>}{tab === "trajectory" && (tabs?.trajectory.length ? tabs.trajectory.map((item) => <div className="growth-row" key={item.date}><span><strong>{item.date}</strong><small>{item.knowledge_points.length} 个知识点</small></span><em>学习证据 {item.evidence_count} 条</em></div>) : <p className="empty-state">当前还没有学习轨迹。</p>)}</div></section><section className="support-panel"><div className="panel-heading"><h2>复习安排</h2><span>{reviews.length} 项</span></div>{reviews.length ? reviews.map((review) => <div className="overview-row" key={review.id}><span><strong>{review.reason}</strong><small>截止：{new Date(review.due_at).toLocaleDateString("zh-CN")}</small></span></div>) : <p className="empty-state">当前没有待复习任务。</p>}</section></div>;
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, current: (typeof tabKeys)[number]) {
+    const currentIndex = tabKeys.indexOf(current);
+    let nextIndex: number;
+    switch (event.key) {
+      case "ArrowRight":
+      case "ArrowDown":
+        nextIndex = (currentIndex + 1) % tabKeys.length;
+        break;
+      case "ArrowLeft":
+      case "ArrowUp":
+        nextIndex = (currentIndex - 1 + tabKeys.length) % tabKeys.length;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = tabKeys.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    const nextTab = tabKeys[nextIndex];
+    setTab(nextTab);
+    tabRefs.current[nextTab]?.focus();
+  }
+  return <div className="student-support-page"><div className="page-heading"><div><h1>成长</h1><p>根据你的学习与练习记录，查看当前掌握状态、依据和下一步行动。</p></div></div>{notice && <p className="status-banner" role="status">{notice}</p>}<section className="support-panel growth-panel"><div className="panel-heading"><h2>下一步</h2><span>{dueCount ? `${dueCount} 项到期复习` : "状态已更新"}</span></div>{focus ? <div className="growth-focus"><strong>{focus.knowledge_point}</strong><small>{focus.state} · {focus.next_step}</small><small>{focus.state_reason}</small></div> : <p className="empty-state">完成学习或测验后，这里会生成可解释的成长建议。</p>}</section><section className="support-panel growth-panel"><div className="growth-tabs" role="tablist" aria-label="成长信息类别">{tabKeys.map((key) => <button type="button" className={key === tab ? "secondary-button active" : "secondary-button"} key={key} ref={(node) => { tabRefs.current[key] = node ?? undefined; }} tabIndex={key === tab ? 0 : -1} role="tab" aria-selected={key === tab} aria-controls="growth-tab-panel" id={`growth-tab-${key}`} onKeyDown={(event) => handleTabKeyDown(event, key)} onClick={() => setTab(key)}>{tabLabels[key]}</button>)}</div><div id="growth-tab-panel" role="tabpanel" aria-labelledby={`growth-tab-${tab}`}>{tab === "knowledge" && (knowledge.length ? knowledge.map((item) => <div className="growth-row" key={item.knowledge_point}><span><strong>{item.knowledge_point}</strong><small>{item.state} · 依据 {item.evidence_count} 条</small><small>{item.state_reason}</small><small>更新于 {new Date(item.updated_at).toLocaleDateString("zh-CN")} · 规则 {item.algorithm_version}</small></span><em>{item.next_step}</em></div>) : <p className="empty-state">当前还没有足够的学习证据。</p>)}{tab === "skills" && <p className="empty-state">当前服务端只有知识点掌握记录，没有独立技能证据；此处不会把知识点状态当作技能结论。</p>}{tab === "misconceptions" && <p className="empty-state">当前没有经确认的误区定义；待复核的学习记忆不作为误区结论展示。</p>}{tab === "trajectory" && (tabs?.trajectory.length ? tabs.trajectory.map((item) => <div className="growth-row" key={item.date}><span><strong>{item.date}</strong><small>{item.knowledge_points.length} 个知识点</small></span><em>学习证据 {item.evidence_count} 条</em></div>) : <p className="empty-state">当前还没有学习轨迹。</p>)}</div></section><section className="support-panel"><div className="panel-heading"><h2>复习安排</h2><span>{reviews.length} 项</span></div>{reviews.length ? reviews.map((review) => <div className="overview-row" key={review.id}><span><strong>{review.reason}</strong><small>截止：{new Date(review.due_at).toLocaleDateString("zh-CN")}</small></span></div>) : <p className="empty-state">当前没有待复习任务。</p>}</section></div>;
 }
 
 export function StudentMePage() {
