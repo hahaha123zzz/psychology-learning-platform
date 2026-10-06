@@ -27,6 +27,11 @@ EXPECTED_REDIS = "redis://127.0.0.1:6379/12"
 EXPECTED_BUCKET = "student-demo-20261005"
 TEACHER_EMAIL = "teacher@student-demo.edu"
 STUDENT_EMAIL = "student@student-demo.edu"
+ROUND_STUDENT_EMAILS = (
+    "student-round-2@student-demo.edu",
+    "student-round-3@student-demo.edu",
+)
+STUDENT_EMAILS = (STUDENT_EMAIL, *ROUND_STUDENT_EMAILS)
 DEMO_PASSWORD = "student-demo-local-only-20261005"
 COURSE_TITLE = "实验心理学｜学生端合成演示"
 COURSE_TERM = "V0.9 Demo"
@@ -341,10 +346,13 @@ async def ensure_users() -> None:
 
     settings = get_settings()
     async with session_factory() as db:
-        for email, name, is_teacher in (
+        demo_users = [
             (TEACHER_EMAIL, "V0.9 合成演示教师", True),
             (STUDENT_EMAIL, "V0.9 合成演示学生", False),
-        ):
+            (ROUND_STUDENT_EMAILS[0], "V1.2 合成演示学生 2", False),
+            (ROUND_STUDENT_EMAILS[1], "V1.2 合成演示学生 3", False),
+        ]
+        for email, name, is_teacher in demo_users:
             user = await db.scalar(select(User).where(User.email == email))
             if user is None:
                 user = User(
@@ -430,22 +438,28 @@ def seed_api_data() -> dict[str, str]:
             )
         course_id = course["id"]
 
-        login(client, STUDENT_EMAIL)
-        student = expect(client.get("/api/v1/me"), 200, "get synthetic student")
-        student_id = student["id"]
+        student_ids = []
+        for student_email in STUDENT_EMAILS:
+            login(client, student_email)
+            student = expect(
+                client.get("/api/v1/me"), 200, f"get synthetic student {student_email}"
+            )
+            student_ids.append(student["id"])
         login(client, TEACHER_EMAIL)
         members = expect(
             client.get(f"/api/v1/courses/{course_id}/members"), 200, "list members"
         )
-        if not any(member["user_id"] == student_id for member in members):
-            expect(
-                client.post(
-                    f"/api/v1/courses/{course_id}/members",
-                    json={"user_id": student_id, "role": "student"},
-                ),
-                201,
-                "add synthetic student",
-            )
+        member_ids = {member["user_id"] for member in members}
+        for student_id in student_ids:
+            if student_id not in member_ids:
+                expect(
+                    client.post(
+                        f"/api/v1/courses/{course_id}/members",
+                        json={"user_id": student_id, "role": "student"},
+                    ),
+                    201,
+                    "add synthetic student",
+                )
 
         materials = expect(
             client.get(f"/api/v1/courses/{course_id}/materials"),
@@ -726,15 +740,17 @@ def seed_api_data() -> dict[str, str]:
             200,
             "list synthetic class members",
         )
-        if not any(item["user_id"] == student_id for item in class_members):
-            expect(
-                client.post(
-                    f"/api/v1/courses/{course_id}/classes/{course_class['id']}/members",
-                    json={"user_id": student_id},
-                ),
-                201,
-                "add synthetic student to class",
-            )
+        class_member_ids = {item["user_id"] for item in class_members}
+        for student_id in student_ids:
+            if student_id not in class_member_ids:
+                expect(
+                    client.post(
+                        f"/api/v1/courses/{course_id}/classes/{course_class['id']}/members",
+                        json={"user_id": student_id},
+                    ),
+                    201,
+                    "add synthetic student to class",
+                )
 
         releases = expect(
             client.get(f"/api/v1/courses/{course_id}/releases"),
@@ -785,50 +801,62 @@ def seed_api_data() -> dict[str, str]:
                 "assign synthetic course release to class",
             )
 
-        login(client, STUDENT_EMAIL)
-        home = expect(client.get("/api/v1/student/home"), 200, "get synthetic student home")
-        current_task = home.get("current_task")
-        current_binding = (
-            asyncio.run(learning_session_release_binding(current_task["id"]))
-            if current_task is not None
-            else (None, None)
-        )
-        if current_task is not None:
-            asyncio.run(engine.dispose())
-        if (
-            current_task is None
-            or current_task.get("course_id") != course_id
-            or current_task.get("material_version_id") != version_id
-            or current_binding[0] is None
-            or current_binding[1] != release["id"]
-        ):
-            current_task = expect(
-                client.post(
-                    "/api/v1/learning-sessions",
-                    json={
-                        "course_id": course_id,
-                        "material_version_id": version_id,
-                    },
-                ),
-                201,
-                "create synthetic resumable learning task",
+        home_tasks = {}
+        for student_email in STUDENT_EMAILS:
+            login(client, student_email)
+            home = expect(
+                client.get("/api/v1/student/home"),
+                200,
+                f"get synthetic student home for {student_email}",
             )
-        if (
-            current_task.get("course_id") != course_id
-            or current_task.get("material_version_id") != version_id
-        ):
-            raise RuntimeError("Home 当前合成任务必须绑定本次课程与教材版本")
-        assignment_id, pinned_release_id = asyncio.run(
-            learning_session_release_binding(current_task["id"])
-        )
-        asyncio.run(engine.dispose())
-        if not assignment_id or pinned_release_id != release["id"]:
-            raise RuntimeError("Home 当前合成任务必须固定到班级指派的 CourseRelease")
-        home = expect(client.get("/api/v1/student/home"), 200, "verify synthetic student home task")
-        home_task = home.get("current_task")
-        if not home_task or home_task.get("id") != current_task.get("id"):
-            raise RuntimeError("Home 未返回刚创建或复用的可恢复合成任务")
+            current_task = home.get("current_task")
+            current_binding = (
+                asyncio.run(learning_session_release_binding(current_task["id"]))
+                if current_task is not None
+                else (None, None)
+            )
+            if current_task is not None:
+                asyncio.run(engine.dispose())
+            if (
+                current_task is None
+                or current_task.get("course_id") != course_id
+                or current_task.get("material_version_id") != version_id
+                or current_binding[0] is None
+                or current_binding[1] != release["id"]
+            ):
+                current_task = expect(
+                    client.post(
+                        "/api/v1/learning-sessions",
+                        json={
+                            "course_id": course_id,
+                            "material_version_id": version_id,
+                        },
+                    ),
+                    201,
+                    "create synthetic resumable learning task",
+                )
+            if (
+                current_task.get("course_id") != course_id
+                or current_task.get("material_version_id") != version_id
+            ):
+                raise RuntimeError("Home 当前合成任务必须绑定本次课程与教材版本")
+            assignment_id, pinned_release_id = asyncio.run(
+                learning_session_release_binding(current_task["id"])
+            )
+            asyncio.run(engine.dispose())
+            if not assignment_id or pinned_release_id != release["id"]:
+                raise RuntimeError("Home 当前合成任务必须固定到班级指派的 CourseRelease")
+            home = expect(
+                client.get("/api/v1/student/home"),
+                200,
+                f"verify synthetic student home task for {student_email}",
+            )
+            home_task = home.get("current_task")
+            if not home_task or home_task.get("id") != current_task.get("id"):
+                raise RuntimeError("Home 未返回刚创建或复用的可恢复合成任务")
+            home_tasks[student_email] = home_task["id"]
 
+    home_task = home_tasks[STUDENT_EMAIL]
     return {
         "course_id": course_id,
         "material_version_id": version_id,
@@ -836,7 +864,8 @@ def seed_api_data() -> dict[str, str]:
         "question_version_id": question_version_id,
         "course_release_id": release["id"],
         "class_id": course_class["id"],
-        "learning_task_id": home_task["id"],
+        "learning_task_id": home_task,
+        "learning_task_ids_by_student": home_tasks,
         "table_pointer_id": table_item["evidence_pointer_id"],
         "figure_pointer_id": figure_item["evidence_pointer_id"],
     }
@@ -867,6 +896,7 @@ def main() -> None:
                 "synthetic_reviews_due_immediately": True,
                 "teacher_email": TEACHER_EMAIL,
                 "student_email": STUDENT_EMAIL,
+                "additional_student_emails": list(ROUND_STUDENT_EMAILS),
                 **seeded,
             },
             ensure_ascii=False,
