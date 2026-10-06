@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { api, ApiError } from "../../lib/api";
 import { Button } from "../ui/Button";
 import { ContextDrawer } from "../ui/ContextDrawer";
+import { materialTypeLabel } from "../../lib/material-type-label";
 
 type EvidenceAnchor = {
   physical_page: number;
@@ -17,6 +18,7 @@ type EvidencePointerView = {
   evidence_pointer_id: string;
   course_id: string | null;
   material_title: string;
+  material_type?: string | null;
   material_id: string;
   material_version_id: string;
   publication_snapshot_id: string | null;
@@ -102,6 +104,7 @@ export default function EvidencePointerDrawer({
   const [notice, setNotice] = useState("");
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
+  const openEventRef = useRef<{ eventKey: string; sent: boolean } | null>(null);
 
   const anchors = useMemo(() => (view ? anchorsFor(view) : []), [view]);
   const activeAnchor = anchors.find((anchor) => anchor.physical_page === selectedPhysicalPage) ?? null;
@@ -149,6 +152,31 @@ export default function EvidencePointerDrawer({
       cancelled = true;
     };
   }, [open, pointerId]);
+
+  useEffect(() => {
+    if (
+      !open ||
+      !view ||
+      view.evidence_pointer_id !== pointerId ||
+      !view.course_id ||
+      !(view.material_title.trim() || view.excerpt.trim() || view.object_type.trim())
+    ) return;
+
+    const opening = openEventRef.current;
+    if (!opening || opening.sent) return;
+    opening.sent = true;
+    void api("/learning-events", {
+      method: "POST",
+      body: JSON.stringify({
+        event_key: opening.eventKey,
+        course_id: view.course_id,
+        evidence_pointer_id: view.evidence_pointer_id,
+      }),
+    }).catch(() => {
+      // 阅读不依赖事件写入；只留下不含资源内容的本地诊断。
+      console.warn("RESOURCE_OPENED event could not be recorded.");
+    });
+  }, [open, pointerId, view]);
 
   useEffect(() => {
     if (!open || !view || !activeAnchor || selectedPhysicalPage === null) {
@@ -251,6 +279,7 @@ export default function EvidencePointerDrawer({
       <Button
         className="evidence-pointer-trigger"
         onClick={() => {
+          openEventRef.current = { eventKey: crypto.randomUUID(), sent: false };
           setView(null);
           setNotice("");
           setLoading(true);
@@ -273,6 +302,7 @@ export default function EvidencePointerDrawer({
         {view && (
           <article className="evidence-pointer-view">
             <h3>{view.material_title}</h3>
+            <small aria-label="资料类别">{materialTypeLabel(view.material_type)}</small>
             <p>
               {view.chapter_path || "未记录章节"}
               {view.physical_page ? ` · 物理页 ${view.physical_page}` : " · 原始解析未声明物理页"}
