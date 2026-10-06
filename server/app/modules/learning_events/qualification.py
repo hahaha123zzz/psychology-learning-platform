@@ -36,6 +36,30 @@ def tutor_response_evidence_dimension(response_state: object) -> str | None:
     return {"check": "understand", "practice": "apply"}.get(response_state)
 
 
+def tutor_response_version_rejection_reason(
+    *,
+    session_id: str,
+    current_session_version: object,
+    event_key: object,
+    event_payload: object,
+) -> str | None:
+    """校验服务端 Tutor 事件的版本链，允许资格化前会话继续前进。"""
+    if not isinstance(event_payload, dict):
+        return "tutor_session_version_mismatch"
+    post_version = event_payload.get("state_version")
+    if (
+        not isinstance(post_version, int)
+        or isinstance(post_version, bool)
+        or post_version <= 0
+        or not isinstance(current_session_version, int)
+        or isinstance(current_session_version, bool)
+        or current_session_version < post_version
+        or event_key != f"learning-session-response:{session_id}:{post_version - 1}"
+    ):
+        return "tutor_session_version_mismatch"
+    return None
+
+
 async def qualify_event(
     db: AsyncSession,
     *,
@@ -163,11 +187,16 @@ async def _qualify_tutor_response(
             LearningSession.course_id == event.course_id,
         )
     )
-    expected_version = event.payload.get("state_version")
+    version_rejection = tutor_response_version_rejection_reason(
+        session_id=session.id if session is not None else event.source_ref,
+        current_session_version=session.version if session is not None else None,
+        event_key=event.event_key,
+        event_payload=event.payload,
+    )
     response_state = event.payload.get("response_state")
     correct = event.payload.get("correct")
-    if session is None or session.version != expected_version:
-        return [], "tutor_session_version_mismatch"
+    if session is None or version_rejection is not None:
+        return [], version_rejection or "tutor_session_version_mismatch"
     dimension = tutor_response_evidence_dimension(response_state)
     if dimension is None or not isinstance(correct, bool):
         return [], "tutor_response_not_evidence_bearing"

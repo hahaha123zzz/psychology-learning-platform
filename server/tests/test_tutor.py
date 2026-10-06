@@ -2138,7 +2138,38 @@ def test_single_incorrect_guided_answer_is_evidence_without_mastery_or_profile_c
         json={"course_id": course_id, "material_version_id": version_id},
     ).json()["data"]
 
-    def respond(content: str) -> tuple[dict, dict, list]:
+    def read_qualification(event_key: str) -> tuple[dict, list]:
+        async def _read() -> tuple[dict, list]:
+            async with session_factory() as db:
+                event = await db.scalar(
+                    select(LearningEvent).where(LearningEvent.event_key == event_key)
+                )
+                assert event is not None
+                qualification = await db.scalar(
+                    select(LearningQualification).where(
+                        LearningQualification.event_id == event.id
+                    )
+                )
+                assert qualification is not None
+                evidences = list(
+                    (
+                        await db.scalars(
+                            select(LearningEvidence).where(
+                                LearningEvidence.id.in_(qualification.evidence_ids)
+                            )
+                        )
+                    ).all()
+                )
+                return (
+                    {"event": event, "qualification": qualification},
+                    evidences,
+                )
+
+        return asyncio.run(_read())
+
+    def respond(
+        content: str, *, qualify: bool = True
+    ) -> tuple[dict, dict | None, list]:
         nonlocal learning
         response_version = learning["state_version"]
         response = client.post(
@@ -2148,6 +2179,8 @@ def test_single_incorrect_guided_answer_is_evidence_without_mastery_or_profile_c
         assert response.status_code == 200, response.text
         learning = response.json()["data"]
         event_key = f"learning-session-response:{learning['id']}:{response_version}"
+        if not qualify:
+            return learning, None, []
 
         async def qualify_and_read() -> tuple[dict, list]:
             async with session_factory() as db:
@@ -2189,14 +2222,17 @@ def test_single_incorrect_guided_answer_is_evidence_without_mastery_or_profile_c
     assert respond(
         "Independent variable control improves internal validity in experiments."
     )[0]["state"] == "check"
-    check_answer, check_record, check_evidences = respond("我不知道")
+    check_answer, _, _ = respond("我不知道", qualify=False)
     assert check_answer["state"] == "hint"
+    # 先推进到下一状态再做资格化，旧 check 事件仍可按自身签名被验证。
+    hint_answer, hint_record, hint_evidences = respond("我不知道")
+    check_record, check_evidences = read_qualification(
+        f"learning-session-response:{learning['id']}:{check_answer['state_version'] - 1}"
+    )
     assert check_record["qualification"].status == "qualified"
     assert len(check_evidences) == 1
     assert check_evidences[0].dimension == "understand"
     assert check_evidences[0].correct is False
-
-    hint_answer, hint_record, hint_evidences = respond("我不知道")
     assert hint_answer["state"] == "practice"
     assert hint_answer["action"] == "show_example"
     assert hint_record["qualification"].status == "rejected"

@@ -9,6 +9,49 @@ from tests.conftest import create_user_sync
 COURSE_BODY = {"title": "实验心理学", "term": "2026春", "timezone": "Asia/Shanghai"}
 
 
+@pytest.mark.parametrize(
+    ("current_version", "post_version", "predecessor", "expected_reason"),
+    [
+        (8, 6, 5, None),
+        (4, 6, 4, "tutor_session_version_mismatch"),
+        (8, True, 0, "tutor_session_version_mismatch"),
+        (8, 0, -1, "tutor_session_version_mismatch"),
+        (8, 6, 4, "tutor_session_version_mismatch"),
+    ],
+)
+def test_tutor_response_version_chain_allows_delay_but_fails_closed_without_database(
+    current_version: int,
+    post_version: int,
+    predecessor: int,
+    expected_reason: str | None,
+) -> None:
+    from app.modules.learning_events.qualification import (
+        tutor_response_version_rejection_reason,
+    )
+
+    reason = tutor_response_version_rejection_reason(
+        session_id="synthetic-session",
+        current_session_version=current_version,
+        event_key=f"learning-session-response:synthetic-session:{predecessor}",
+        event_payload={"state_version": post_version},
+    )
+    assert reason == expected_reason
+
+
+def test_tutor_response_version_chain_rejects_malformed_version_without_database() -> None:
+    from app.modules.learning_events.qualification import (
+        tutor_response_version_rejection_reason,
+    )
+
+    reason = tutor_response_version_rejection_reason(
+        session_id="synthetic-session",
+        current_session_version="8",
+        event_key="learning-session-response:synthetic-session:4",
+        event_payload={"state_version": 6},
+    )
+    assert reason == "tutor_session_version_mismatch"
+
+
 @pytest.mark.parametrize("qualification_status", ["qualified", "rejected", None])
 def test_mini_lab_qualification_requires_pending_measure_without_database(
     qualification_status,
