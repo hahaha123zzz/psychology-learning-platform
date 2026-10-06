@@ -18,6 +18,8 @@ from app.modules.memory.service import (
 from app.modules.tutor.policy import resolve_effective_policy
 from app.modules.tutor.service import (
     DomainClaimContext,
+    EvidencePackage,
+    verify_claims,
     verify_domain_claim_for_tutor,
 )
 
@@ -46,6 +48,33 @@ def _claim_scope() -> dict:
             }
         ],
     }
+
+
+def test_lexical_overlap_does_not_mark_negated_claim_supported() -> None:
+    from types import SimpleNamespace
+
+    package = EvidencePackage(
+        package_id="synthetic-package",
+        course_id="course-id",
+        query="synthetic query",
+        retrieval_version="synthetic-v1",
+        generation_units=[
+            SimpleNamespace(
+                text=(
+                    "The treatment was randomized in the study and used a control group. "
+                    "A related study was not placebo controlled."
+                )
+            )
+        ],
+    )
+
+    result = verify_claims(
+        "The treatment was not randomized in the study and used a control group.",
+        package,
+    )
+
+    assert result["claims"][0]["overlap"] >= 0.9
+    assert result["claims"][0]["support"] == "partial"
 
 
 def test_tutor_claim_persists_four_state_scope_and_initial_evidence_refs() -> None:
@@ -163,7 +192,7 @@ def test_tutor_claim_persists_one_supplemental_retrieval_and_evidence_ref() -> N
             "contradicted",
             {
                 "contradicted_subclaims": ["命题 G"],
-                "counterevidence_scope_matches": True,
+                "counterevidence_refs": ["evidence-state"],
             },
         ),
     ],
@@ -195,7 +224,89 @@ def test_tutor_claim_persists_partial_and_contradicted_states(
             assert record["refusal_reason"] == "claim_partially_supported"
         else:
             assert record["contradicted_subclaims"] == ["命题 G"]
+            assert record["counterevidence_refs"] == ["evidence-state"]
             assert record["refusal_reason"] == "claim_contradicted"
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "result_fields",
+    [
+        {
+            "status": "contradicted",
+            "contradicted_subclaims": ["claim"],
+            "counterevidence_scope_matches": True,
+        },
+        {
+            "status": "supported",
+            "supported_subclaims": ["claim"],
+            "contradicted_subclaims": ["claim"],
+            "counterevidence_refs": ["foreign-evidence"],
+        },
+    ],
+)
+def test_tutor_claim_rejects_unverified_counterevidence_refs(result_fields: dict) -> None:
+    async def run() -> None:
+        scope = _claim_scope()
+
+        async def retrieve(_scope: dict) -> list[dict]:
+            raise AssertionError("counterevidence failure must not retry")
+
+        record = await verify_domain_claim_for_tutor(
+            claim="synthetic claim",
+            initial_evidence=[{"evidence_id": "evidence-local", "text": "synthetic"}],
+            context=DomainClaimContext(
+                retrieval_scope=scope,
+                required_scope=scope,
+                evaluate=lambda _claim, _evidence: result_fields,
+                retrieve_once=retrieve,
+            ),
+        )
+        assert record["status"] == "unknown"
+        assert record["refusal_reason"] == "counterevidence_unverified"
+        assert record["counterevidence_refs"] == []
+        assert record["supplemental_retrieval_attempts"] == 0
+
+    asyncio.run(run())
+
+
+def test_tutor_claim_does_not_verify_learning_evidence_as_counterevidence() -> None:
+    async def run() -> None:
+        scope = _claim_scope()
+        learning_evidence = {
+            "evidence_id": "learning-evidence-id",
+            "question_version_id": "question-version-id",
+            "knowledge_point": "synthetic point",
+            "correct": False,
+        }
+
+        async def retrieve(_scope: dict) -> list[dict]:
+            return [learning_evidence]
+
+        def evaluate(_claim: str, evidence: list[dict]) -> dict:
+            if evidence:
+                return {
+                    "status": "contradicted",
+                    "contradicted_subclaims": ["claim"],
+                    "counterevidence_refs": ["learning-evidence-id"],
+                }
+            return {"status": "unknown"}
+
+        record = await verify_domain_claim_for_tutor(
+            claim="synthetic claim",
+            initial_evidence=[],
+            context=DomainClaimContext(
+                retrieval_scope=scope,
+                required_scope=scope,
+                evaluate=evaluate,
+                retrieve_once=retrieve,
+            ),
+        )
+        assert record["status"] == "unknown"
+        assert record["refusal_reason"] == "counterevidence_unverified"
+        assert record["counterevidence_refs"] == []
+        assert record["supplemental_retrieval_attempts"] == 1
 
     asyncio.run(run())
 

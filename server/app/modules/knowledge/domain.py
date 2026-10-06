@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from copy import deepcopy
 from typing import Any
 
@@ -133,14 +133,13 @@ def classify_claim(
     supported_subclaims: list[str] | None = None,
     unsupported_subclaims: list[str] | None = None,
     contradicted_subclaims: list[str] | None = None,
-    counterevidence_scope_matches: bool = False,
 ) -> dict[str, Any]:
-    """确定 Claim 四态；矛盾态要求调用者确认同对象/范围/极性的直接反证。"""
+    """分类支持程度；矛盾态必须由有界验证器校验证据引用后生成。"""
     supported = [item for item in (supported_subclaims or []) if item]
     unsupported = [item for item in (unsupported_subclaims or []) if item]
     contradicted = [item for item in (contradicted_subclaims or []) if item]
-    if contradicted and counterevidence_scope_matches:
-        status = "contradicted"
+    if contradicted:
+        status = "unknown"
     elif supported and unsupported:
         status = "partially-supported"
     elif supported and not unsupported:
@@ -151,9 +150,90 @@ def classify_claim(
         "status": status,
         "supported_subclaims": supported,
         "unsupported_subclaims": unsupported,
-        "contradicted_subclaims": contradicted if status == "contradicted" else [],
+        # 保留 evaluator 的矛盾候选，供有界验证器发现并拒绝未验证反证。
+        "contradicted_subclaims": contradicted,
         "evidence_ids": [],
         "supplemental_retrieval_attempts": 0,
+    }
+
+
+def _content_evidence_reference_ids(evidence: list[Any]) -> set[str]:
+    references: set[str] = set()
+    for item in evidence:
+        if not isinstance(item, Mapping):
+            continue
+        if {"question_version_id", "knowledge_point", "correct"}.issubset(item):
+            continue
+        if {"layer", "kind", "content", "provenance_level"}.issubset(item):
+            continue
+        reference = item.get("evidence_id")
+        if isinstance(reference, str) and reference.strip():
+            references.add(reference.strip())
+    return references
+
+
+def _verify_counterevidence(
+    result: dict[str, Any], evidence: list[Any], *, scope_matches: bool
+) -> tuple[bool, list[str]]:
+    contradicted = result.get("contradicted_subclaims")
+    references = result.get("counterevidence_refs")
+    has_contradiction = bool(contradicted) or references is not None
+    if not has_contradiction:
+        return result.get("status") != "contradicted", []
+    if (
+        not scope_matches
+        or not isinstance(contradicted, list)
+        or not contradicted
+        or any(not isinstance(item, str) or not item.strip() for item in contradicted)
+    ):
+        return False, []
+    if not isinstance(references, list) or not references:
+        return False, []
+    if any(not isinstance(reference, str) or not reference.strip() for reference in references):
+        return False, []
+    unique_references = list(dict.fromkeys(reference.strip() for reference in references))
+    if not set(unique_references).issubset(_content_evidence_reference_ids(evidence)):
+        return False, []
+    return True, unique_references
+
+
+def _normalize_counterevidence_result(
+    result: dict[str, Any], evidence: list[Any], *, scope_matches: bool
+) -> dict[str, Any]:
+    """只有同包可解析的教材证据才能使 Claim 进入 contradicted。"""
+    verified, references = _verify_counterevidence(
+        result, evidence, scope_matches=scope_matches
+    )
+    has_counterevidence_claim = (
+        result.get("status") == "contradicted"
+        or bool(result.get("contradicted_subclaims"))
+        or result.get("counterevidence_refs") is not None
+    )
+    if not has_counterevidence_claim:
+        return result
+    if verified:
+        return {
+            **result,
+            "status": "contradicted",
+            "counterevidence_refs": references,
+        }
+
+    supported = result.get("supported_subclaims")
+    unsupported = result.get("unsupported_subclaims")
+    status = (
+        "partially-supported"
+        if isinstance(supported, list)
+        and any(isinstance(item, str) and item for item in supported)
+        and isinstance(unsupported, list)
+        and any(isinstance(item, str) and item for item in unsupported)
+        else "unknown"
+    )
+    return {
+        **result,
+        "status": status,
+        "contradicted_subclaims": [],
+        "counterevidence_refs": [],
+        "refusal_reason": "counterevidence_unverified",
     }
 
 
@@ -174,10 +254,11 @@ async def verify_claim_with_bounded_retrieval(
     result = evaluate(claim, initial_evidence)
     if result.get("status") not in CLAIM_STATES:
         raise ValueError("evaluate must return one of the four Claim states")
-    if result["status"] == "contradicted" and not (
-        result.get("counterevidence_scope_matches") is True and result.get("contradicted_subclaims")
-    ):
-        result = {**result, "status": "unknown", "contradicted_subclaims": []}
+    result = _normalize_counterevidence_result(
+        result,
+        initial_evidence,
+        scope_matches=retrieval_scope == required_scope,
+    )
     if result["status"] == "partially-supported" and not (
         result.get("supported_subclaims") and result.get("unsupported_subclaims")
     ):
@@ -187,7 +268,7 @@ async def verify_claim_with_bounded_retrieval(
     attempts = 0
     supplemental: list[Any] = []
     scope_snapshot = deepcopy(retrieval_scope)
-    if result["status"] == "unknown":
+    if result["status"] == "unknown" and not result.get("refusal_reason"):
         if scope_snapshot != required_scope:
             result = {**result, "status": "unknown", "refusal_reason": "retrieval_scope_changed"}
         else:
@@ -197,18 +278,18 @@ async def verify_claim_with_bounded_retrieval(
             result = evaluate(claim, combined)
             if result.get("status") not in CLAIM_STATES:
                 raise ValueError("evaluate must return one of the four Claim states")
-            if result["status"] == "contradicted" and not (
-                result.get("counterevidence_scope_matches") is True
-                and result.get("contradicted_subclaims")
-            ):
-                result = {**result, "status": "unknown", "contradicted_subclaims": []}
+            result = _normalize_counterevidence_result(
+                result,
+                combined,
+                scope_matches=scope_snapshot == required_scope,
+            )
             if result["status"] == "partially-supported" and not (
                 result.get("supported_subclaims") and result.get("unsupported_subclaims")
             ):
                 result = {**result, "status": "unknown"}
             if result["status"] == "supported" and not result.get("supported_subclaims"):
                 result = {**result, "status": "unknown"}
-            if result["status"] == "unknown":
+            if result["status"] == "unknown" and not result.get("refusal_reason"):
                 result = {**result, "refusal_reason": "insufficient_evidence"}
     return {
         **result,
@@ -217,4 +298,7 @@ async def verify_claim_with_bounded_retrieval(
         "supplemental_evidence": supplemental,
         "supplemental_retrieval_attempts": attempts,
         "scope": scope_snapshot,
+        "counterevidence_refs": result.get("counterevidence_refs", [])
+        if result.get("status") == "contradicted"
+        else [],
     }

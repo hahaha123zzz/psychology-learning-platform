@@ -58,10 +58,218 @@ def test_claim_four_states_do_not_infer_contradiction_from_missing_overlap() -> 
         == "partially-supported"
     )
     assert classify_claim(contradicted_subclaims=["A"])["status"] == "unknown"
-    assert (
-        classify_claim(contradicted_subclaims=["A"], counterevidence_scope_matches=True)["status"]
-        == "contradicted"
+
+
+def test_claim_contradiction_requires_a_resolvable_counterevidence_ref() -> None:
+    scope = {"course_id": "course-a", "publication_snapshot_id": "snapshot-a"}
+    evidence = [{"evidence_id": "counter-1", "text": "synthetic content evidence"}]
+
+    async def retrieve_once(_scope_snapshot):
+        raise AssertionError("verified initial counterevidence must not trigger retrieval")
+
+    result = asyncio.run(
+        verify_claim_with_bounded_retrieval(
+            claim="claim",
+            initial_evidence=evidence,
+            evaluate=lambda _claim, _items: {
+                "status": "contradicted",
+                "contradicted_subclaims": ["claim"],
+                "counterevidence_refs": ["counter-1"],
+            },
+            retrieve_once=retrieve_once,
+            retrieval_scope=scope,
+            required_scope=scope,
+        )
     )
+    assert result["status"] == "contradicted"
+    assert result["counterevidence_refs"] == ["counter-1"]
+
+
+@pytest.mark.parametrize(
+    ("counterevidence", "retrieval_scope"),
+    [
+        (
+            {"counterevidence_scope_matches": True},
+            {"course_id": "course-a", "publication_snapshot_id": "snapshot-a"},
+        ),
+        (
+            {"counterevidence_refs": ["not-in-evidence"]},
+            {"course_id": "course-a", "publication_snapshot_id": "snapshot-a"},
+        ),
+        (
+            {"counterevidence_refs": ["learning-1"]},
+            {"course_id": "course-a", "publication_snapshot_id": "snapshot-a"},
+        ),
+        (
+            {"counterevidence_refs": ["counter-1"]},
+            {"course_id": "course-a", "publication_snapshot_id": "snapshot-other"},
+        ),
+    ],
+)
+def test_unverified_counterevidence_fails_closed_even_with_positive_result(
+    counterevidence: dict, retrieval_scope: dict
+) -> None:
+    required_scope = {"course_id": "course-a", "publication_snapshot_id": "snapshot-a"}
+    evidence = [
+        {"evidence_id": "counter-1", "text": "synthetic content evidence"},
+        {
+            "evidence_id": "learning-1",
+            "question_version_id": "question-1",
+            "knowledge_point": "synthetic point",
+            "correct": False,
+        },
+    ]
+
+    async def retrieve_once(_scope_snapshot):
+        raise AssertionError("unverified counterevidence must stop before retry")
+
+    result = asyncio.run(
+        verify_claim_with_bounded_retrieval(
+            claim="claim",
+            initial_evidence=evidence,
+            evaluate=lambda _claim, _items: {
+                "status": "supported",
+                "supported_subclaims": ["claim"],
+                "contradicted_subclaims": ["claim"],
+                **counterevidence,
+            },
+            retrieve_once=retrieve_once,
+            retrieval_scope=retrieval_scope,
+            required_scope=required_scope,
+        )
+    )
+    assert result["status"] == "unknown"
+    assert result["refusal_reason"] == "counterevidence_unverified"
+    assert result["counterevidence_refs"] == []
+    assert result["supplemental_retrieval_attempts"] == 0
+
+
+@pytest.mark.parametrize(
+    "counterevidence_fields",
+    [
+        {"counterevidence_scope_matches": True},
+        {"counterevidence_refs": ["foreign-ref"]},
+    ],
+)
+def test_contradicted_claim_without_verified_refs_is_unknown(
+    counterevidence_fields: dict,
+) -> None:
+    scope = {"course_id": "course-a", "publication_snapshot_id": "snapshot-a"}
+
+    async def retrieve_once(_scope_snapshot):
+        raise AssertionError("an unverified contradiction must stop before retry")
+
+    result = asyncio.run(
+        verify_claim_with_bounded_retrieval(
+            claim="claim",
+            initial_evidence=[{"evidence_id": "content-ref", "text": "synthetic"}],
+            evaluate=lambda _claim, _items: {
+                "status": "contradicted",
+                "contradicted_subclaims": ["claim"],
+                **counterevidence_fields,
+            },
+            retrieve_once=retrieve_once,
+            retrieval_scope=scope,
+            required_scope=scope,
+        )
+    )
+    assert result["status"] == "unknown"
+    assert result["refusal_reason"] == "counterevidence_unverified"
+    assert result["counterevidence_refs"] == []
+    assert result["supplemental_retrieval_attempts"] == 0
+
+
+def test_unverified_counterevidence_with_independent_partial_claim_stays_partial() -> None:
+    scope = {"course_id": "course-a", "publication_snapshot_id": "snapshot-a"}
+
+    async def retrieve_once(_scope_snapshot):
+        raise AssertionError("an unverified contradiction must stop before retry")
+
+    result = asyncio.run(
+        verify_claim_with_bounded_retrieval(
+            claim="claim",
+            initial_evidence=[{"evidence_id": "content-ref", "text": "synthetic"}],
+            evaluate=lambda _claim, _items: {
+                "status": "partially-supported",
+                "supported_subclaims": ["independently supported subclaim"],
+                "unsupported_subclaims": ["independently unsupported subclaim"],
+                "contradicted_subclaims": ["other subclaim"],
+                "counterevidence_refs": ["foreign-ref"],
+            },
+            retrieve_once=retrieve_once,
+            retrieval_scope=scope,
+            required_scope=scope,
+        )
+    )
+    assert result["status"] == "partially-supported"
+    assert result["refusal_reason"] == "counterevidence_unverified"
+    assert result["counterevidence_refs"] == []
+    assert result["supplemental_retrieval_attempts"] == 0
+
+
+def test_unverified_counterevidence_keeps_independent_partial_status() -> None:
+    scope = {"course_id": "course-a", "publication_snapshot_id": "snapshot-a"}
+
+    async def retrieve_once(_scope_snapshot):
+        raise AssertionError("unverified counterevidence must stop before retry")
+
+    result = asyncio.run(
+        verify_claim_with_bounded_retrieval(
+            claim="claim",
+            initial_evidence=[{"evidence_id": "positive-1", "text": "synthetic"}],
+            evaluate=lambda _claim, _items: {
+                "status": "supported",
+                "supported_subclaims": ["supported part"],
+                "unsupported_subclaims": ["unsupported part"],
+                "contradicted_subclaims": ["claim"],
+                "counterevidence_refs": ["foreign-reference"],
+            },
+            retrieve_once=retrieve_once,
+            retrieval_scope=scope,
+            required_scope=scope,
+        )
+    )
+    assert result["status"] == "partially-supported"
+    assert result["supported_subclaims"] == ["supported part"]
+    assert result["unsupported_subclaims"] == ["unsupported part"]
+    assert result["contradicted_subclaims"] == []
+    assert result["counterevidence_refs"] == []
+    assert result["refusal_reason"] == "counterevidence_unverified"
+    assert result["supplemental_retrieval_attempts"] == 0
+
+
+def test_counterevidence_from_bounded_supplement_is_verified_against_combined_evidence() -> None:
+    scope = {"course_id": "course-a", "publication_snapshot_id": "snapshot-a"}
+    calls = 0
+
+    async def retrieve_once(_scope_snapshot):
+        nonlocal calls
+        calls += 1
+        return [{"evidence_id": "counter-2", "text": "synthetic supplemental content"}]
+
+    def evaluate(_claim: str, items: list[dict]):
+        if any(item.get("evidence_id") == "counter-2" for item in items):
+            return {
+                "status": "contradicted",
+                "contradicted_subclaims": ["claim"],
+                "counterevidence_refs": ["counter-2"],
+            }
+        return {"status": "unknown"}
+
+    result = asyncio.run(
+        verify_claim_with_bounded_retrieval(
+            claim="claim",
+            initial_evidence=[{"evidence_id": "initial-1", "text": "synthetic"}],
+            evaluate=evaluate,
+            retrieve_once=retrieve_once,
+            retrieval_scope=scope,
+            required_scope=scope,
+        )
+    )
+    assert calls == 1
+    assert result["status"] == "contradicted"
+    assert result["counterevidence_refs"] == ["counter-2"]
+    assert result["supplemental_retrieval_attempts"] == 1
 
 
 def test_claim_supplemental_retrieval_runs_at_most_once_and_keeps_scope() -> None:

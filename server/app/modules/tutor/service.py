@@ -44,6 +44,12 @@ from app.modules.knowledge.query import analyze_query
 
 SENTENCE_RE = re.compile(r"[^。！？.!?]+[。！？]?")
 TOKEN_RE = re.compile(r"[\u4e00-\u9fff]|[a-zA-Z0-9]+")
+NEGATION_RE = re.compile(
+    r"\b(?:not|no|never|without|neither|nor|cannot|can't|isn't|aren't|wasn't|weren't|"
+    r"doesn't|don't|didn't|hasn't|haven't|hadn't)\b",
+    re.IGNORECASE,
+)
+CHINESE_NEGATION_MARKERS = ("不", "没", "无", "未", "非")
 
 MAX_HINT_LEVEL = 3
 TOP_EVIDENCE = 3
@@ -333,6 +339,15 @@ def _claim_verification_record(
         "retrieval_scope": deepcopy(retrieval_scope),
         "initial_evidence_refs": _evidence_reference_ids(initial_evidence),
         "supplemental_evidence_refs": _evidence_reference_ids(supplemental_evidence),
+        "counterevidence_refs": (
+            [
+                reference
+                for reference in result.get("counterevidence_refs", [])
+                if isinstance(reference, str)
+            ]
+            if status == "contradicted"
+            else []
+        ),
         "supplemental_retrieval_attempts": min(max(attempts, 0), 1),
         "refusal_reason": refusal_reason,
     }
@@ -400,7 +415,7 @@ async def verify_domain_claim_for_tutor(
     supplemental_evidence = result.get("supplemental_evidence", [])
     if isinstance(supplemental_evidence, list) and any(
         _is_learning_evidence(item) for item in supplemental_evidence
-    ):
+    ) and result.get("refusal_reason") != "counterevidence_unverified":
         result = {
             "status": "unknown",
             "refusal_reason": "learning_evidence_cannot_support_content_claim",
@@ -1275,7 +1290,18 @@ def verify_claims(answer: str, package: EvidencePackage) -> dict:
         if not tokens:
             continue
         overlap = len(tokens & evidence_tokens) / len(tokens)
-        level = "supported" if overlap >= 0.9 else "partial" if overlap >= 0.6 else "not_found"
+        has_negation_marker = bool(NEGATION_RE.search(normalized)) or any(
+            marker in normalized for marker in CHINESE_NEGATION_MARKERS
+        )
+        level = (
+            "partial"
+            if has_negation_marker and overlap >= 0.6
+            else "supported"
+            if overlap >= 0.9
+            else "partial"
+            if overlap >= 0.6
+            else "not_found"
+        )
         claims.append({"claim": sentence, "support": level, "overlap": round(overlap, 3)})
     unsupported = sum(1 for c in claims if c["support"] == "not_found")
     return {"claims": claims, "unsupported_count": unsupported}
