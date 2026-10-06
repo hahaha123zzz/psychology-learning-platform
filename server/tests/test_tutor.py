@@ -1087,6 +1087,166 @@ def test_selected_table_turn_uses_pinned_local_context_and_binds_idempotency(
     assert revoked_replay.status_code == 404
 
 
+def test_selected_table_turn_replays_after_commit_before_done_reaches_client(
+    client, monkeypatch
+) -> None:
+    import asyncio
+    from copy import deepcopy
+
+    from fastapi import Request
+    from sqlalchemy import func, select
+
+    from app.db.models import (
+        ChatSession,
+        ChatTurn,
+        CourseRelease,
+        CourseReleaseAssignment,
+        User,
+    )
+    from app.db.session import session_factory
+    from app.modules.tutor import service as tutor_service
+    from app.modules.tutor.router import TurnCreate, create_turn
+
+    course_id, student_id, version_id = _prepare(client, publish=True)
+    assignment_id, pointer_id, _, _ = _seed_pinned_table_chat(
+        client, course_id=course_id, student_id=student_id, version_id=version_id
+    )
+    _login(client, "ms@uni.edu")
+    session = client.post(
+        "/api/v1/chat/sessions",
+        json={"course_id": course_id, "mode": "course_qa"},
+    ).json()["data"]
+    endpoint = f"/api/v1/chat/sessions/{session['id']}/turns"
+    body = {
+        "content": "请说明这张表怎么读",
+        "client_turn_id": "table-reconnect-commit-0001",
+        "selected_evidence_pointer_ids": [pointer_id],
+    }
+
+    def forbidden_provider(*args, **kwargs):
+        raise AssertionError("selected Table turn must stay on local extractive path")
+
+    monkeypatch.setattr(tutor_service.knowledge_service, "hybrid_search", forbidden_provider)
+    monkeypatch.setattr(tutor_service, "generate_grounded_answer", forbidden_provider)
+    monkeypatch.setattr(tutor_service, "call_model", forbidden_provider)
+
+    async def commit_then_drop_done() -> tuple[bytes, int]:
+        async with session_factory() as db:
+            user = await db.scalar(select(User).where(User.id == student_id))
+            session_row = await db.scalar(
+                select(ChatSession).where(ChatSession.id == session["id"])
+            )
+            assert user is not None
+            assert session_row is not None
+            request = Request(
+                {
+                    "type": "http",
+                    "asgi": {"version": "3.0"},
+                    "http_version": "1.1",
+                    "method": "POST",
+                    "scheme": "http",
+                    "path": f"/api/v1/chat/sessions/{session_row.id}/turns",
+                    "raw_path": f"/api/v1/chat/sessions/{session_row.id}/turns".encode(),
+                    "query_string": b"",
+                    "root_path": "",
+                    "headers": [],
+                    "server": ("testserver", 80),
+                    "client": ("testclient", 123),
+                }
+            )
+            response = await create_turn(
+                session_row.id,
+                TurnCreate(**body),
+                request,
+                user,
+                db,
+            )
+            iterator = response.body_iterator.__aiter__()
+            frames = []
+            while True:
+                frame = await anext(iterator)
+                if "event: done" in frame:
+                    # run_turn_stream 在发送 done 前已提交；丢弃该帧模拟确认消息丢失。
+                    break
+                frames.append(frame)
+            await iterator.aclose()
+            persisted_count = await db.scalar(
+                select(func.count()).select_from(ChatTurn).where(
+                    ChatTurn.session_id == session_row.id
+                )
+            )
+            return "".join(frames).encode("utf-8"), persisted_count or 0
+
+    pre_done_stream, count_after_lost_ack = asyncio.run(commit_then_drop_done())
+    first_events = _parse_sse_events(pre_done_stream)
+    assert count_after_lost_ack == 2
+    first_citation = next(data for name, data in first_events if name == "citation")
+    assert any(
+        name == "state"
+        and data.get("stage") == "explaining_object"
+        and data.get("evidence_pointer_id") == pointer_id
+        for name, data in first_events
+    )
+
+    retry = client.post(endpoint, json=body)
+    assert retry.status_code == 200, retry.text
+    replay_events = _parse_sse_events(retry.content)
+    replay_done = next(data for name, data in replay_events if name == "done")
+    assert replay_done["saved"] is True
+    assert replay_done["replayed"] is True
+    assert any(
+        name == "state"
+        and data.get("stage") == "explaining_object"
+        and data.get("evidence_pointer_id") == pointer_id
+        for name, data in replay_events
+    )
+    first_answer = "".join(
+        data["text"] for name, data in first_events if name == "delta"
+    )
+    replay_answer = "".join(
+        data["text"] for name, data in replay_events if name == "delta"
+    )
+    assert replay_answer == first_answer
+    replay_citation = next(data for name, data in replay_events if name == "citation")
+    assert replay_citation["evidence_pointer_id"] == pointer_id
+    assert replay_citation["label"] == first_citation["label"]
+
+    saved_turns = client.get(
+        f"/api/v1/chat/sessions/{session['id']}"
+    ).json()["data"]["turns"]
+    assert len(saved_turns) == 2
+    assert [turn["role"] for turn in saved_turns] == ["student", "tutor"]
+    assert replay_done["turn_id"] == saved_turns[1]["id"]
+    assert saved_turns[0]["citations"] == [{"evidence_pointer_id": pointer_id}]
+    assert saved_turns[1]["citations"][0]["evidence_pointer_id"] == pointer_id
+
+    changed_content_replay = client.post(
+        endpoint,
+        json={**body, "content": "请改为说明另一张表"},
+    )
+    assert changed_content_replay.status_code == 409
+    assert changed_content_replay.json()["error"]["code"] == "TURN_IDEMPOTENCY_CONFLICT"
+
+    async def invalidate_pinned_snapshot() -> None:
+        async with session_factory() as db:
+            assignment = await db.get(CourseReleaseAssignment, assignment_id)
+            assert assignment is not None
+            release = await db.get(CourseRelease, assignment.course_release_id)
+            assert release is not None
+            manifest = deepcopy(release.manifest)
+            pins = manifest["publication_snapshots"]
+            pin = next(item for item in pins if item["material_version_id"] == version_id)
+            # 合成一个失效的快照引用，验证重放仍须先通过当前 pin 授权。
+            pin["publication_snapshot_id"] = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+            release.manifest = manifest
+            await db.commit()
+
+    asyncio.run(invalidate_pinned_snapshot())
+    invalid_snapshot_replay = client.post(endpoint, json=body)
+    assert invalid_snapshot_replay.status_code == 404, invalid_snapshot_replay.text
+    assert invalid_snapshot_replay.json()["error"]["code"] == "EVIDENCE_NOT_FOUND"
+
+
 def test_turn_disconnect_after_delta_closes_generation_and_retry_saves_once(
     client, monkeypatch
 ) -> None:
