@@ -7,7 +7,7 @@ export type LearningEventType =
   | "lab_trial_completed"
   | "feedback_submitted";
 
-export type LearningEventSource = "tutor" | "assessment" | "practice" | "lab" | "system";
+export type LearningEventSource = "tutor" | "assessment" | "practice" | "review" | "lab" | "system";
 
 export type LearningEvent = {
   id: string;

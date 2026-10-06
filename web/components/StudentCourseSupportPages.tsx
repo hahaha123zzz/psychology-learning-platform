@@ -6,6 +6,8 @@ import { useParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { api, ApiError } from "../lib/api";
 import { createDeletionRecoveryMaterial } from "../lib/privacy-deletion";
+import { listMyLearningEvents } from "../lib/learning-events";
+import { isReviewEvidenceQualified, waitForReviewQualification } from "../lib/review-evidence";
 import StudentMiniLabPanel from "./StudentMiniLabPanel";
 import StudentPreferencesPanel from "./StudentPreferencesPanel";
 import StudentNotificationsPanel from "./StudentNotificationsPanel";
@@ -87,8 +89,51 @@ export function StudentPracticePage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, [load]);
   useEffect(() => () => { Object.values(essayTimers.current).forEach((timer) => window.clearTimeout(timer)); }, []);
-  async function completeReview(task: Review) { try { await api(`/review-tasks/${task.id}/complete`, { method: "POST" }); setReviews((items) => items.filter((item) => item.id !== task.id)); } catch (reason) { setNotice(message(reason)); } }
-  async function verifyReview(task: Review) { const selected = reviewAnswers[task.id]; if (!selected || task.version === undefined) return; try { await api(`/review-tasks/${task.id}/verify`, { method: "POST", body: JSON.stringify({ version: task.version, response: { selected_keys: [selected] } }) }); setReviews((items) => items.filter((item) => item.id !== task.id)); setReviewAnswers((items) => { const next = { ...items }; delete next[task.id]; return next; }); setNotice("复习答案已提交，服务端将记录延迟保持证据。"); } catch (reason) { setNotice(message(reason)); } }
+  async function completeReview(task: Review) { try { await api(`/review-tasks/${task.id}/complete`, { method: "POST" }); setReviews((items) => items.filter((item) => item.id !== task.id)); setNotice("复习任务已标记完成；此操作未提交答案，也未形成学习证据。"); } catch (reason) { setNotice(message(reason)); } }
+  async function verifyReview(task: Review) {
+    const selected = reviewAnswers[task.id];
+    if (!selected || task.version === undefined) return;
+
+    let result: { event_id: string; pending_qualification: boolean };
+    try {
+      result = await api<{ event_id: string; pending_qualification: boolean }>(
+        `/review-tasks/${task.id}/verify`,
+        {
+          method: "POST",
+          body: JSON.stringify({ version: task.version, response: { selected_keys: [selected] } }),
+        },
+      );
+    } catch (reason) {
+      setNotice(message(reason));
+      return;
+    }
+
+    setReviews((items) => items.filter((item) => item.id !== task.id));
+    setReviewAnswers((items) => {
+      const next = { ...items };
+      delete next[task.id];
+      return next;
+    });
+    setNotice(result.pending_qualification ? "复习答案已提交，学习记录正在等待资格判定…" : "复习答案已提交，正在核对学习记录结果…");
+
+    let status: Awaited<ReturnType<typeof waitForReviewQualification>>;
+    try {
+      status = await waitForReviewQualification(result.event_id, courseId, () => listMyLearningEvents(courseId));
+    } catch (reason) {
+      setNotice(`复习答案已提交，但暂时无法确认学习记录状态：${message(reason)}`);
+      return;
+    }
+
+    if (isReviewEvidenceQualified(status)) {
+      setNotice("复习记录已通过资格确认；进入成长页时会重新读取当前信息。");
+    } else if (status === "invalidated") {
+      setNotice("复习学习记录已失效；成长信息未更新。");
+    } else if (status === "rejected") {
+      setNotice("复习答案已提交，但未通过学习证据资格确认；成长信息未更新。");
+    } else {
+      setNotice("复习答案已提交，学习记录仍在处理中；确认完成前成长信息不会更新。");
+    }
+  }
   function saveResponse(questionId: string, response: Record<string, unknown>): Promise<boolean> {
     if (!attemptId) return Promise.resolve(false);
     setSaveState((items) => ({ ...items, [questionId]: "saving" }));

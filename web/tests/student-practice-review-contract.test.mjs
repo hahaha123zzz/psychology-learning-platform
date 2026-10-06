@@ -26,13 +26,18 @@ test("future review tasks expose due guidance and cannot call the verify API", (
   assert.match(practice, /id=\{`review-due-\$\{review\.id\}`\} role="status"/);
   assert.match(practice, /data-review-task-id=\{review\.id\}/);
   assert.match(practice, /尚未到复习时间，届时可验证并完成/);
-  assert.match(practice, /api\(`\/review-tasks\/\$\{task\.id\}\/verify`/);
+  assert.match(practice, /api<\{ event_id: string; pending_qualification: boolean \}>\(\s*`\/review-tasks\/\$\{task\.id\}\/verify`/);
   assert.match(practice, /task\.version === undefined\) return/);
 });
 
 test("review completion removes the card and announces the saved result", () => {
   assert.match(practice, /setReviews\(\(items\) => items\.filter\(\(item\) => item\.id !== task\.id\)\)/);
-  assert.match(practice, /复习答案已提交，服务端将记录延迟保持证据/);
+  assert.match(practice, /复习答案已提交，学习记录正在等待资格判定/);
+  assert.match(practice, /未通过学习证据资格确认；成长信息未更新/);
+  assert.match(practice, /复习学习记录已失效；成长信息未更新/);
+  assert.match(practice, /if \(isReviewEvidenceQualified\(status\)\)/);
+  assert.match(practice, /进入成长页时会重新读取当前信息/);
+  assert.match(source, /复习任务已标记完成；此操作未提交答案，也未形成学习证据/);
   assert.match(practice, /className="status-banner" role="status" aria-live="polite"/);
 });
 
