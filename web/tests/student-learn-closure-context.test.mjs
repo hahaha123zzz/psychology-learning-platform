@@ -14,7 +14,7 @@ test("Learn shows only pinned paragraph caption/explains pointers inside their e
   const context = learn.slice(learn.indexOf("item.closure?.filter(isPinnedParagraphContext)"), learn.indexOf("item.closure?.filter((neighbor) => neighbor.object_type === \"figure\""));
   assert.match(context, /图注上下文（非独立检索命中）/);
   assert.match(context, /解释段落上下文（非独立检索命中）/);
-  assert.match(context, /EvidencePointerDrawer label=\{neighbor\.relation_type === "caption_of" \? "查看图注来源" : "查看相邻段落来源"\} pointerId=\{neighbor\.evidence_pointer_id\}/);
+  assert.match(context, /EvidencePointerDrawer label=\{neighbor\.relation_type === "caption_of" \? "查看图注来源" : "查看相邻段落来源"\} onReturnToLearn=\{returnReaderSelection\} pointerId=\{neighbor\.evidence_pointer_id\}/);
   assert.doesNotMatch(context, /onAskTutor|onClick|<article/);
   assert.match(learn, /results\.map\(\(item, index\) => <article[\s\S]*?item\.closure\?\.filter\(isPinnedParagraphContext\)\.map/);
 });

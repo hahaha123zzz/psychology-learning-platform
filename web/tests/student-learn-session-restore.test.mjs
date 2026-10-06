@@ -26,7 +26,7 @@ test("Learn restores saved student and tutor turns and maps saved evidence point
   assert.match(restoreEffect, /citation\.evidence_pointer_id/);
   assert.match(restoreEffect, /citation\.label/);
   assert.match(restoreEffect, /if \(!item \|\| typeof item !== "object"\) return \[\]/);
-  assert.match(source, /EvidencePointerDrawer label="打开引用" pointerId=\{citation\.pointerId\}/);
+  assert.match(source, /EvidencePointerDrawer label="打开引用" onReturnToLearn=\{returnReaderSelection\} pointerId=\{citation\.pointerId\}/);
 });
 
 test("Learn fails closed on invalid session restore and does not auto-create a replacement", () => {

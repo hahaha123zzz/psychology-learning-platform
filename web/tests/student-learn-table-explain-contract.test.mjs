@@ -56,7 +56,7 @@ test("Only matching server TableExplain state labels the turn and citations keep
   assert.match(send, /eventData\.data\.saved === true && item\.pendingExplanation === "table" && hasExactTableCitation/);
   assert.match(source, /turn\.explanation === "table" && <small className="table-explain-label">表格解释/);
   assert.match(send, /eventData\.data\.evidence_pointer_id/);
-  assert.match(source, /EvidencePointerDrawer label="打开引用" pointerId=\{citation\.pointerId\}/);
+  assert.match(source, /EvidencePointerDrawer label="打开引用" onReturnToLearn=\{returnReaderSelection\} pointerId=\{citation\.pointerId\}/);
   assert.match(source, /stage === "explaining_object" &&/);
 });
 

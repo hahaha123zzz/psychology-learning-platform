@@ -86,10 +86,12 @@ export default function EvidencePointerDrawer({
   pointerId,
   label = "查看教材引用",
   onAskTutor,
+  onReturnToLearn,
 }: {
   pointerId: string;
   label?: string;
   onAskTutor?: (evidencePointerId: string) => void;
+  onReturnToLearn?: (evidencePointerId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -104,6 +106,13 @@ export default function EvidencePointerDrawer({
   const anchors = useMemo(() => (view ? anchorsFor(view) : []), [view]);
   const activeAnchor = anchors.find((anchor) => anchor.physical_page === selectedPhysicalPage) ?? null;
   const activeAnchorIndex = anchors.findIndex((anchor) => anchor.physical_page === selectedPhysicalPage);
+
+  function closeReader() {
+    if (view?.evidence_pointer_id === pointerId) {
+      onReturnToLearn?.(view.evidence_pointer_id);
+    }
+    setOpen(false);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -254,7 +263,7 @@ export default function EvidencePointerDrawer({
       </Button>
       <ContextDrawer
         labelledBy={`evidence-pointer-${pointerId}`}
-        onClose={() => setOpen(false)}
+        onClose={closeReader}
         open={open}
         title="教材来源快照"
       >
@@ -399,7 +408,7 @@ export default function EvidencePointerDrawer({
               <Button
                 onClick={() => {
                   onAskTutor(view.evidence_pointer_id);
-                  setOpen(false);
+                  closeReader();
                 }}
                 type="button"
                 variant="secondary"

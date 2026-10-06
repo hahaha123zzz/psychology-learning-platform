@@ -55,7 +55,7 @@ test("learning and SSE inputs remain accessible and recoverable after network fa
   assert.match(learn, /eventData\.event === "state"/);
   assert.match(learn, /eventData\.event === "done"/);
   assert.match(learn, /回答已保存/);
-  assert.match(learn, /EvidencePointerDrawer label="打开引用" pointerId=\{citation\.pointerId\}/);
+  assert.match(learn, /EvidencePointerDrawer label="打开引用" onReturnToLearn=\{returnReaderSelection\} pointerId=\{citation\.pointerId\}/);
 });
 
 test("student Learn can search native tables and open adjacent image pointers without implying image meaning", () => {

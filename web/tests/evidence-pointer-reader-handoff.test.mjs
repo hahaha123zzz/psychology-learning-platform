@@ -11,7 +11,7 @@ test("Reader handoff callback accepts only the server-loaded persistent pointer 
   assert.match(source, /onAskTutor\?: \(evidencePointerId: string\) => void/);
   assert.match(
     source,
-    /onClick=\{\(\) => \{\s*onAskTutor\(view\.evidence_pointer_id\);\s*setOpen\(false\);\s*\}\}/,
+    /onClick=\{\(\) => \{\s*onAskTutor\(view\.evidence_pointer_id\);\s*closeReader\(\);\s*\}\}/,
   );
   assert.doesNotMatch(source, /onAskTutor\([^)]*,/);
 });
