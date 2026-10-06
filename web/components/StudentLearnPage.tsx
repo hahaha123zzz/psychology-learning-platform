@@ -26,8 +26,7 @@ const tutorStageLabels: Record<string, string> = {
 };
 function reasonText(reason: unknown): string { return reason instanceof ApiError ? reason.message : "请求未完成，请检查本地服务后重试。"; }
 
-function StudentLearnContent() {
-  const { courseId } = useParams<{ courseId: string }>();
+function StudentLearnContent({ courseId }: { courseId: string }) {
   const searchParams = useSearchParams();
   const restoreRequested = searchParams.has("session_id");
   const requestedSessionParam = searchParams.get("session_id");
@@ -198,9 +197,10 @@ function StudentLearnContent() {
 }
 
 export default function StudentLearnPage() {
+  const { courseId } = useParams<{ courseId: string }>();
   return (
     <Suspense fallback={<p className="status-banner" role="status">正在读取学习空间…</p>}>
-      <StudentLearnContent />
+      <StudentLearnContent key={courseId} courseId={courseId} />
     </Suspense>
   );
 }

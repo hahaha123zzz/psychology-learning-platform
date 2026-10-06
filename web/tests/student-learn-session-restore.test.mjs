@@ -49,6 +49,15 @@ test("Learn hides loaded turns and their citations when the selected course chan
   assert.match(source, /setTurns\(\(items\) => \[\.\.\.items, \{ role: "student", content, citations: \[\] \}, \{ role: "tutor", content: "", citations: \[\], status: "正在连接学习助手…" \}\]\)/);
 });
 
+test("Learn remounts course-scoped state so prior turns, citations, and pending work cannot reappear", () => {
+  assert.match(source, /function StudentLearnContent\(\{ courseId \}: \{ courseId: string \}\)/);
+  assert.match(source, /const \{ courseId \} = useParams/);
+  assert.match(source, /<StudentLearnContent key=\{courseId\} courseId=\{courseId\} \/>/);
+  assert.match(source, /const \[turns, setTurns\] = useState<Turn\[]>\(\[\]\)/);
+  assert.match(source, /const pendingTurn = useRef<\{ sessionId: string; content: string; clientTurnId: string \} \| null>\(null\)/);
+  assert.match(source, /const \[results, setResults\] = useState<SearchItem\[]>\(\[\]\)/);
+});
+
 test("Learn saves the newly created session ID in the current URL without reloading", () => {
   const send = source.slice(source.indexOf("async function send"), source.indexOf("return <div className=\"student-learn-page\""));
   assert.match(send, /activeSession = created\.id;\s*loadedSessionRef\.current = \{ id: activeSession, courseId \};\s*setLoadedSession\(\{ id: activeSession, courseId \}\);\s*setRestoreError\(null\);\s*setSessionId\(activeSession\);\s*const currentUrl = new URL\(window\.location\.href\);\s*currentUrl\.searchParams\.set\("session_id", activeSession\);\s*window\.history\.replaceState\(window\.history\.state, "", currentUrl\);/);
