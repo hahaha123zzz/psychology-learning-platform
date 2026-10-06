@@ -409,8 +409,9 @@ async def resolve_learning_release_binding(
     user_id: str,
     course_id: str,
     material_id: str,
+    material_version_id: str,
 ) -> tuple[str | None, str | None]:
-    """为新学习会话解析唯一活动班级 assignment；无 assignment 保留 legacy 空值。"""
+    """为新学习会话解析唯一活动 assignment 与请求版本的精确发布 pin。"""
     rows = (
         await db.execute(
             select(CourseReleaseAssignment.id, CourseReleaseAssignment.course_release_id)
@@ -450,11 +451,98 @@ async def resolve_learning_release_binding(
             code="COURSE_RELEASE_ASSIGNMENT_INVALID",
             message="当前班级课程版本不可用，请联系教师检查课程指派。",
         )
-    materials = (release.manifest or {}).get("materials")
+    manifest = release.manifest if isinstance(release.manifest, dict) else {}
+    materials = manifest.get("materials")
+    material_version_ids = manifest.get("material_version_ids")
+    publication_snapshots = manifest.get("publication_snapshots")
     if (
         not isinstance(materials, list)
-        or any(not isinstance(value, str) for value in materials)
-        or material_id not in materials
+        or not isinstance(material_version_ids, list)
+        or not isinstance(publication_snapshots, list)
+        or not materials
+        or len(materials) != len(material_version_ids)
+        or len(materials) != len(publication_snapshots)
+        or any(not isinstance(value, str) or not value for value in materials)
+        or any(
+            not isinstance(value, str) or not value for value in material_version_ids
+        )
+        or len(set(materials)) != len(materials)
+        or len(set(material_version_ids)) != len(material_version_ids)
+    ):
+        raise ApiError(
+            status_code=404,
+            code="MATERIAL_VERSION_NOT_IN_ASSIGNED_RELEASE",
+            message="资料不存在或不属于当前班级课程版本。",
+        )
+
+    matching_indexes = [
+        index
+        for index, pair in enumerate(zip(materials, material_version_ids, strict=True))
+        if pair == (material_id, material_version_id)
+    ]
+    if len(matching_indexes) != 1:
+        raise ApiError(
+            status_code=404,
+            code="MATERIAL_VERSION_NOT_IN_ASSIGNED_RELEASE",
+            message="资料不存在或不属于当前班级课程版本。",
+        )
+
+    pin = publication_snapshots[matching_indexes[0]]
+    required_pin_fields = {
+        "material_id",
+        "material_version_id",
+        "publication_snapshot_id",
+        "index_job_id",
+        "embedding_version",
+        "domain_release_id",
+    }
+    if (
+        not isinstance(pin, dict)
+        or set(pin) != required_pin_fields
+        or any(not isinstance(pin.get(key), str) or not pin[key] for key in required_pin_fields)
+        or pin["material_id"] != material_id
+        or pin["material_version_id"] != material_version_id
+        or release.domain_release_id is None
+        or pin["domain_release_id"] != release.domain_release_id
+    ):
+        raise ApiError(
+            status_code=404,
+            code="MATERIAL_VERSION_NOT_IN_ASSIGNED_RELEASE",
+            message="资料不存在或不属于当前班级课程版本。",
+        )
+
+    snapshot = await db.get(PublicationSnapshot, pin["publication_snapshot_id"])
+    index_job = await db.get(Job, pin["index_job_id"])
+    domain_release = await db.get(DomainRelease, pin["domain_release_id"])
+    version = await db.get(MaterialVersion, material_version_id)
+    material = await db.get(Material, material_id)
+    payload = (
+        index_job.payload
+        if index_job is not None and isinstance(index_job.payload, dict)
+        else {}
+    )
+    if (
+        snapshot is None
+        or snapshot.material_id != material_id
+        or snapshot.material_version_id != material_version_id
+        or snapshot.index_job_id != pin["index_job_id"]
+        or snapshot.embedding_version != pin["embedding_version"]
+        or snapshot.domain_release_id != pin["domain_release_id"]
+        or index_job is None
+        or index_job.kind != "material_embed"
+        or index_job.status != "succeeded"
+        or payload.get("material_version_id") != material_version_id
+        or payload.get("domain_release_id") != pin["domain_release_id"]
+        or domain_release is None
+        or domain_release.course_id != course_id
+        or domain_release.status not in {"published", "deprecated"}
+        or version is None
+        or version.material_id != material_id
+        or version.status != "parsed"
+        or material is None
+        or material.course_id != course_id
+        or material.status != "active"
+        or material.visibility != "published"
     ):
         raise ApiError(
             status_code=404,

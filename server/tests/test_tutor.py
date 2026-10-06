@@ -51,7 +51,8 @@ def _seed_pinned_table_chat(client, *, course_id: str, student_id: str, version_
     from app.db.session import session_factory
     from app.modules.knowledge import service as knowledge_service
 
-    teacher_id = client.get("/api/v1/me").json()["data"]["id"]
+    teacher = client.get("/api/v1/me").json()["data"]
+    teacher_id = teacher["id"]
 
     async def seed() -> tuple[str, str, str, str]:
         async with session_factory() as db:
@@ -275,7 +276,8 @@ def test_student_chat_session_pins_release_and_refuses_missing_snapshot_after_ro
     from app.db.session import session_factory
 
     course_id, student_id, version_id = _prepare(client, publish=True)
-    teacher_id = client.get("/api/v1/me").json()["data"]["id"]
+    teacher = client.get("/api/v1/me").json()["data"]
+    teacher_id = teacher["id"]
 
     async def seed_release() -> tuple[str, str, str, str]:
         async with session_factory() as db:
@@ -1842,24 +1844,59 @@ def test_learning_session_pins_unique_course_release_assignment(client) -> None:
     import pytest
     from sqlalchemy import select
 
+    from app.db.base import new_ulid
     from app.db.models import (
         ClassMember,
+        Course,
         CourseClass,
         CourseRelease,
         CourseReleaseAssignment,
         LearningEvidence,
         LearningSession,
+        Material,
         MaterialVersion,
+        PublicationSnapshot,
     )
     from app.db.session import session_factory
 
     course_id, student_id, version_id = _prepare(client, publish=True)
-    teacher_id = client.get("/api/v1/me").json()["data"]["id"]
+    teacher = client.get("/api/v1/me").json()["data"]
+    teacher_id = teacher["id"]
+    organization_id = teacher["organization_id"]
 
-    async def seed_assignment() -> tuple[str, str, str, str]:
+    _login(client, "ms@uni.edu")
+    legacy = client.post(
+        "/api/v1/learning-sessions",
+        json={"course_id": course_id, "material_version_id": version_id},
+    )
+    assert legacy.status_code == 201, legacy.text
+    legacy_id = legacy.json()["data"]["id"]
+
+    async def load_legacy_binding() -> tuple[str | None, str | None]:
+        async with session_factory() as db:
+            learning = await db.get(LearningSession, legacy_id)
+            return learning.course_release_assignment_id, learning.course_release_id
+
+    assert asyncio.run(load_legacy_binding()) == (None, None)
+
+    async def seed_assignment() -> tuple[str, str, str, str, str, str, str, str]:
         async with session_factory() as db:
             material_version = await db.get(MaterialVersion, version_id)
             assert material_version is not None
+            snapshot = await db.scalar(
+                select(PublicationSnapshot).where(
+                    PublicationSnapshot.material_version_id == version_id
+                )
+            )
+            assert snapshot is not None and snapshot.domain_release_id is not None
+            pin = {
+                "material_id": material_version.material_id,
+                "material_version_id": version_id,
+                "publication_snapshot_id": snapshot.id,
+                "index_job_id": snapshot.index_job_id,
+                "embedding_version": snapshot.embedding_version,
+                "domain_release_id": snapshot.domain_release_id,
+            }
             course_class = CourseClass(
                 course_id=course_id,
                 code="R3B-ONLY",
@@ -1874,7 +1911,12 @@ def test_learning_session_pins_unique_course_release_assignment(client) -> None:
                 version_no=1,
                 name="R3-B release",
                 status="published",
-                manifest={"materials": [material_version.material_id]},
+                manifest={
+                    "materials": [material_version.material_id],
+                    "material_version_ids": [version_id],
+                    "publication_snapshots": [pin],
+                },
+                domain_release_id=snapshot.domain_release_id,
                 created_by=teacher_id,
                 published_by=teacher_id,
             )
@@ -1888,10 +1930,89 @@ def test_learning_session_pins_unique_course_release_assignment(client) -> None:
                 assigned_by=teacher_id,
             )
             db.add(assignment)
-            await db.commit()
-            return course_class.id, assignment.id, release.id, material_version.material_id
 
-    class_id, assignment_id, release_id, material_id = asyncio.run(seed_assignment())
+            unpinned_version = MaterialVersion(
+                material_id=material_version.material_id,
+                version_no=material_version.version_no + 1,
+                status="parsed",
+                original_filename="synthetic-unpinned.pdf",
+                sha256="a" * 64,
+                size_bytes=1,
+                content_type="application/pdf",
+                object_key=f"synthetic/{new_ulid()}.pdf",
+                created_by=teacher_id,
+            )
+            same_course_material = Material(
+                course_id=course_id,
+                title="合成未发布课程快照的资料",
+                material_type="slides",
+                visibility="published",
+                status="active",
+                created_by=teacher_id,
+            )
+            other_course = Course(
+                organization_id=organization_id,
+                title="隔离测试课程",
+                term="2026秋",
+                created_by=teacher_id,
+            )
+            db.add_all([unpinned_version, same_course_material, other_course])
+            await db.flush()
+            same_course_version = MaterialVersion(
+                material_id=same_course_material.id,
+                version_no=1,
+                status="parsed",
+                original_filename="synthetic-other-material.pdf",
+                sha256="b" * 64,
+                size_bytes=1,
+                content_type="application/pdf",
+                object_key=f"synthetic/{new_ulid()}.pdf",
+                created_by=teacher_id,
+            )
+            other_course_material = Material(
+                course_id=other_course.id,
+                title="另一课程合成资料",
+                material_type="slides",
+                visibility="published",
+                status="active",
+                created_by=teacher_id,
+            )
+            db.add_all([same_course_version, other_course_material])
+            await db.flush()
+            other_course_version = MaterialVersion(
+                material_id=other_course_material.id,
+                version_no=1,
+                status="parsed",
+                original_filename="synthetic-foreign-course.pdf",
+                sha256="c" * 64,
+                size_bytes=1,
+                content_type="application/pdf",
+                object_key=f"synthetic/{new_ulid()}.pdf",
+                created_by=teacher_id,
+            )
+            db.add(other_course_version)
+            await db.commit()
+            return (
+                course_class.id,
+                assignment.id,
+                release.id,
+                material_version.material_id,
+                other_course.id,
+                unpinned_version.id,
+                same_course_version.id,
+                other_course_version.id,
+            )
+
+    (
+        class_id,
+        assignment_id,
+        release_id,
+        material_id,
+        other_course_id,
+        unpinned_version_id,
+        same_course_version_id,
+        other_course_version_id,
+    ) = asyncio.run(seed_assignment())
     outline = client.get(f"/api/v1/material-versions/{version_id}/outline")
     chapter_id = outline.json()["data"][0]["id"]
     _login(client, "ms@uni.edu")
@@ -1905,6 +2026,27 @@ def test_learning_session_pins_unique_course_release_assignment(client) -> None:
     )
     assert created.status_code == 201
     learning_id = created.json()["data"]["id"]
+
+    for rejected_version_id, expected_error in (
+        (unpinned_version_id, "MATERIAL_VERSION_NOT_IN_ASSIGNED_RELEASE"),
+        (same_course_version_id, "MATERIAL_VERSION_NOT_IN_ASSIGNED_RELEASE"),
+        (other_course_version_id, "MATERIAL_VERSION_NOT_FOUND"),
+    ):
+        rejected = client.post(
+            "/api/v1/learning-sessions",
+            json={
+                "course_id": course_id,
+                "material_version_id": rejected_version_id,
+            },
+        )
+        assert rejected.status_code == 404
+        assert rejected.json()["error"]["code"] == expected_error
+
+    cross_course = client.post(
+        "/api/v1/learning-sessions",
+        json={"course_id": other_course_id, "material_version_id": version_id},
+    )
+    assert cross_course.status_code == 404
 
     async def load_binding() -> tuple[str | None, str | None]:
         async with session_factory() as db:
@@ -1924,6 +2066,7 @@ def test_learning_session_pins_unique_course_release_assignment(client) -> None:
                     user_id=student_id,
                     course_id=course_id,
                     material_id="not-in-release",
+                    material_version_id=version_id,
                 )
             assert exc_info.value.status_code == 404
             assert exc_info.value.code == "MATERIAL_VERSION_NOT_IN_ASSIGNED_RELEASE"

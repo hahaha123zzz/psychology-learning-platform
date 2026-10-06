@@ -647,6 +647,7 @@ async def create_learning_session(
             user_id=user.id,
             course_id=body.course_id,
             material_id=material.id,
+            material_version_id=version.id,
         )
     tutor_message = await tutor_service.start_learning_session(
         db,
