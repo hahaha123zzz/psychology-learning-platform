@@ -69,6 +69,7 @@ async function main() {
     assert.equal(session.body.data.id, sessionId);
     assert.equal(session.body.data.course_id, course.id, "session must belong to the synthetic route course");
     assert.equal(session.body.data.mode, "course_qa", "only an existing active course_qa session is accepted");
+    const restoredTutorTurnCount = session.body.data.turns.filter((turn) => turn.role === "tutor").length;
 
     await page.goto(`${webOrigin}/student/courses/${course.id}/learn?session_id=${encodeURIComponent(sessionId)}`);
     await page.waitForFunction(() => {
@@ -90,7 +91,15 @@ async function main() {
     const question = "请解释这张表格的主要信息。";
     await page.getByLabel("围绕教材提问").fill(question);
     await page.getByRole("button", { name: "发送问题" }).click();
-    await page.getByText("表格解释 · 来自已核验的表格引用", { exact: true }).waitFor({ state: "visible", timeout: 60_000 });
+    await page.waitForFunction((count) => document.querySelectorAll(".learn-turn.tutor").length === count + 1,
+      restoredTutorTurnCount, { timeout: 20_000 });
+    const latestTutorTurn = page.locator(".learn-turn.tutor").last();
+    const tableExplainLabel = latestTutorTurn.locator(".table-explain-label").first();
+    await tableExplainLabel.waitFor({ state: "visible", timeout: 60_000 });
+    assert.equal(await tableExplainLabel.count(), 1,
+      "the latest generated Tutor turn must have exactly one TableExplain label");
+    assert.equal((await tableExplainLabel.innerText()).trim(), "表格解释 · 来自已核验的表格引用",
+      "the latest generated Tutor turn must be identified as TableExplain");
     assert.equal(turnBodies.length, 1, "exactly one synthetic Tutor turn may be sent");
     assert.equal(pointerReads.length >= 2, true, "Reader and Learn must reload pointer metadata from the server");
     const selectedPointer = pointerReads.find((item) => item.object_type === "table" && item.excerpt?.trim());

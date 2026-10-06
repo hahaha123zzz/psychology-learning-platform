@@ -36,6 +36,15 @@ test("the browser script requires and restores an existing synthetic course_qa s
   assert.match(browser, /publication_snapshot_id/);
   assert.match(browser, /index_job_id/);
   assert.match(browser, /domain_release_id/);
+  assert.match(browser, /const restoredTutorTurnCount = session\.body\.data\.turns\.filter\(\(turn\) => turn\.role === "tutor"\)\.length/);
+  assert.match(browser, /page\.waitForFunction\(\(count\) => document\.querySelectorAll\("\.learn-turn\.tutor"\)\.length === count \+ 1/);
+  assert.match(browser, /const latestTutorTurn = page\.locator\("\.learn-turn\.tutor"\)\.last\(\)/);
+  assert.match(browser, /const tableExplainLabel = latestTutorTurn\.locator\("\.table-explain-label"\)\.first\(\)/);
+  assert.match(browser, /await tableExplainLabel\.waitFor\(\{ state: "visible", timeout: 60_000 \}\)/);
+  assert.match(browser, /assert\.equal\(await tableExplainLabel\.count\(\), 1/);
+  assert.match(browser, /assert\.equal\(\(await tableExplainLabel\.innerText\(\)\)\.trim\(\), "表格解释 · 来自已核验的表格引用"/);
+  assert.doesNotMatch(browser, /page\.getByText\("表格解释 · 来自已核验的表格引用"/);
+  assert.doesNotMatch(browser, /latestTutorTurn\.getByText\(/);
 });
 
 test("Tutor request transmits at most one pointer ID and binds retries to pointer selection", () => {
