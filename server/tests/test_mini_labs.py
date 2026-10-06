@@ -82,6 +82,32 @@ def test_mini_lab_result_is_server_validated_and_qualifies(client) -> None:
     )
     assert incomplete.status_code == 422
 
+    from app.db.models import LearningEvent, LearningEvidence, MasteryState
+    from app.db.session import session_factory
+
+    async def _incomplete_counts():
+        async with session_factory() as db:
+            event_count = await db.scalar(
+                select(func.count()).select_from(LearningEvent).where(
+                    LearningEvent.source_ref == session["id"]
+                )
+            )
+            evidence_count = await db.scalar(
+                select(func.count()).select_from(LearningEvidence).where(
+                    LearningEvidence.user_id == student_id,
+                    LearningEvidence.course_id == course_id,
+                )
+            )
+            mastery_count = await db.scalar(
+                select(func.count()).select_from(MasteryState).where(
+                    MasteryState.user_id == student_id,
+                    MasteryState.course_id == course_id,
+                )
+            )
+            return event_count, evidence_count, mastery_count
+
+    assert asyncio.run(_incomplete_counts()) == (0, 0, 0)
+
     valid = client.post(
         f"/api/v1/student/labs/{session['id']}/result",
         json={
@@ -100,7 +126,6 @@ def test_mini_lab_result_is_server_validated_and_qualifies(client) -> None:
     assert valid.json()["data"]["status"] == "completed"
     assert valid.json()["data"]["derived_measure"]["qualification_status"] == "pending"
 
-    from app.db.session import session_factory
     from app.modules.learning_events.qualification import qualify_pending_events
 
     async def _run_worker():
@@ -111,6 +136,255 @@ def test_mini_lab_result_is_server_validated_and_qualifies(client) -> None:
     assert counts["qualified"] == 1
     completed = client.get(f"/api/v1/student/labs/{session['id']}")
     assert completed.json()["data"]["derived_measure"]["qualification_status"] == "qualified"
+
+
+def test_mini_lab_qualification_scopes_source_measure_and_replay(client) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.db.base import new_ulid
+    from app.db.models import LearningEvent, LearningEvidence, LearningQualification, MasteryState
+    from app.db.session import session_factory
+    from app.modules.learning_events.qualification import qualify_event, qualify_pending_events
+
+    create_user_sync(email="lab-scope-teacher@uni.edu", is_teacher=True)
+    student_id = create_user_sync(email="lab-scope-student@uni.edu")
+    other_student_id = create_user_sync(email="lab-scope-other@uni.edu")
+    course_id = _course_for_student(client, "lab-scope-teacher@uni.edu", student_id)
+    _login(client, "lab-scope-student@uni.edu")
+    session = client.post(
+        "/api/v1/student/labs",
+        json={"course_id": course_id, "lab_key": "attention-cue-basic"},
+    ).json()["data"]
+    completed = client.post(
+        f"/api/v1/student/labs/{session['id']}/result",
+        json={
+            "version": session["version"],
+            "schema_version": "mini-lab.v1",
+            "definition_id": session["definition_snapshot"]["id"],
+            "runtime": "jspsych",
+            "trial_data": _trials(PHASES),
+            "completed_at": "2026-10-02T10:01:00Z",
+        },
+    )
+    assert completed.status_code == 200
+
+    async def _projection_counts() -> tuple[int, int]:
+        async with session_factory() as db:
+            evidence_count = await db.scalar(
+                select(func.count()).select_from(LearningEvidence).where(
+                    LearningEvidence.user_id == student_id,
+                    LearningEvidence.course_id == course_id,
+                )
+            )
+            mastery_count = await db.scalar(
+                select(func.count()).select_from(MasteryState).where(
+                    MasteryState.user_id == student_id,
+                    MasteryState.course_id == course_id,
+                )
+            )
+            return int(evidence_count or 0), int(mastery_count or 0)
+
+    # 完成接口只追加 LearningEvent；它本身不得投影 LearningEvidence 或 MasteryState。
+    assert asyncio.run(_projection_counts()) == (0, 0)
+
+    authoritative_payload = {
+        "session_id": session["id"],
+        "lab_key": session["lab_key"],
+        "trial_count": 6,
+        "explanation_complete": True,
+        "transfer_complete": True,
+    }
+    mismatch_key = "lab-scope-measure-mismatch"
+    other_owner_key = "lab-scope-other-owner"
+    other_course_key = "lab-scope-other-course"
+    other_source_key = "lab-scope-other-source"
+    wrong_course_id = new_ulid()
+
+    async def _seed_scope_mismatch_events() -> str:
+        async with session_factory() as db:
+            # 让 measure mismatch 先于真实完成事件被处理，确保其明确走字段比较拒绝。
+            db.add_all(
+                [
+                    LearningEvent(
+                        event_key=mismatch_key,
+                        user_id=student_id,
+                        course_id=course_id,
+                        event_type="lab_trial_completed",
+                        source_type="lab",
+                        source_ref=session["id"],
+                        payload={**authoritative_payload, "trial_count": 5},
+                        occurred_at=datetime.now(UTC) - timedelta(minutes=1),
+                    ),
+                    LearningEvent(
+                        event_key=other_owner_key,
+                        user_id=other_student_id,
+                        course_id=course_id,
+                        event_type="lab_trial_completed",
+                        source_type="lab",
+                        source_ref=session["id"],
+                        payload=authoritative_payload,
+                        occurred_at=datetime.now(UTC),
+                    ),
+                    LearningEvent(
+                        event_key=other_course_key,
+                        user_id=student_id,
+                        course_id=wrong_course_id,
+                        event_type="lab_trial_completed",
+                        source_type="lab",
+                        source_ref=session["id"],
+                        payload=authoritative_payload,
+                        occurred_at=datetime.now(UTC),
+                    ),
+                    LearningEvent(
+                        event_key=other_source_key,
+                        user_id=student_id,
+                        course_id=course_id,
+                        event_type="lab_trial_completed",
+                        source_type="tutor",
+                        source_ref=session["id"],
+                        payload=authoritative_payload,
+                        occurred_at=datetime.now(UTC),
+                    ),
+                ]
+            )
+            await db.commit()
+            return str(
+                await db.scalar(
+                    select(LearningEvent.id).where(
+                        LearningEvent.event_key == f"lab:{session['id']}:completed"
+                    )
+                )
+            )
+
+    authoritative_event_id = asyncio.run(_seed_scope_mismatch_events())
+
+    async def _qualify_all():
+        async with session_factory() as db:
+            return await qualify_pending_events(db, limit=20)
+
+    first_counts = asyncio.run(_qualify_all())
+    assert first_counts["claimed"] == 5
+    assert first_counts["qualified"] == 1
+    assert first_counts["rejected"] == 4
+
+    async def _reasons():
+        async with session_factory() as db:
+            rows = await db.scalars(
+                select(LearningQualification).where(
+                    LearningQualification.event_id.in_(
+                        select(LearningEvent.id).where(
+                            LearningEvent.event_key.in_(
+                                [mismatch_key, other_owner_key, other_course_key, other_source_key]
+                            )
+                        )
+                    )
+                )
+            )
+            return {row.reason for row in rows}
+
+    assert asyncio.run(_reasons()) == {
+        "mini_lab_measure_mismatch",
+        "mini_lab_session_not_completed",
+        "event_type_not_evidence_bearing",
+    }
+
+    duplicate = client.post(
+        "/api/v1/learning-events",
+        json={
+            "event_key": "lab-scope-second-qualified-event",
+            "course_id": course_id,
+            "event_type": "lab_trial_completed",
+            "source_type": "lab",
+            "source_ref": session["id"],
+            "payload": {
+                **authoritative_payload,
+                "correct": False,
+                "mastery_state": {"state": "mastered", "correct_ratio": 1.0},
+            },
+        },
+    )
+    assert duplicate.status_code == 201
+
+    duplicate_counts = asyncio.run(_qualify_all())
+    assert duplicate_counts["claimed"] == 1
+    assert duplicate_counts["qualified"] == 0
+    assert duplicate_counts["rejected"] == 1
+
+    async def _assert_replay_has_no_second_projection():
+        async with session_factory() as db:
+            event = await db.scalar(
+                select(LearningEvent).where(LearningEvent.id == authoritative_event_id)
+            )
+            qualification, replay = await qualify_event(db, event_id=authoritative_event_id)
+            evidence_count = await db.scalar(
+                select(func.count()).select_from(LearningEvidence).where(
+                    LearningEvidence.user_id == student_id,
+                    LearningEvidence.course_id == course_id,
+                    LearningEvidence.attempt_id == session["id"],
+                )
+            )
+            evidence = await db.scalar(
+                select(LearningEvidence).where(
+                    LearningEvidence.user_id == student_id,
+                    LearningEvidence.course_id == course_id,
+                    LearningEvidence.attempt_id == session["id"],
+                )
+            )
+            state = await db.scalar(
+                select(MasteryState).where(
+                    MasteryState.user_id == student_id,
+                    MasteryState.course_id == course_id,
+                    MasteryState.knowledge_point == f"lab:{session['lab_key']}",
+                )
+            )
+            duplicate_qualification = await db.scalar(
+                select(LearningQualification).where(
+                    LearningQualification.event_id == duplicate.json()["data"]["id"]
+                )
+            )
+            qualification_status = qualification.status
+            duplicate_reason = duplicate_qualification.reason
+            evidence_projection = {
+                "source_type": evidence.source_type,
+                "dimension": evidence.dimension,
+                "knowledge_point": evidence.knowledge_point,
+                "context_key": evidence.context_key,
+                "question_version_id": evidence.question_version_id,
+            }
+            mastery_evidence_count = state.evidence_count if state is not None else None
+            await db.rollback()
+            return (
+                event,
+                qualification_status,
+                replay,
+                evidence_count,
+                evidence_projection,
+                mastery_evidence_count,
+                duplicate_reason,
+            )
+
+    (
+        event,
+        qualification_status,
+        replay,
+        evidence_count,
+        evidence_projection,
+        mastery_evidence_count,
+        duplicate_reason,
+    ) = asyncio.run(_assert_replay_has_no_second_projection())
+    assert event is not None
+    assert qualification_status == "qualified"
+    assert replay is True
+    assert evidence_count == 1
+    assert evidence_projection == {
+        "source_type": "practice",
+        "dimension": "transfer",
+        "knowledge_point": f"lab:{session['lab_key']}",
+        "context_key": f"lab:{session['lab_key']}",
+        "question_version_id": session["id"],
+    }
+    assert mastery_evidence_count == 1
+    assert duplicate_reason == "mini_lab_result_not_pending"
 
 
 def test_mini_lab_refresh_restores_trials_and_completion_replay_is_idempotent(client) -> None:
@@ -309,7 +583,24 @@ def test_mini_lab_invalidation_is_idempotent_terminal_and_never_qualifies(client
     assert cannot_submit.status_code == 409
     assert cannot_submit.json()["error"]["code"] == "MINI_LAB_INVALID_STATE"
 
-    from app.db.models import LearningEvent
+    event = client.post(
+        "/api/v1/learning-events",
+        json={
+            "event_key": f"lab:{session['id']}:invalidated-attempt",
+            "course_id": course_id,
+            "event_type": "lab_trial_completed",
+            "source_type": "lab",
+            "source_ref": session["id"],
+            "payload": {
+                "trial_count": 6,
+                "explanation_complete": True,
+                "transfer_complete": True,
+            },
+        },
+    )
+    assert event.status_code == 201
+
+    from app.db.models import LearningEvent, LearningEvidence, LearningQualification, MasteryState
     from app.db.session import session_factory
     from app.modules.learning_events.qualification import qualify_pending_events
 
@@ -321,11 +612,33 @@ def test_mini_lab_invalidation_is_idempotent_terminal_and_never_qualifies(client
                 .where(LearningEvent.source_ref == session["id"])
             )
             qualification_counts = await qualify_pending_events(db, limit=10)
-            return event_count, qualification_counts
+            evidence_count = await db.scalar(
+                select(func.count()).select_from(LearningEvidence).where(
+                    LearningEvidence.user_id == student_id,
+                    LearningEvidence.course_id == course_id,
+                )
+            )
+            mastery_count = await db.scalar(
+                select(func.count()).select_from(MasteryState).where(
+                    MasteryState.user_id == student_id,
+                    MasteryState.course_id == course_id,
+                )
+            )
+            qualification = await db.scalar(
+                select(LearningQualification).where(
+                    LearningQualification.event_id == event.json()["data"]["id"]
+                )
+            )
+            return event_count, qualification_counts, evidence_count, mastery_count, qualification
 
-    event_count, qualification_counts = asyncio.run(_counts())
-    assert event_count == 0
-    assert qualification_counts["qualified"] == 0
+    event_count, qualification_counts, evidence_count, mastery_count, qualification = asyncio.run(
+        _counts()
+    )
+    assert event_count == 1
+    assert qualification_counts["rejected"] == 1
+    assert evidence_count == 0
+    assert mastery_count == 0
+    assert qualification.reason == "mini_lab_session_not_completed"
 
 
 def test_mini_lab_completed_session_cannot_be_invalidated(client) -> None:

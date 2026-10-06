@@ -1,10 +1,47 @@
 import asyncio
+from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import select
 
 from tests.conftest import create_user_sync
 
 COURSE_BODY = {"title": "实验心理学", "term": "2026春", "timezone": "Asia/Shanghai"}
+
+
+@pytest.mark.parametrize("qualification_status", ["qualified", "rejected", None])
+def test_mini_lab_qualification_requires_pending_measure_without_database(
+    qualification_status,
+) -> None:
+    from app.modules.learning_events.qualification import _qualify_lab_result
+
+    measure = {
+        "trial_count": 6,
+        "explanation_complete": True,
+        "transfer_complete": True,
+        "qualification_status": qualification_status,
+    }
+    session = SimpleNamespace(
+        id="synthetic-session-id",
+        user_id="synthetic-user-id",
+        course_id="synthetic-course-id",
+        status="completed",
+        derived_measure=measure,
+    )
+    event = SimpleNamespace(
+        source_ref=session.id,
+        user_id=session.user_id,
+        course_id=session.course_id,
+        payload={key: value for key, value in measure.items() if key != "qualification_status"},
+    )
+
+    class FakeDatabase:
+        async def scalar(self, _statement):
+            return session
+
+    evidence_ids, reason = asyncio.run(_qualify_lab_result(FakeDatabase(), event))
+    assert evidence_ids == []
+    assert reason == "mini_lab_result_not_pending"
 
 
 def _login(client, email: str, password: str = "correct-password") -> None:

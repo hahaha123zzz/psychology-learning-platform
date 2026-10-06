@@ -204,7 +204,7 @@ async def _qualify_lab_result(
             MiniLabSession.id == event.source_ref,
             MiniLabSession.user_id == event.user_id,
             MiniLabSession.course_id == event.course_id,
-        )
+        ).with_for_update()
     )
     if (
         session is None
@@ -213,6 +213,8 @@ async def _qualify_lab_result(
     ):
         return [], "mini_lab_session_not_completed"
     measure = session.derived_measure
+    if measure.get("qualification_status") != "pending":
+        return [], "mini_lab_result_not_pending"
     if (
         event.payload.get("trial_count") != measure.get("trial_count")
         or event.payload.get("explanation_complete") != measure.get("explanation_complete")
