@@ -40,6 +40,10 @@ test("Mini Lab exposes service checkpoint recovery and marks the engineering fix
   assert.match(runtime, /本次试次未保存/);
   assert.match(panel, /作废当前实验/);
   assert.match(panel, /session\.status === "invalidated"/);
+  assert.match(panel, /不生成学习证据或掌握状态/);
+  assert.match(panel, /服务端资格化状态/);
+  assert.match(panel, /qualification_reason/);
+  assert.doesNotMatch(panel, /形成可追溯的 transfer 证据/);
   const labApi = read("../lib/mini-lab-api.ts");
   assert.match(labApi, /expected_version: session\.version/);
   assert.match(labApi, /idempotency_key: idempotencyKey/);

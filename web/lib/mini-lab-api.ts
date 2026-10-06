@@ -16,6 +16,7 @@ export type MiniLabSession = {
   trial_data: MiniLabResult["trial_data"];
   derived_measure: {
     qualification_status?: string;
+    qualification_reason?: string | null;
     explanation_complete?: boolean;
     transfer_complete?: boolean;
   } | null;

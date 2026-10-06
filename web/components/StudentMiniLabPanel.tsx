@@ -146,10 +146,16 @@ export default function StudentMiniLabPanel({ courseId }: { courseId: string }) 
   }
 
   const definition = session?.definition_snapshot;
+  const qualificationStatus = session?.derived_measure?.qualification_status;
+  const qualificationNotice = qualificationStatus === "rejected"
+    ? "服务端未验证解释或迁移答案；本次仅记录参与，不生成学习证据或更新掌握状态。"
+    : qualificationStatus === "pending"
+      ? "记录已保存，等待服务端资格化；按钮完成本身不会生成学习证据。"
+      : "本次工程实验仅记录参与，当前没有经过验证的解释或迁移评分。";
   return (
     <section className="support-panel mini-lab-panel">
       <div className="panel-heading">
-        <div><h2>Mini Lab 实验学习</h2><p>完成预测、观察、解释和迁移总结，形成可追溯的 transfer 证据。</p></div>
+        <div><h2>Mini Lab 实验学习</h2><p>记录预测与观察过程；当前工程实验不验证解释或迁移答案，不生成学习证据或掌握状态。</p></div>
         {session && <span>{session.status === "completed" ? "已提交" : session.status === "invalidated" ? "已作废" : "进行中"}</span>}
       </div>
       {notice && <p className="status-banner" role="status" aria-live="polite">{notice}</p>}
@@ -162,7 +168,7 @@ export default function StudentMiniLabPanel({ courseId }: { courseId: string }) 
           <button className="primary-button" disabled={busy || !selected} onClick={() => void start()}>开始 Mini Lab</button>
         </div>
       ) : session.status === "completed" ? (
-        <div className="case-result"><strong>实验记录已保存</strong><p>资格化状态：{session.derived_measure?.qualification_status ?? "pending"}</p><button className="secondary-button" onClick={() => { sessionRef.current = null; setSession(null); }}>开始新实验</button></div>
+        <div className="case-result"><strong>实验记录已保存</strong><p>服务端资格化状态：{qualificationStatus ?? "pending"}</p><p>{qualificationNotice}</p>{session.derived_measure?.qualification_reason && <small>原因：{session.derived_measure.qualification_reason}</small>}<button className="secondary-button" onClick={() => { sessionRef.current = null; setSession(null); }}>开始新实验</button></div>
       ) : session.status === "invalidated" ? (
         <div className="case-result" data-lab-status="invalidated"><strong>实验已作废</strong><p>作废理由：{session.invalidation_reason ?? "未提供"}</p><p>该会话不能恢复、续写、提交或获得资格化。</p><button className="secondary-button" type="button" onClick={() => { sessionRef.current = null; setSession(null); setInvalidationReason(""); }}>开始新实验</button></div>
       ) : definition ? <>
