@@ -34,13 +34,19 @@ test("Learn fails closed on invalid session restore and does not auto-create a r
   assert.match(restoreEffect, /setSessionId\(""\)/);
   assert.match(restoreEffect, /setRestoreError\(\{ id: requestedSessionId, courseId,/);
   assert.match(source, /const restoreBlocked = sessionLoading \|\| Boolean\(restoreErrorForRoute\)/);
-  assert.match(source, /const visibleTurns = restoreRequested && !sessionMatchesRoute \? \[\] : turns/);
+  assert.match(source, /const visibleTurns = sessionId && \(loadedSession\?\.id !== sessionId \|\| loadedSession\.courseId !== courseId\)\s*\? \[\]\s*:\s*restoreRequested && !sessionMatchesRoute \? \[\] : turns/);
   assert.match(source, /const activeSessionForRoute = restoreRequested\s*\? \(sessionMatchesRoute \? sessionId : ""\)\s*: loadedSession\?\.id === sessionId && loadedSession\.courseId === courseId\s*\? sessionId\s*: ""/);
   assert.match(source, /disabled=\{!materials\.length \|\| sending \|\| restoreBlocked\}/);
   const send = source.slice(source.indexOf("async function send"), source.indexOf("return <div className=\"student-learn-page\""));
   assert.match(send, /if \(!activeSession\)\s*\{\s*const created = await api<\{ id: string \}>\("\/chat\/sessions"/);
   assert.match(send, /let activeSession = activeSessionForRoute/);
   assert.doesNotMatch(restoreEffect, /\/chat\/sessions"\s*,\s*\{\s*method:\s*"POST"/);
+});
+
+test("Learn hides loaded turns and their citations when the selected course changes", () => {
+  assert.match(source, /loadedSession\?\.id !== sessionId \|\| loadedSession\.courseId !== courseId/);
+  assert.match(source, /visibleTurns\.map\(\(turn, index\).*turn\.citations\.map/);
+  assert.match(source, /setTurns\(\(items\) => \[\.\.\.items, \{ role: "student", content, citations: \[\] \}, \{ role: "tutor", content: "", citations: \[\], status: "正在连接学习助手…" \}\]\)/);
 });
 
 test("Learn saves the newly created session ID in the current URL without reloading", () => {
