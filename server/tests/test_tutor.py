@@ -1731,18 +1731,202 @@ def test_learning_microcycle_repairs_misconceptions_and_uses_grounded_example_fa
     assert respond("继续")["state"] == "teach"
     repair = respond("我不知道")
     assert repair["hint_level"] == 1
+    assert repair["teaching_action"] == "hint"
     assert "回到教材" in repair["message"]
-    assert respond("Independent variable control improves internal validity in experiments.")[
-        "state"
-    ] == "check"
+    corrected = respond("Independent variable control improves internal validity in experiments.")
+    assert corrected["state"] == "check"
+    assert corrected["teaching_action"] == "check"
+    assert corrected["hint_level"] == 1
     repair = respond("我不知道")
     assert repair["state"] == "hint"
+    assert repair["teaching_action"] == "hint"
     assert "不急着判断对错" in repair["message"]
     example = respond("我不知道")
     assert example["state"] == "practice"
     assert example["action"] == "show_example"
+    assert example["teaching_action"] == "hint"
     assert "当前教材段落没有明确标记的例子" in example["message"]
     assert "研究者控制参与者" not in example["message"]
+
+
+def test_guided_hint_policy_rejections_preserve_version_state_and_evidence(client) -> None:
+    import asyncio
+
+    from sqlalchemy import func, select
+
+    from app.db.models import (
+        LearningEvent,
+        LearningEvidence,
+        LearningQualification,
+        LearningSession,
+        MasteryState,
+        UserPreference,
+    )
+    from app.db.session import session_factory
+    from app.modules.learning_events.qualification import qualify_pending_events
+
+    course_id, student_id, version_id = _prepare(client, publish=True)
+    _login(client, "ms@uni.edu")
+
+    async def set_teaching_policy(policy: dict) -> None:
+        async with session_factory() as db:
+            preference = await db.scalar(
+                select(UserPreference).where(UserPreference.user_id == student_id)
+            )
+            if preference is None:
+                db.add(
+                    UserPreference(
+                        user_id=student_id,
+                        preferences={"teaching_policy": policy},
+                    )
+                )
+            else:
+                preference.preferences = {
+                    **preference.preferences,
+                    "teaching_policy": policy,
+                }
+            await db.commit()
+
+    async def learning_state_counts(learning_id: str) -> tuple[int, int, int, int]:
+        async with session_factory() as db:
+            learning = await db.get(LearningSession, learning_id)
+            assert learning is not None
+            evidence_count = await db.scalar(
+                select(func.count()).select_from(LearningEvidence).where(
+                    LearningEvidence.user_id == student_id,
+                    LearningEvidence.course_id == course_id,
+                )
+            )
+            mastery_count = await db.scalar(
+                select(func.count()).select_from(MasteryState).where(
+                    MasteryState.user_id == student_id,
+                    MasteryState.course_id == course_id,
+                )
+            )
+            return (
+                learning.version,
+                learning.hint_level,
+                evidence_count or 0,
+                mastery_count or 0,
+            )
+
+    def create_learning() -> dict:
+        response = client.post(
+            "/api/v1/learning-sessions",
+            json={"course_id": course_id, "material_version_id": version_id},
+        )
+        assert response.status_code == 201, response.text
+        return response.json()["data"]
+
+    def post_response(learning_id: str, version: int, content: str):
+        return client.post(
+            f"/api/v1/learning-sessions/{learning_id}/responses",
+            json={"state_version": version, "content": content},
+        )
+
+    async def set_budget_policy() -> None:
+        await set_teaching_policy(
+            {
+                "allowed_actions": ["diagnose", "teach", "check", "hint"],
+                "max_hints": 1,
+            }
+        )
+
+    asyncio.run(set_budget_policy())
+    budget_learning = create_learning()
+    first = post_response(budget_learning["id"], budget_learning["state_version"], "继续")
+    assert first.status_code == 200, first.text
+    taught = first.json()["data"]
+    repair_response = post_response(
+        budget_learning["id"], taught["state_version"], "我不知道"
+    )
+    assert repair_response.status_code == 200, repair_response.text
+    repaired = repair_response.json()["data"]
+    assert repaired["teaching_action"] == "hint"
+    assert repaired["hint_level"] == 1
+    assert "不急着判断对错" in repaired["message"]
+
+    corrected_response = post_response(
+        budget_learning["id"],
+        repaired["state_version"],
+        "Independent variable control improves internal validity in experiments.",
+    )
+    assert corrected_response.status_code == 200, corrected_response.text
+    corrected = corrected_response.json()["data"]
+    assert corrected["state"] == "check"
+    assert corrected["teaching_action"] == "check"
+    assert corrected["hint_level"] == 1
+
+    stale = post_response(budget_learning["id"], repaired["state_version"], "我不知道")
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "RESOURCE_VERSION_CONFLICT"
+    over_budget = post_response(
+        budget_learning["id"], corrected["state_version"], "我不知道"
+    )
+    assert over_budget.status_code == 403
+    assert over_budget.json()["error"]["code"] == "TEACHING_HINT_BUDGET_EXHAUSTED"
+
+    async def qualify_budgeted_turns() -> list[tuple[str, str]]:
+        async with session_factory() as db:
+            await qualify_pending_events(db, limit=100)
+            events = list(
+                (
+                    await db.scalars(
+                        select(LearningEvent).where(
+                            LearningEvent.source_ref == budget_learning["id"],
+                            LearningEvent.event_type == "tutor_responded",
+                        )
+                    )
+                ).all()
+            )
+            results: list[tuple[str, str]] = []
+            for event in events:
+                qualification = await db.scalar(
+                    select(LearningQualification).where(
+                        LearningQualification.event_id == event.id
+                    )
+                )
+                assert qualification is not None
+                results.append((qualification.status, qualification.reason))
+            await db.commit()
+            return results
+
+    qualifications = asyncio.run(qualify_budgeted_turns())
+    assert len(qualifications) == 3
+    assert qualifications == [
+        ("rejected", "tutor_response_not_evidence_bearing"),
+        ("rejected", "tutor_response_not_evidence_bearing"),
+        ("rejected", "tutor_response_not_evidence_bearing"),
+    ]
+    assert asyncio.run(learning_state_counts(budget_learning["id"])) == (
+        corrected["state_version"],
+        1,
+        0,
+        0,
+    )
+
+    asyncio.run(
+        set_teaching_policy(
+            {"allowed_actions": ["diagnose", "teach", "check"], "max_hints": 3}
+        )
+    )
+    restricted_learning = create_learning()
+    restricted_first = post_response(
+        restricted_learning["id"], restricted_learning["state_version"], "继续"
+    )
+    assert restricted_first.status_code == 200, restricted_first.text
+    restricted_taught = restricted_first.json()["data"]
+    denied_hint = post_response(
+        restricted_learning["id"], restricted_taught["state_version"], "我不知道"
+    )
+    assert denied_hint.status_code == 403
+    assert denied_hint.json()["error"]["code"] == "TEACHING_ACTION_NOT_ALLOWED"
+    assert asyncio.run(learning_state_counts(restricted_learning["id"])) == (
+        restricted_taught["state_version"],
+        0,
+        0,
+        0,
+    )
 
 
 def test_single_incorrect_guided_answer_is_evidence_without_mastery_or_profile_change(
@@ -1769,53 +1953,81 @@ def test_single_incorrect_guided_answer_is_evidence_without_mastery_or_profile_c
         json={"course_id": course_id, "material_version_id": version_id},
     ).json()["data"]
 
-    def respond(content: str) -> dict:
+    def respond(content: str) -> tuple[dict, dict, list]:
         nonlocal learning
+        response_version = learning["state_version"]
         response = client.post(
             f"/api/v1/student/learning/tasks/{learning['id']}/respond",
             json={"state_version": learning["state_version"], "content": content},
         )
         assert response.status_code == 200, response.text
         learning = response.json()["data"]
-        return learning
+        event_key = f"learning-session-response:{learning['id']}:{response_version}"
 
-    assert respond("继续")["state"] == "teach"
-    assert respond("我不知道")["state"] == "teach"
-    assert respond("Independent variable control improves internal validity in experiments.")[
-        "state"
-    ] == "check"
-    assert respond("我不知道")["state"] == "hint"
-    assert respond("我不知道")["state"] == "practice"
-    wrong_answer_event_version = learning["state_version"]
-    wrong_answer = respond("我不知道")
+        async def qualify_and_read() -> tuple[dict, list]:
+            async with session_factory() as db:
+                counts = await qualify_pending_events(db, limit=100)
+                event = await db.scalar(
+                    select(LearningEvent).where(LearningEvent.event_key == event_key)
+                )
+                assert event is not None
+                qualification = await db.scalar(
+                    select(LearningQualification).where(
+                        LearningQualification.event_id == event.id
+                    )
+                )
+                assert qualification is not None
+                evidences = list(
+                    (
+                        await db.scalars(
+                            select(LearningEvidence).where(
+                                LearningEvidence.id.in_(qualification.evidence_ids)
+                            )
+                        )
+                    ).all()
+                )
+                await db.commit()
+                return (
+                    {
+                        "event": event,
+                        "qualification": qualification,
+                        "counts": counts,
+                    },
+                    evidences,
+                )
+
+        record, evidences = asyncio.run(qualify_and_read())
+        return learning, record, evidences
+
+    assert respond("继续")[0]["state"] == "teach"
+    assert respond("我不知道")[0]["state"] == "teach"
+    assert respond(
+        "Independent variable control improves internal validity in experiments."
+    )[0]["state"] == "check"
+    check_answer, check_record, check_evidences = respond("我不知道")
+    assert check_answer["state"] == "hint"
+    assert check_record["qualification"].status == "qualified"
+    assert len(check_evidences) == 1
+    assert check_evidences[0].dimension == "understand"
+    assert check_evidences[0].correct is False
+
+    hint_answer, hint_record, hint_evidences = respond("我不知道")
+    assert hint_answer["state"] == "practice"
+    assert hint_answer["action"] == "show_example"
+    assert hint_record["qualification"].status == "rejected"
+    assert hint_record["qualification"].reason == "tutor_response_not_evidence_bearing"
+    assert hint_evidences == []
+
+    wrong_answer, practice_record, practice_evidences = respond("我不知道")
     assert wrong_answer["state"] == "summary"
     assert wrong_answer["correct"] is False
+    assert practice_record["qualification"].status == "qualified"
+    assert len(practice_evidences) == 1
+    assert practice_evidences[0].dimension == "apply"
+    assert practice_evidences[0].correct is False
 
-    async def qualify_and_read() -> tuple[dict, list, list, list]:
+    async def read_learning_state() -> tuple[list, list]:
         async with session_factory() as db:
-            counts = await qualify_pending_events(db, limit=100)
-            event = await db.scalar(
-                select(LearningEvent).where(
-                    LearningEvent.event_key
-                    == f"learning-session-response:{learning['id']}:{wrong_answer_event_version}"
-                )
-            )
-            assert event is not None
-            qualification = await db.scalar(
-                select(LearningQualification).where(
-                    LearningQualification.event_id == event.id
-                )
-            )
-            assert qualification is not None
-            evidences = list(
-                (
-                    await db.scalars(
-                        select(LearningEvidence).where(
-                            LearningEvidence.id.in_(qualification.evidence_ids)
-                        )
-                    )
-                ).all()
-            )
             mastery = list(
                 (
                     await db.scalars(
@@ -1837,21 +2049,15 @@ def test_single_incorrect_guided_answer_is_evidence_without_mastery_or_profile_c
                     )
                 ).all()
             )
-            await db.commit()
-            return (
-                {"event": event, "qualification": qualification, "counts": counts},
-                evidences,
-                mastery,
-                memory,
-            )
+            return mastery, memory
 
-    records, evidences, mastery, memory = asyncio.run(qualify_and_read())
-    assert records["qualification"].status == "qualified"
-    assert records["qualification"].reason == "authoritative_tutor_state_machine"
-    assert len(evidences) == 1
-    assert evidences[0].attempt_id == learning["id"]
-    assert evidences[0].source_type == "practice"
-    assert evidences[0].correct is False
+    mastery, memory = asyncio.run(read_learning_state())
+    assert check_evidences[0].attempt_id == learning["id"]
+    assert practice_evidences[0].attempt_id == learning["id"]
+    assert check_evidences[0].independence_status == "supported"
+    assert practice_evidences[0].independence_status == "supported"
+    assert check_evidences[0].correct is False
+    assert practice_evidences[0].correct is False
     assert mastery == []
     assert memory == []
 

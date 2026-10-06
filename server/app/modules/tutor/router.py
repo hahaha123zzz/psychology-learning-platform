@@ -886,6 +886,7 @@ async def respond_learning_session(
                 "actual_version": learning.version,
             },
         )
+    response_state = learning.state
     result = await tutor_service.respond_learning_session(
         db, learning, body.content, effective_policy=effective_policy
     )
@@ -913,6 +914,7 @@ async def respond_learning_session(
             payload={
                 "state_version": learning.version,
                 "state": result.get("state"),
+                "response_state": response_state,
                 "action": result.get("action"),
                 "correct": result.get("correct"),
                 "hint_level": result.get("hint_level", learning.hint_level),

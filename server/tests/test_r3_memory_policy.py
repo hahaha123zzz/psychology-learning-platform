@@ -4,7 +4,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import select
 
-from app.modules.learning_events.qualification import tutor_response_can_recompute_mastery
+from app.modules.learning_events.qualification import (
+    tutor_response_can_recompute_mastery,
+    tutor_response_evidence_dimension,
+)
 from app.modules.memory.service import (
     effective_memory_conditions,
     memory_items_detail,
@@ -86,6 +89,21 @@ def test_tutor_claim_persists_four_state_scope_and_initial_evidence_refs() -> No
         assert retrieval_calls == 0
 
     asyncio.run(run())
+
+
+def test_tutor_response_evidence_requires_pre_response_check_or_practice_state() -> None:
+    assert tutor_response_evidence_dimension("check") == "understand"
+    assert tutor_response_evidence_dimension("practice") == "apply"
+    for non_answer_state in (
+        "diagnose",
+        "teach",
+        "hint",
+        "repair",
+        "show_example",
+        "summary",
+        None,
+    ):
+        assert tutor_response_evidence_dimension(non_answer_state) is None
 
 
 def test_tutor_claim_persists_one_supplemental_retrieval_and_evidence_ref() -> None:

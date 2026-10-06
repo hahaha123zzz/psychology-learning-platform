@@ -29,6 +29,13 @@ def tutor_response_can_recompute_mastery(
     return correct or (current_independent and distinct_attempt_count >= 2)
 
 
+def tutor_response_evidence_dimension(response_state: object) -> str | None:
+    """只允许学生实际回答的 check/practice 回合生成证据。"""
+    if not isinstance(response_state, str):
+        return None
+    return {"check": "understand", "practice": "apply"}.get(response_state)
+
+
 async def qualify_event(
     db: AsyncSession,
     *,
@@ -137,11 +144,12 @@ async def _qualify_tutor_response(
         )
     )
     expected_version = event.payload.get("state_version")
-    state = event.payload.get("state")
+    response_state = event.payload.get("response_state")
     correct = event.payload.get("correct")
     if session is None or session.version != expected_version:
         return [], "tutor_session_version_mismatch"
-    if state not in ("practice", "summary") or not isinstance(correct, bool):
+    dimension = tutor_response_evidence_dimension(response_state)
+    if dimension is None or not isinstance(correct, bool):
         return [], "tutor_response_not_evidence_bearing"
     context = f"material:{session.material_version_id}"
     if session.chapter_object_id:
@@ -158,7 +166,7 @@ async def _qualify_tutor_response(
         source_type="practice",
         hints_used=hints_used,
         correct=correct,
-        dimension="apply" if state == "practice" else "understand",
+        dimension=dimension,
         independence_status=independence_status,
         context_key=context,
     )
