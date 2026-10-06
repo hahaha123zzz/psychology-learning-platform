@@ -21,10 +21,10 @@ test("Reader returns only the server-confirmed persistent pointer ID to Learn Se
   assert.match(reader, /onReturnToLearn\?: \(evidencePointerId: string\) => void/);
   assert.match(reader, /if \(view\?\.evidence_pointer_id === pointerId\)[\s\S]*?onReturnToLearn\?\.\(view\.evidence_pointer_id\)/);
   assert.match(learn, /onReturnToLearn=\{returnReaderSelection\}/);
-  assert.match(learn, /const \[selectionContextPointerId, setSelectionContextPointerId\] = useState\(""\)/);
-  assert.match(learn, /setSelectionContextPointerId\(pointerId\)/);
-  assert.match(learn, /className="learn-selection-context" role="status"/);
-  assert.match(learn, /onClick=\{\(\) => setSelectionContextPointerId\(""\)\}/);
+  assert.match(learn, /useSyncExternalStore\([\s\S]*readReaderSelectionPointerId\(courseId\)/);
+  assert.match(learn, /persistReaderSelection\(courseId, pointerId\)/);
+  assert.match(learn, /className="learn-selection-context"/);
+  assert.match(learn, /onClick=\{clearReaderSelection\}/);
   assert.match(learn, /label="重新打开所选来源"[\s\S]*?pointerId=\{selectionContextPointerId\}/);
   assert.doesNotMatch(learn, /selectionContextPointerId[^\n]*(?:excerpt|material_version_id|selected_text)/);
   assert.doesNotMatch(reader, /onReturnToLearn\([^)]*,/);
