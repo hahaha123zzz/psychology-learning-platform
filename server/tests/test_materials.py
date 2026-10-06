@@ -340,8 +340,10 @@ def test_student_material_list_uses_assigned_version_after_material_rotation(cli
     assert response.status_code == 200, response.text
     rows = response.json()["data"]
     assert len(rows) == 1
-    assert rows[0]["current_version"]["id"] == pinned_version_id
-    assert rows[0]["current_version"]["version_no"] == 1
+    assert rows[0]["current_version"]["id"] != pinned_version_id
+    assert rows[0]["current_version"]["version_no"] == 2
+    assert rows[0]["learning_version"]["id"] == pinned_version_id
+    assert rows[0]["learning_version"]["version_no"] == 1
 
 
 def test_student_material_list_legacy_fallback_only_for_never_assigned_course(client) -> None:
@@ -351,7 +353,9 @@ def test_student_material_list_legacy_fallback_only_for_never_assigned_course(cl
     _login(client, "ms@uni.edu")
     response = client.get(f"/api/v1/courses/{course_id}/materials")
     assert response.status_code == 200, response.text
-    assert [item["current_version"]["id"] for item in response.json()["data"]] == [version_id]
+    rows = response.json()["data"]
+    assert [item["current_version"]["id"] for item in rows] == [version_id]
+    assert [item["learning_version"]["id"] for item in rows] == [version_id]
 
 
 def test_student_material_list_allows_assigned_release_with_no_materials(client) -> None:
@@ -401,6 +405,7 @@ def test_student_material_list_keeps_staff_projection_unchanged(client) -> None:
     assert len(rows) == 1
     assert rows[0]["current_version"]["id"] == version_id
     assert rows[0]["visibility"] == "published"
+    assert "learning_version" not in rows[0]
     assert "quality_gate_status" in rows[0]["current_version"]
     assert "workflow_state" in rows[0]["current_version"]
     assert "published_snapshot_id" in rows[0]["current_version"]

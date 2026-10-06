@@ -43,7 +43,7 @@ MATERIALS_UPLOAD_ENDPOINT = "POST:/api/v1/courses/{course_id}/materials"
 
 async def _assigned_student_material_rows(
     db: AsyncSession, *, user_id: str, course_id: str
-) -> list[tuple[Material, MaterialVersion]] | None:
+) -> list[tuple[Material, MaterialVersion | None, MaterialVersion]] | None:
     """返回学生当前 Release 固定资料；None 仅表示该课程从未有过 assignment。"""
     binding = await course_service.resolve_active_student_course_release(
         db, user_id=user_id, course_id=course_id
@@ -133,6 +133,18 @@ async def _assigned_student_material_rows(
             message="当前班级课程版本中的教材快照不可用。",
         )
 
+    current_version_ids = {
+        material.current_version_id
+        for material, _ in by_pair.values()
+        if material.current_version_id is not None
+    }
+    current_versions = (
+        await db.execute(
+            select(MaterialVersion).where(MaterialVersion.id.in_(current_version_ids))
+        )
+    ).scalars()
+    current_versions_by_id = {version.id: version for version in current_versions}
+
     snapshot_ids = [pin["publication_snapshot_id"] for pin in valid_pins]
     index_job_ids = [pin["index_job_id"] for pin in valid_pins]
     snapshots = (
@@ -176,10 +188,14 @@ async def _assigned_student_material_rows(
                 message="当前班级课程版本中的教材发布快照不可验证。",
             )
 
-    return [
-        by_pair[(material_id, version_id)]
-        for material_id, version_id in zip(material_ids, version_ids, strict=True)
-    ]
+    result_rows = []
+    for material_id, version_id in zip(material_ids, version_ids, strict=True):
+        material, learning_version = by_pair[(material_id, version_id)]
+        current_version = current_versions_by_id.get(material.current_version_id)
+        if current_version is not None and current_version.material_id != material.id:
+            current_version = None
+        result_rows.append((material, current_version, learning_version))
+    return result_rows
 
 
 @router.post("/courses/{course_id}/upload-sessions", response_model=None)
@@ -633,9 +649,12 @@ async def list_materials(
         material_rows = assigned_rows
     else:
         result = await db.execute(query)
-        material_rows = result.all()
+        if is_staff:
+            material_rows = [(material, version, None) for material, version in result.all()]
+        else:
+            material_rows = [(material, version, version) for material, version in result.all()]
     items = []
-    for material, version in material_rows:
+    for material, version, learning_version in material_rows:
         item: dict = {
             "id": material.id,
             "title": material.title,
@@ -644,6 +663,8 @@ async def list_materials(
             "created_at": material.created_at.isoformat(),
             "current_version": None,
         }
+        if not is_staff:
+            item["learning_version"] = None
         if is_staff:
             item["visibility"] = material.visibility
         if version is not None:
@@ -663,6 +684,14 @@ async def list_materials(
                 item["current_version"]["published_snapshot_id"] = (
                     workflow["publication"]["id"] if workflow["publication"] else None
                 )
+        if not is_staff and learning_version is not None:
+            item["learning_version"] = {
+                "id": learning_version.id,
+                "version_no": learning_version.version_no,
+                "status": learning_version.status,
+                "size_bytes": learning_version.size_bytes,
+                "content_type": learning_version.content_type,
+            }
         items.append(item)
     return ok(request, items, has_more=False)
 
