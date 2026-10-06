@@ -268,6 +268,66 @@ def test_saved_citation_material_type_values_and_legacy_fallback_without_databas
     assert legacy_turn.citations is None
 
 
+def test_tutor_sse_replay_keeps_material_type_and_uses_neutral_legacy_fallback() -> None:
+    import asyncio
+    import json
+    from types import SimpleNamespace
+
+    from app.modules.tutor.router import _replay_saved_turn
+
+    async def citation_events(turn) -> list[dict]:
+        result = []
+        async for frame in _replay_saved_turn(turn):
+            for block in frame.split("\n\n"):
+                if not block.startswith("event: citation\n"):
+                    continue
+                data_line = next(line for line in block.splitlines() if line.startswith("data: "))
+                result.append(json.loads(data_line.removeprefix("data: ")))
+        return result
+
+    base_turn = {
+        "id": "synthetic-turn",
+        "finish_reason": "stop",
+        "content": "Synthetic saved answer",
+        "verification": {},
+        "refusal": False,
+    }
+    supplemental = SimpleNamespace(
+        **base_turn,
+        citations=[
+            {
+                "evidence_pointer_id": "synthetic-pointer",
+                "material_type": "slides",
+                "label": "[1] Synthetic title",
+            }
+        ],
+    )
+    legacy = SimpleNamespace(
+        **base_turn,
+        citations=[
+            {
+                "evidence_pointer_id": "legacy-pointer",
+            }
+        ],
+    )
+    assert asyncio.run(citation_events(supplemental)) == [
+        {
+            "evidence_id": None,
+            "evidence_pointer_id": "synthetic-pointer",
+            "material_type": "slides",
+            "label": "[1] Synthetic title",
+        }
+    ]
+    assert asyncio.run(citation_events(legacy)) == [
+        {
+            "evidence_id": None,
+            "evidence_pointer_id": "legacy-pointer",
+            "material_type": None,
+            "label": "引用",
+        }
+    ]
+
+
 def test_material_type_is_in_search_reader_and_saved_chat_openapi_without_database() -> None:
     from app.main import app
 

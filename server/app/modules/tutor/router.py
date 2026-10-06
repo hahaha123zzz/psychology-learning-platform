@@ -156,7 +156,7 @@ async def _replay_saved_turn(tutor_turn: ChatTurn):
                     "evidence_id": citation.get("evidence_id"),
                     "evidence_pointer_id": citation.get("evidence_pointer_id"),
                     "material_type": _serialize_citation(citation)["material_type"],
-                    "label": citation.get("label", "教材证据"),
+                    "label": citation.get("label") or "引用",
                 },
             )
         yield _sse_frame("state", {"stage": "verifying", "replayed": True})
