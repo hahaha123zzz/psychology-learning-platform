@@ -13438,6 +13438,23 @@
               }
             ],
             "title": "Selected Evidence Ids"
+          },
+          "selected_evidence_pointer_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "maxLength": 26,
+                  "minLength": 26
+                },
+                "type": "array",
+                "maxItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Evidence Pointer Ids"
           }
         },
         "type": "object",

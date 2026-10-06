@@ -28,6 +28,7 @@ from app.db.models import (
     CourseRelease,
     CourseReleaseAssignment,
     DomainRelease,
+    EvidencePointer,
     Job,
     LearningSession,
     Material,
@@ -532,6 +533,107 @@ async def authorize_chat_session_release_scope(
         domain_release_id=release.domain_release_id,
         manifest=deepcopy(manifest),
     )
+
+
+async def authorize_selected_table_pointer(
+    db: AsyncSession,
+    *,
+    session_row: Any,
+    user_id: str,
+    pointer_id: str,
+) -> EvidencePointer:
+    """只接受精确绑定到当前 chat release 的表格指针或无文本图像指针。"""
+    def unavailable() -> ApiError:
+        return ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
+
+    if session_row.mode != "course_qa" or session_row.status != "active":
+        raise unavailable()
+    binding = await authorize_chat_session_release_scope(
+        db, session_row=session_row, user_id=user_id
+    )
+    if binding is None:
+        raise unavailable()
+
+    pointer = await db.get(EvidencePointer, pointer_id)
+    if (
+        pointer is None
+        or pointer.course_id != session_row.course_id
+        or pointer.source_object_id is None
+    ):
+        raise unavailable()
+
+    pins = binding.manifest.get("publication_snapshots")
+    material_ids = binding.manifest.get("materials")
+    material_version_ids = binding.manifest.get("material_version_ids")
+    if not isinstance(pins, list):
+        raise unavailable()
+    if (
+        not isinstance(material_ids, list)
+        or not isinstance(material_version_ids, list)
+        or len(material_ids) != len(material_version_ids)
+        or len(material_ids) != len(pins)
+        or not any(
+            material_id == pointer.material_id
+            and version_id == pointer.material_version_id
+            for material_id, version_id in zip(material_ids, material_version_ids, strict=True)
+        )
+    ):
+        raise unavailable()
+    pin = next(
+        (
+            item
+            for item in pins
+            if isinstance(item, dict)
+            and item.get("material_id") == pointer.material_id
+            and item.get("material_version_id") == pointer.material_version_id
+        ),
+        None,
+    )
+    required = {
+        "material_id",
+        "material_version_id",
+        "publication_snapshot_id",
+        "index_job_id",
+        "embedding_version",
+        "domain_release_id",
+    }
+    if (
+        not isinstance(pin, dict)
+        or set(pin) != required
+        or any(
+            not isinstance(pin.get(key), str) or not pin[key]
+            for key in required - {"domain_release_id"}
+        )
+    ):
+        raise unavailable()
+
+    snapshot = await db.get(PublicationSnapshot, pin["publication_snapshot_id"])
+    material = await db.get(Material, pointer.material_id)
+    version = await db.get(MaterialVersion, pointer.material_version_id)
+    if (
+        snapshot is None
+        or snapshot.material_id != pointer.material_id
+        or snapshot.material_version_id != pointer.material_version_id
+        or snapshot.index_job_id != pin["index_job_id"]
+        or snapshot.embedding_version != pin["embedding_version"]
+        or snapshot.domain_release_id != pin["domain_release_id"]
+        or pin["domain_release_id"] != binding.domain_release_id
+        or material is None
+        or material.course_id != session_row.course_id
+        or material.status != "active"
+        or material.visibility != "published"
+        or version is None
+        or version.material_id != material.id
+        or version.status != "parsed"
+    ):
+        raise unavailable()
+
+    # 图像在 V0.9 只有固定位置，没有可验证语义；允许安全拒答以保留 Reader 入口。
+    if pointer.object_type == "figure" and not pointer.excerpt.strip():
+        return pointer
+    if pointer.object_type != "table" or not pointer.excerpt.strip():
+        raise unavailable()
+    return pointer
 
 
 async def prepare_bound_chat_retrieval(
@@ -1048,6 +1150,7 @@ async def run_turn_stream(
     organization_id: str | None = None,
     response_length: str = "BALANCED",
     example_order: str = "CONCEPT_FIRST",
+    selected_evidence_pointer: EvidencePointer | None = None,
 ):
     """生成SSE事件流。仅当全部成功时才提交（半截结论不落库）。"""
     yield _sse("state", {"stage": "retrieving"})
@@ -1068,6 +1171,11 @@ async def run_turn_stream(
                 client_turn_id=client_turn_id,
                 role="student",
                 content=content,
+                citations=(
+                    [{"evidence_pointer_id": selected_evidence_pointer.id}]
+                    if selected_evidence_pointer is not None
+                    else None
+                ),
             )
         )
         tutor_turn = ChatTurn(
@@ -1091,6 +1199,110 @@ async def run_turn_stream(
                 "finish_reason": "safety",
                 "saved": True,
                 "refusal": True,
+            },
+        )
+        return
+
+    if selected_evidence_pointer is not None:
+        pointer = selected_evidence_pointer
+        is_table = pointer.object_type == "table" and bool(pointer.excerpt.strip())
+        if is_table:
+            answer = (
+                "可以按这个顺序读表：先确认表题、行列名和单位；再定位问题对应的单元格；"
+                "跨行列比较前先核对单位。\n\n"
+                "以下是服务端在本地解析出的表格文本：\n\n"
+                f"{pointer.excerpt}\n\n"
+                "若表格结构、单位或统计上下文不完整，我不会据此推断趋势、因果或显著性。"
+            )
+            refusal = False
+            finish_reason = "stop"
+            provider = "internal_extractive"
+            object_context = {
+                "type": "table",
+                "evidence_pointer_id": pointer.id,
+                "material_version_id": pointer.material_version_id,
+            }
+        else:
+            answer = (
+                "该图像目前只有教材中的定位信息，没有经验证的图注或文字说明，"
+                "因此我不能解释图意。你仍可打开固定来源查看图像位置。"
+            )
+            refusal = True
+            finish_reason = "evidence_unavailable"
+            provider = "internal_refusal"
+            object_context = {
+                "type": "figure",
+                "evidence_pointer_id": pointer.id,
+                "material_version_id": pointer.material_version_id,
+                "refusal_reason": "figure_semantics_unavailable",
+            }
+
+        citation_label = _citation_label(1, pointer.material_title, pointer.physical_page)
+        yield _sse(
+            "state",
+            {"stage": "generating", "evidence_count": 1, "warnings": []},
+        )
+        if is_table:
+            yield _sse(
+                "state",
+                {
+                    "stage": "explaining_object",
+                    "object_type": "table",
+                    "evidence_pointer_id": pointer.id,
+                },
+            )
+        citation = {
+            "evidence_pointer_id": pointer.id,
+            "material_id": pointer.material_id,
+            "material_version_id": pointer.material_version_id,
+            "physical_page": pointer.physical_page,
+            "label": citation_label,
+        }
+        yield _sse(
+            "citation",
+            {"evidence_pointer_id": pointer.id, "label": citation_label},
+        )
+        for chunk_start in range(0, len(answer), 24):
+            yield _sse(
+                "delta",
+                {"sequence": chunk_start // 24, "text": answer[chunk_start : chunk_start + 24]},
+            )
+
+        db.add(
+            ChatTurn(
+                session_id=session_row.id,
+                client_turn_id=client_turn_id,
+                role="student",
+                content=content,
+                citations=[{"evidence_pointer_id": pointer.id}],
+            )
+        )
+        tutor_turn = ChatTurn(
+            session_id=session_row.id,
+            client_turn_id=f"{client_turn_id}:tutor",
+            role="tutor",
+            content=answer,
+            citations=[citation],
+            verification={
+                "generation_provider": provider,
+                "object_context": object_context,
+                "unsupported_count": 0 if is_table else 1,
+            },
+            refusal=refusal,
+            finish_reason=finish_reason,
+        )
+        db.add(tutor_turn)
+        await db.flush()
+        await db.refresh(tutor_turn, attribute_names=["id"])
+        await db.commit()
+        yield _sse(
+            "done",
+            {
+                "turn_id": tutor_turn.id,
+                "finish_reason": finish_reason,
+                "saved": True,
+                "refusal": refusal,
+                "unsupported_count": 0 if is_table else 1,
             },
         )
         return

@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import StreamingResponse
@@ -40,6 +41,13 @@ def _sse_frame(event: str, data: dict) -> str:
 async def _replay_saved_turn(tutor_turn: ChatTurn):
     """只从已提交的 TutorTurn 重放完整回答，不重新调用模型或写回业务数据。"""
     citations = tutor_turn.citations or []
+    verification = tutor_turn.verification if isinstance(tutor_turn.verification, dict) else {}
+    object_context = verification.get("object_context")
+    table_context = (
+        isinstance(object_context, dict)
+        and object_context.get("type") == "table"
+        and isinstance(object_context.get("evidence_pointer_id"), str)
+    )
     safety = tutor_turn.finish_reason == "safety"
     if safety:
         yield _sse_frame("state", {"stage": "safety", "replayed": True})
@@ -54,6 +62,15 @@ async def _replay_saved_turn(tutor_turn: ChatTurn):
                 "replayed": True,
             },
         )
+        if table_context:
+            yield _sse_frame(
+                "state",
+                {
+                    "stage": "explaining_object",
+                    "object_type": "table",
+                    "evidence_pointer_id": object_context["evidence_pointer_id"],
+                },
+            )
         for citation in citations:
             yield _sse_frame(
                 "citation",
@@ -78,8 +95,8 @@ async def _replay_saved_turn(tutor_turn: ChatTurn):
         "refusal": tutor_turn.refusal,
         "replayed": True,
     }
-    if isinstance(tutor_turn.verification, dict):
-        unsupported_count = tutor_turn.verification.get("unsupported_count")
+    if verification:
+        unsupported_count = verification.get("unsupported_count")
         if isinstance(unsupported_count, int):
             done["unsupported_count"] = unsupported_count
     yield _sse_frame("done", done)
@@ -93,10 +110,16 @@ class ChatSessionCreate(BaseModel):
     title: str | None = Field(default=None, max_length=200)
 
 
+EvidencePointerId = Annotated[str, Field(min_length=26, max_length=26)]
+
+
 class TurnCreate(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
     client_turn_id: str = Field(min_length=8, max_length=64)
     selected_evidence_ids: list[str] | None = None
+    selected_evidence_pointer_ids: list[EvidencePointerId] | None = Field(
+        default=None, max_length=1
+    )
 
 
 class LearningSessionCreate(BaseModel):
@@ -129,6 +152,27 @@ async def _get_owned_session(
         db, session_row=session_row, user_id=user.id
     )
     return session_row
+
+
+def _turn_selected_pointer_ids(turn: ChatTurn) -> list[str]:
+    if turn.role != "student" or not isinstance(turn.citations, list):
+        return []
+    return [
+        citation["evidence_pointer_id"]
+        for citation in turn.citations
+        if isinstance(citation, dict)
+        and isinstance(citation.get("evidence_pointer_id"), str)
+    ]
+
+
+def _turn_idempotency_matches(
+    turn: ChatTurn, *, content: str, selected_pointer_ids: list[str]
+) -> bool:
+    return (
+        turn.role == "student"
+        and turn.content == content
+        and _turn_selected_pointer_ids(turn) == selected_pointer_ids
+    )
 
 
 def _learning_allowed_actions(*, state: str, status: str) -> list[str]:
@@ -457,6 +501,17 @@ async def create_turn(
         raise ApiError(
             status_code=409, code="SESSION_CLOSED", message="会话已结束"
         )
+    selected_pointer_ids = body.selected_evidence_pointer_ids or []
+    if any(len(pointer_id) != 26 for pointer_id in selected_pointer_ids):
+        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
+    selected_pointer = None
+    if selected_pointer_ids:
+        selected_pointer = await tutor_service.authorize_selected_table_pointer(
+            db,
+            session_row=session_row,
+            user_id=user.id,
+            pointer_id=selected_pointer_ids[0],
+        )
     duplicate = (
         await db.execute(
             select(ChatTurn).where(
@@ -466,7 +521,11 @@ async def create_turn(
         )
     ).scalar_one_or_none()
     if duplicate is not None:
-        if duplicate.role != "student" or duplicate.content != body.content:
+        if not _turn_idempotency_matches(
+            duplicate,
+            content=body.content,
+            selected_pointer_ids=selected_pointer_ids,
+        ):
             raise ApiError(
                 status_code=409,
                 code="TURN_IDEMPOTENCY_CONFLICT",
@@ -504,6 +563,7 @@ async def create_turn(
             organization_id=user.organization_id,
             response_length=response_length,
             example_order=example_order,
+            selected_evidence_pointer=selected_pointer,
         )
         try:
             async for event in turn_stream:

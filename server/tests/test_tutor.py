@@ -29,6 +29,134 @@ def _prepare(client, *, publish=True):
     return course_id, student_id, version_id
 
 
+def _seed_pinned_table_chat(client, *, course_id: str, student_id: str, version_id: str):
+    import asyncio
+    import hashlib
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from app.db.base import new_ulid
+    from app.db.models import (
+        ClassMember,
+        CourseClass,
+        CourseRelease,
+        CourseReleaseAssignment,
+        EvidencePointer,
+        MaterialVersion,
+        PublicationSnapshot,
+    )
+    from app.db.session import session_factory
+
+    teacher_id = client.get("/api/v1/me").json()["data"]["id"]
+
+    async def seed() -> tuple[str, str, str, str]:
+        async with session_factory() as db:
+            version = await db.get(MaterialVersion, version_id)
+            assert version is not None
+            snapshot = await db.scalar(
+                select(PublicationSnapshot).where(
+                    PublicationSnapshot.material_version_id == version_id
+                )
+            )
+            assert snapshot is not None
+            pin = {
+                "material_id": version.material_id,
+                "material_version_id": version_id,
+                "publication_snapshot_id": snapshot.id,
+                "index_job_id": snapshot.index_job_id,
+                "embedding_version": snapshot.embedding_version,
+                "domain_release_id": snapshot.domain_release_id,
+            }
+            release = CourseRelease(
+                course_id=course_id,
+                version_no=1,
+                name="合成 Table Tutor Release",
+                status="published",
+                manifest={
+                    "materials": [version.material_id],
+                    "material_version_ids": [version_id],
+                    "publication_snapshots": [pin],
+                },
+                domain_release_id=snapshot.domain_release_id,
+                created_by=teacher_id,
+                published_by=teacher_id,
+                published_at=datetime.now(UTC),
+            )
+            course_class = CourseClass(
+                course_id=course_id,
+                code=f"TBL-{new_ulid()[:10]}",
+                name="合成 Table Tutor 班级",
+                created_by=teacher_id,
+            )
+            db.add_all([release, course_class])
+            await db.flush()
+            assignment = CourseReleaseAssignment(
+                course_id=course_id,
+                class_id=course_class.id,
+                course_release_id=release.id,
+                status="active",
+                assigned_by=teacher_id,
+            )
+            db.add_all([assignment, ClassMember(class_id=course_class.id, user_id=student_id)])
+            pointers = [
+                EvidencePointer(
+                    course_id=course_id,
+                    material_id=version.material_id,
+                    material_version_id=version_id,
+                    source_object_id=new_ulid(),
+                    retrieval_unit_id=None,
+                    material_title="合成心理学教材",
+                    excerpt=f"合成组别{index} | 均值\n实验组 | {index + 3}",
+                    excerpt_sha256=hashlib.sha256(
+                        f"合成组别{index} | 均值\n实验组 | {index + 3}".encode()
+                    ).hexdigest(),
+                    chapter_path="合成章节",
+                    physical_page=1,
+                    reading_order=index,
+                    object_type="table",
+                    coordinate_space="pdf_user_bottom_left",
+                    bbox=[10, 10, 100, 100],
+                    anchors=[
+                        {
+                            "physical_page": 1,
+                            "bbox": [10, 10, 100, 100],
+                            "coordinate_space": "pdf_user_bottom_left",
+                        }
+                    ],
+                )
+                for index in (1, 2)
+            ]
+            figure = EvidencePointer(
+                course_id=course_id,
+                material_id=version.material_id,
+                material_version_id=version_id,
+                source_object_id=new_ulid(),
+                retrieval_unit_id=None,
+                material_title="合成心理学教材",
+                excerpt="",
+                excerpt_sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                chapter_path="合成章节",
+                physical_page=1,
+                reading_order=3,
+                object_type="figure",
+                coordinate_space="pdf_user_bottom_left",
+                bbox=[110, 10, 200, 100],
+                anchors=[
+                    {
+                        "physical_page": 1,
+                        "bbox": [110, 10, 200, 100],
+                        "coordinate_space": "pdf_user_bottom_left",
+                    }
+                ],
+            )
+            db.add_all([*pointers, figure])
+            await db.commit()
+            return assignment.id, pointers[0].id, pointers[1].id, figure.id
+
+    return asyncio.run(seed())
+
+
 def _parse_sse_events(line_bytes: bytes) -> list[tuple[str, dict]]:
     events = []
     for block in line_bytes.decode("utf-8").split("\n\n"):
@@ -803,6 +931,95 @@ def test_turn_same_client_turn_id_replays_saved_answer_and_rejects_content_chang
 
     turns = client.get(f"/api/v1/chat/sessions/{session['id']}").json()["data"]["turns"]
     assert [turn["role"] for turn in turns] == ["student", "tutor"]
+
+
+def test_selected_table_turn_uses_pinned_local_context_and_binds_idempotency(
+    client, monkeypatch
+) -> None:
+    import asyncio
+
+    from app.db.models import CourseReleaseAssignment
+    from app.db.session import session_factory
+    from app.modules.tutor import service as tutor_service
+
+    course_id, student_id, version_id = _prepare(client, publish=True)
+    assignment_id, pointer_id, other_pointer_id, _ = _seed_pinned_table_chat(
+        client, course_id=course_id, student_id=student_id, version_id=version_id
+    )
+    _login(client, "ms@uni.edu")
+    session_response = client.post(
+        "/api/v1/chat/sessions",
+        json={"course_id": course_id, "mode": "course_qa"},
+    )
+    assert session_response.status_code == 201, session_response.text
+    session = session_response.json()["data"]
+
+    def forbidden_provider(*args, **kwargs):
+        raise AssertionError("selected Table turn must stay on local extractive path")
+
+    monkeypatch.setattr(tutor_service.knowledge_service, "hybrid_search", forbidden_provider)
+    monkeypatch.setattr(tutor_service, "generate_grounded_answer", forbidden_provider)
+    monkeypatch.setattr(tutor_service, "call_model", forbidden_provider)
+
+    endpoint = f"/api/v1/chat/sessions/{session['id']}/turns"
+    body = {
+        "content": "请说明这张表怎么读",
+        "client_turn_id": "table-context-0001",
+        "selected_evidence_pointer_ids": [pointer_id],
+    }
+    first = client.post(endpoint, json=body)
+    assert first.status_code == 200, first.text
+    first_events = _parse_sse_events(first.content)
+    event_names = [name for name, _ in first_events]
+    object_state = next(
+        data
+        for name, data in first_events
+        if name == "state" and data.get("stage") == "explaining_object"
+    )
+    assert object_state == {
+        "stage": "explaining_object",
+        "object_type": "table",
+        "evidence_pointer_id": pointer_id,
+    }
+    assert event_names.index("state") < event_names.index("citation") < event_names.index("delta")
+    first_citation = next(data for name, data in first_events if name == "citation")
+    assert first_citation["evidence_pointer_id"] == pointer_id
+    first_done = next(data for name, data in first_events if name == "done")
+    assert first_done["saved"] is True
+
+    replay = client.post(endpoint, json=body)
+    assert replay.status_code == 200, replay.text
+    replay_events = _parse_sse_events(replay.content)
+    replay_done = next(data for name, data in replay_events if name == "done")
+    assert replay_done["saved"] is True
+    assert replay_done["replayed"] is True
+    replay_state = next(
+        data
+        for name, data in replay_events
+        if name == "state" and data.get("stage") == "explaining_object"
+    )
+    assert replay_state["evidence_pointer_id"] == pointer_id
+    assert next(data for name, data in replay_events if name == "citation")[
+        "evidence_pointer_id"
+    ] == pointer_id
+
+    conflict = client.post(
+        endpoint,
+        json={**body, "selected_evidence_pointer_ids": [other_pointer_id]},
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "TURN_IDEMPOTENCY_CONFLICT"
+
+    async def revoke_assignment() -> None:
+        async with session_factory() as db:
+            assignment = await db.get(CourseReleaseAssignment, assignment_id)
+            assert assignment is not None
+            assignment.status = "revoked"
+            await db.commit()
+
+    asyncio.run(revoke_assignment())
+    revoked_replay = client.post(endpoint, json=body)
+    assert revoked_replay.status_code == 404
 
 
 def test_turn_disconnect_after_delta_closes_generation_and_retry_saves_once(
