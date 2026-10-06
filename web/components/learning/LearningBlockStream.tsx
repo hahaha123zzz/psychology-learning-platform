@@ -65,10 +65,12 @@ export default function LearningBlockStream({ blocks }: { blocks: LearningBlock[
           );
         }
         if (block.type === "Unknown") {
+          const evidenceRefCount = block.evidence_refs?.length ?? 0;
           return (
-            <article className="learning-block unknown-block" key={block.id}>
+            <article className="learning-block unknown-block" data-evidence-ref-count={evidenceRefCount} key={block.id}>
               <strong>暂不支持此内容</strong>
               <p>{blockText(block)}</p>
+              {evidenceRefCount > 0 && <small>{evidenceRefCount} 个引用标识仅作为元数据，暂不可打开。</small>}
             </article>
           );
         }

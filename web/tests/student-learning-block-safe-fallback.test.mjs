@@ -1,0 +1,64 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+import { normalizeLearningBlocks } from "../lib/learning-blocks.ts";
+
+const renderer = fs.readFileSync(
+  new URL("../components/learning/LearningBlockStream.tsx", import.meta.url),
+  "utf8",
+);
+
+test("unknown blocks become bounded local plain-text fallbacks with only string evidence IDs", () => {
+  const input = {
+    id: "server-controlled-id",
+    type: "FutureBlock",
+    text: `  ${"plain <b>text</b> ".repeat(400)}  `,
+    prompt: "a lower-priority prompt",
+    completion: "a lower-priority completion",
+    evidence_refs: ["  pointer-1  ", 42, "", ...Array.from({ length: 14 }, (_, index) => `pointer-${index + 2}`)],
+    allowed_actions: ["RESPOND_TASK", "OPEN_EVIDENCE"],
+    html: "<script>document.body.innerHTML = 'unsafe'</script>",
+    javascript: "alert('unsafe')",
+    content: { hidden: "field" },
+  };
+
+  const [fallback] = normalizeLearningBlocks([input]);
+  assert.equal(fallback.id, "unknown-0");
+  assert.equal(fallback.type, "Unknown");
+  assert.equal(fallback.text?.length, 4_000);
+  assert.ok(fallback.text?.startsWith("plain <b>text</b>"));
+  assert.deepEqual(fallback.evidence_refs, ["pointer-1", ...Array.from({ length: 11 }, (_, index) => `pointer-${index + 2}`)]);
+  assert.ok(fallback.evidence_refs?.every((ref) => typeof ref === "string" && ref.length <= 128));
+  assert.deepEqual(Object.keys(fallback).sort(), ["evidence_refs", "id", "text", "type"]);
+});
+
+test("malformed blocks use text, prompt, then completion and drop executable or action fields", () => {
+  const blocks = normalizeLearningBlocks([
+    { type: "TutorExplanation", id: "   ", text: "", prompt: "  prompt fallback  ", completion: "completion fallback", allowed_actions: ["RESPOND_TASK"] },
+    { id: "invalid-text", type: "TutorExplanation", text: { html: "<script>run()</script>" }, evidence_refs: ["safe-id", 44] },
+    null,
+  ]);
+
+  assert.deepEqual(blocks.map(({ id, type, text }) => ({ id, type, text })), [
+    { id: "unknown-0", type: "Unknown", text: "prompt fallback" },
+    { id: "unknown-1", type: "Unknown", text: "此学习内容暂不支持显示，请返回当前任务或打开教材。" },
+    { id: "unknown-2", type: "Unknown", text: "此学习内容暂不支持显示，请返回当前任务或打开教材。" },
+  ]);
+  assert.deepEqual(blocks[1].evidence_refs, ["safe-id"]);
+  assert.ok(blocks.every((block) => !Object.hasOwn(block, "allowed_actions") && !Object.hasOwn(block, "html")));
+});
+
+test("known blocks retain their existing schema and content", () => {
+  const known = { id: "known-1", type: "TutorExplanation", text: "Synthetic known block", evidence_refs: ["pointer-1"], allowed_actions: ["OPEN_EVIDENCE"] };
+  assert.deepEqual(normalizeLearningBlocks([known]), [known]);
+});
+
+test("unknown block rendering exposes text and inert reference count without actions or links", () => {
+  const unknownBranch = renderer.match(/if \(block\.type === "Unknown"\)[\s\S]*?\n        }/);
+  assert.ok(unknownBranch, "renderer has an explicit Unknown fallback branch");
+  assert.match(unknownBranch[0], /\{blockText\(block\)\}/);
+  assert.match(unknownBranch[0], /data-evidence-ref-count=\{evidenceRefCount\}/);
+  assert.match(unknownBranch[0], /仅作为元数据，暂不可打开/);
+  assert.doesNotMatch(unknownBranch[0], /<a\b|href=|onClick=|allowed_actions|evidence_refs\.map/);
+  assert.doesNotMatch(renderer, /dangerouslySetInnerHTML/);
+});
