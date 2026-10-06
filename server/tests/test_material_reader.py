@@ -89,6 +89,7 @@ def test_reader_page_image_is_versioned_cached_and_keeps_historical_pointer(clie
 
     pointer_view = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
     assert pointer_view.status_code == 200
+    assert pointer_view.json()["data"]["course_id"] == course_id
     assert pointer_view.json()["data"]["material_version_id"] == version_id
     assert pointer_view.json()["data"]["physical_page"] == pointer["physical_page"]
     assert any(
@@ -255,6 +256,33 @@ def test_reader_page_image_rechecks_removed_membership_after_image_is_cached(cli
     asyncio.run(remove_student())
     _login(client, "ms@uni.edu")
     revoked = client.get(f"/api/v1/evidence-pointers/{pointer_id}/page-image")
+    assert revoked.status_code == 404
+    assert revoked.json()["error"]["code"] == "COURSE_NOT_FOUND"
+
+
+def test_reader_pointer_metadata_rechecks_removed_membership(client) -> None:
+    course_id, student_id, _ = _prepare(client, publish=True)
+    pointer = _search_pointer(client, course_id)
+    pointer_id = pointer["evidence_pointer_id"]
+
+    before_revocation = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
+    assert before_revocation.status_code == 200
+
+    async def remove_student() -> None:
+        async with session_factory() as db:
+            member = await db.scalar(
+                select(CourseMember).where(
+                    CourseMember.course_id == course_id,
+                    CourseMember.user_id == student_id,
+                )
+            )
+            assert member is not None
+            member.status = "removed"
+            await db.commit()
+
+    asyncio.run(remove_student())
+    _login(client, "ms@uni.edu")
+    revoked = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
     assert revoked.status_code == 404
     assert revoked.json()["error"]["code"] == "COURSE_NOT_FOUND"
 
