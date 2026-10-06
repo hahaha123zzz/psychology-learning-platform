@@ -722,7 +722,7 @@ async def hybrid_search(
                 "SELECT kc.id, kc.material_version_id, kc.chapter_path, "
                 "kc.physical_page, kc.reading_order, kc.text, m.title, m.id, "
                 "kc.source_object_id, kc.retrieval_unit_id, ko.type, ko.bbox, "
-                "ko.review_status, ko.parser "
+                "ko.review_status, ko.parser, m.material_type "
                 "FROM knowledge_chunks kc "
                 "JOIN material_versions mv ON mv.id = kc.material_version_id "
                 "JOIN materials m ON m.id = mv.material_id "
@@ -746,6 +746,7 @@ async def hybrid_search(
             "bbox": row[11],
             "review_status": row[12] or "pending",
             "parser": row[13],
+            "material_type": row[14],
         }
         for row in meta_rows
     }
@@ -866,6 +867,7 @@ async def hybrid_search(
             closure_by_source.get(info["source_object_id"], []),
             strict=True,
         ):
+            neighbor["material_type"] = info["material_type"]
             caption_pointer = _caption_closure_pointer(
                 course_id=course_id,
                 material_id=info["material_id"],
@@ -936,6 +938,7 @@ async def hybrid_search(
             "evidence_pointer_id": pointer.id if pointer is not None else None,
             "material_id": info["material_id"],
             "material_version_id": info["material_version_id"],
+            "material_type": info["material_type"],
             "source_object_id": info["source_object_id"],
             "retrieval_unit_id": info["retrieval_unit_id"],
             "title": info["material_title"],

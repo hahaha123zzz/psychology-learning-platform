@@ -1,6 +1,6 @@
 import json
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import StreamingResponse
@@ -31,6 +31,72 @@ from app.modules.tutor.planner import plan_next_step
 from app.modules.tutor.policy import load_effective_policy
 
 router = APIRouter()
+_MATERIAL_TYPES = {"textbook", "slides", "handout", "exercise", "reference", "other"}
+
+
+class ChatCitationRead(BaseModel):
+    model_config = {"extra": "allow"}
+
+    evidence_id: str | None = None
+    evidence_pointer_id: str | None = None
+    material_id: str | None = None
+    material_version_id: str | None = None
+    material_type: Literal[
+        "textbook", "slides", "handout", "exercise", "reference", "other"
+    ] | None = None
+    physical_page: int | None = None
+    label: str | None = None
+
+
+class ChatTurnRead(BaseModel):
+    model_config = {"extra": "allow"}
+
+    id: str
+    role: str
+    content: str
+    citations: list[
+        ChatCitationRead | dict[str, Any] | str | int | float | bool | None | list[Any]
+    ] | None
+    verification: dict | None
+    refusal: bool
+    created_at: str
+
+
+class ChatSessionData(BaseModel):
+    model_config = {"extra": "allow"}
+
+    id: str
+    course_id: str
+    mode: str
+    status: str
+    turns: list[ChatTurnRead]
+
+
+class ChatSessionMeta(BaseModel):
+    model_config = {"extra": "allow"}
+
+    request_id: str | None
+    server_time: str
+
+
+class ChatSessionEnvelope(BaseModel):
+    data: ChatSessionData
+    meta: ChatSessionMeta
+
+
+def _serialize_citation(citation: Any) -> Any:
+    """Keep old saved citations readable without inventing a material category."""
+    if not isinstance(citation, dict):
+        return citation
+    material_type = citation.get("material_type")
+    return {
+        **citation,
+        "material_type": (
+            material_type
+            if isinstance(material_type, str) and material_type in _MATERIAL_TYPES
+            else None
+        ),
+    }
 
 
 def _sse_frame(event: str, data: dict) -> str:
@@ -89,6 +155,7 @@ async def _replay_saved_turn(tutor_turn: ChatTurn):
                 {
                     "evidence_id": citation.get("evidence_id"),
                     "evidence_pointer_id": citation.get("evidence_pointer_id"),
+                    "material_type": _serialize_citation(citation)["material_type"],
                     "label": citation.get("label", "教材证据"),
                 },
             )
@@ -437,7 +504,7 @@ async def list_chat_sessions(
     return ok(request, items, has_more=False)
 
 
-@router.get("/chat/sessions/{session_id}", response_model=None)
+@router.get("/chat/sessions/{session_id}", response_model=ChatSessionEnvelope)
 async def get_chat_session(
     session_id: str,
     request: Request,
@@ -468,7 +535,11 @@ async def get_chat_session(
                     "id": t.id,
                     "role": t.role,
                     "content": t.content,
-                    "citations": t.citations,
+                    "citations": (
+                        [_serialize_citation(citation) for citation in t.citations]
+                        if t.role == "tutor" and isinstance(t.citations, list)
+                        else t.citations
+                    ),
                     "verification": t.verification,
                     "refusal": t.refusal,
                     "created_at": t.created_at.isoformat(),

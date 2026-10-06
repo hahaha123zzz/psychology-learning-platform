@@ -1,5 +1,6 @@
 import json
 import math
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from minio.error import S3Error
@@ -108,12 +109,39 @@ class SearchRequest(BaseModel):
     purpose: str = Field(default="course_qa", max_length=50)
 
 
+class SearchResultRead(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    material_type: Literal[
+        "textbook", "slides", "handout", "exercise", "reference", "other"
+    ]
+
+
+class SearchResponseData(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    items: list[SearchResultRead]
+
+
+class SearchResponseMeta(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    request_id: str | None
+    server_time: str
+
+
+class SearchResponse(BaseModel):
+    data: SearchResponseData
+    meta: SearchResponseMeta
+
+
 class EvidencePointerRead(BaseModel):
     evidence_pointer_id: str
     course_id: str | None
     material_title: str
     material_id: str
     material_version_id: str
+    material_type: Literal["textbook", "slides", "handout", "exercise", "reference", "other"]
     publication_snapshot_id: str | None
     index_job_id: str | None
     domain_release_id: str | None
@@ -236,7 +264,7 @@ async def trigger_embed(
     return ok(request, {"job_id": job.id, "status": "queued"}, status_code=202)
 
 
-@router.post("/knowledge/search", response_model=None)
+@router.post("/knowledge/search", response_model=SearchResponse)
 async def search_knowledge(
     body: SearchRequest,
     request: Request,
@@ -651,6 +679,14 @@ async def get_evidence_pointer(
             or material_state[2] != "published"
         ):
             raise ApiError(status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已撤回")
+    material = await db.get(Material, pointer.material_id)
+    if (
+        material is None
+        or material.course_id != pointer.course_id
+        or material.material_type
+        not in {"textbook", "slides", "handout", "exercise", "reference", "other"}
+    ):
+        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
     return ok(
         request,
         {
@@ -659,6 +695,7 @@ async def get_evidence_pointer(
             "material_title": pointer.material_title,
             "material_id": pointer.material_id,
             "material_version_id": pointer.material_version_id,
+            "material_type": material.material_type,
             "publication_snapshot_id": pointer.publication_snapshot_id,
             "index_job_id": pointer.index_job_id,
             "domain_release_id": pointer.domain_release_id,

@@ -257,6 +257,7 @@ class AuthorizedEvidencePointer:
     publication_snapshot_id: str
     index_job_id: str
     domain_release_id: str | None
+    material_type: str
 
 
 @dataclass(frozen=True)
@@ -833,6 +834,7 @@ async def authorize_selected_table_pointer(
             publication_snapshot_id=snapshot.id,
             index_job_id=snapshot.index_job_id,
             domain_release_id=binding.domain_release_id,
+            material_type=material.material_type,
         )
     if pointer.object_type != "table" or not pointer.excerpt.strip():
         raise unavailable()
@@ -841,6 +843,7 @@ async def authorize_selected_table_pointer(
         publication_snapshot_id=snapshot.id,
         index_job_id=snapshot.index_job_id,
         domain_release_id=binding.domain_release_id,
+        material_type=material.material_type,
     )
 
 
@@ -1524,6 +1527,7 @@ async def run_turn_stream(
             "evidence_pointer_id": pointer.id,
             "material_id": pointer.material_id,
             "material_version_id": pointer.material_version_id,
+            "material_type": selected_evidence_context.material_type,
             "physical_page": pointer.physical_page,
             "label": citation_label,
             "publication_snapshot_id": selected_evidence_context.publication_snapshot_id,
@@ -1531,7 +1535,11 @@ async def run_turn_stream(
         }
         yield _sse(
             "citation",
-            {"evidence_pointer_id": pointer.id, "label": citation_label},
+            {
+                "evidence_pointer_id": pointer.id,
+                "material_type": selected_evidence_context.material_type,
+                "label": citation_label,
+            },
         )
         for chunk_start in range(0, len(answer), 24):
             yield _sse(
@@ -1674,6 +1682,7 @@ async def run_turn_stream(
             {
                 "evidence_id": item["evidence_id"],
                 "evidence_pointer_id": item.get("evidence_pointer_id"),
+                "material_type": item["material_type"],
                 "label": _citation_label(index, item["title"], item["physical_page"]),
             },
         )
@@ -1705,6 +1714,7 @@ async def run_turn_stream(
                 "evidence_pointer_id": item.get("evidence_pointer_id"),
                 "material_id": item["material_id"],
                 "material_version_id": item["material_version_id"],
+                "material_type": item["material_type"],
                 "physical_page": item["physical_page"],
                 "label": _citation_label(index, item["title"], item["physical_page"]),
             }

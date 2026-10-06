@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LearningEventCreate(BaseModel):
@@ -14,6 +14,16 @@ class LearningEventCreate(BaseModel):
     source_ref: str | None = Field(default=None, max_length=128)
     payload: dict[str, Any] = Field(default_factory=dict)
     occurred_at: datetime | None = None
+
+
+class ResourceOpenedEventCreate(BaseModel):
+    """Reader usage input; all resource metadata is derived and verified server-side."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_key: str = Field(min_length=1, max_length=128)
+    course_id: str = Field(min_length=26, max_length=26)
+    evidence_pointer_id: str = Field(min_length=26, max_length=26)
 
 
 class LearningEventOut(BaseModel):

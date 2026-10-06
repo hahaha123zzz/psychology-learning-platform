@@ -3529,7 +3529,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
               }
             }
           },
@@ -4006,7 +4008,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LearningEventCreate"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LearningEventCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ResourceOpenedEventCreate"
+                  }
+                ],
+                "title": "Body"
               }
             }
           },
@@ -8110,7 +8120,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSessionEnvelope"
+                }
               }
             }
           },
@@ -9955,6 +9967,98 @@
         ],
         "title": "CaseResponse"
       },
+      "ChatCitationRead": {
+        "properties": {
+          "evidence_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
+          "evidence_pointer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Pointer Id"
+          },
+          "material_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Id"
+          },
+          "material_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Version Id"
+          },
+          "material_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "textbook",
+                  "slides",
+                  "handout",
+                  "exercise",
+                  "reference",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Type"
+          },
+          "physical_page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physical Page"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "ChatCitationRead"
+      },
       "ChatSessionCreate": {
         "properties": {
           "course_id": {
@@ -10013,6 +10117,174 @@
           "course_id"
         ],
         "title": "ChatSessionCreate"
+      },
+      "ChatSessionData": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "course_id": {
+            "type": "string",
+            "title": "Course Id"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/ChatTurnRead"
+            },
+            "type": "array",
+            "title": "Turns"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "id",
+          "course_id",
+          "mode",
+          "status",
+          "turns"
+        ],
+        "title": "ChatSessionData"
+      },
+      "ChatSessionEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ChatSessionData"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ChatSessionMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ChatSessionEnvelope"
+      },
+      "ChatSessionMeta": {
+        "properties": {
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "server_time": {
+            "type": "string",
+            "title": "Server Time"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "request_id",
+          "server_time"
+        ],
+        "title": "ChatSessionMeta"
+      },
+      "ChatTurnRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "citations": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ChatCitationRead"
+                    },
+                    {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {},
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citations"
+          },
+          "verification": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification"
+          },
+          "refusal": {
+            "type": "boolean",
+            "title": "Refusal"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "id",
+          "role",
+          "content",
+          "citations",
+          "verification",
+          "refusal",
+          "created_at"
+        ],
+        "title": "ChatTurnRead"
       },
       "ClassCreate": {
         "properties": {
@@ -10276,6 +10548,18 @@
             "type": "string",
             "title": "Material Version Id"
           },
+          "material_type": {
+            "type": "string",
+            "enum": [
+              "textbook",
+              "slides",
+              "handout",
+              "exercise",
+              "reference",
+              "other"
+            ],
+            "title": "Material Type"
+          },
           "publication_snapshot_id": {
             "anyOf": [
               {
@@ -10425,6 +10709,7 @@
           "material_title",
           "material_id",
           "material_version_id",
+          "material_type",
           "publication_snapshot_id",
           "index_job_id",
           "domain_release_id",
@@ -12786,6 +13071,37 @@
         ],
         "title": "ReleaseUpdate"
       },
+      "ResourceOpenedEventCreate": {
+        "properties": {
+          "event_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Event Key"
+          },
+          "course_id": {
+            "type": "string",
+            "maxLength": 26,
+            "minLength": 26,
+            "title": "Course Id"
+          },
+          "evidence_pointer_id": {
+            "type": "string",
+            "maxLength": 26,
+            "minLength": 26,
+            "title": "Evidence Pointer Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "event_key",
+          "course_id",
+          "evidence_pointer_id"
+        ],
+        "title": "ResourceOpenedEventCreate",
+        "description": "Reader usage input; all resource metadata is derived and verified server-side."
+      },
       "ResponseMeta": {
         "properties": {
           "request_id": {
@@ -13089,6 +13405,87 @@
           "query"
         ],
         "title": "SearchRequest"
+      },
+      "SearchResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SearchResponseData"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/SearchResponseMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "SearchResponse"
+      },
+      "SearchResponseData": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchResultRead"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "SearchResponseData"
+      },
+      "SearchResponseMeta": {
+        "properties": {
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "server_time": {
+            "type": "string",
+            "title": "Server Time"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "request_id",
+          "server_time"
+        ],
+        "title": "SearchResponseMeta"
+      },
+      "SearchResultRead": {
+        "properties": {
+          "material_type": {
+            "type": "string",
+            "enum": [
+              "textbook",
+              "slides",
+              "handout",
+              "exercise",
+              "reference",
+              "other"
+            ],
+            "title": "Material Type"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "material_type"
+        ],
+        "title": "SearchResultRead"
       },
       "TeacherAnnotationCreate": {
         "properties": {

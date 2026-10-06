@@ -309,6 +309,7 @@ def test_table_pointer_index_unit_must_match_pinned_index_job() -> None:
         publication_snapshot_id="snapshot-1",
         index_job_id="index-job-1",
         domain_release_id=None,
+        material_type="textbook",
     )
 
     async def verify(candidate_rows=rows):
@@ -366,7 +367,7 @@ def test_selected_table_turn_is_local_extractive_and_replayable(monkeypatch) -> 
                 content="怎么读这张表？",
                 purpose="course_qa",
                 selected_evidence_context=tutor_service.AuthorizedEvidencePointer(
-                    pointer, "snapshot-1", "index-job-1", None
+                    pointer, "snapshot-1", "index-job-1", None, "textbook"
                 ),
             )
         ]
@@ -389,6 +390,7 @@ def test_selected_table_turn_is_local_extractive_and_replayable(monkeypatch) -> 
     saved_student, saved_tutor = db.rows
     assert saved_student.citations == [{"evidence_pointer_id": pointer.id}]
     assert saved_tutor.citations[0]["evidence_pointer_id"] == pointer.id
+    assert saved_tutor.citations[0]["material_type"] == "textbook"
     assert saved_tutor.verification["generation_provider"] == "internal_extractive"
     assert saved_tutor.verification["object_context"]["type"] == "table"
     assert "excerpt" not in saved_tutor.verification["object_context"]
@@ -401,6 +403,7 @@ def test_selected_table_turn_is_local_extractive_and_replayable(monkeypatch) -> 
     replay_text = "".join(replay_frames)
     assert '"stage": "explaining_object"' in replay_text
     assert f'"evidence_pointer_id": "{pointer.id}"' in replay_text
+    assert '"material_type": "textbook"' in replay_text
     assert "event: citation" in replay_text
     assert "event: delta" in replay_text
 
@@ -452,7 +455,7 @@ def test_empty_figure_pointer_refuses_without_table_explain() -> None:
                 content="解释图像",
                 purpose="course_qa",
                 selected_evidence_context=tutor_service.AuthorizedEvidencePointer(
-                    pointer, "snapshot-1", "index-job-1", None
+                    pointer, "snapshot-1", "index-job-1", None, "slides"
                 ),
             )
         ]
@@ -463,5 +466,8 @@ def test_empty_figure_pointer_refuses_without_table_explain() -> None:
         for event in events
     )
     assert next(event["data"] for event in events if event["event"] == "done")["refusal"]
+    assert next(event["data"] for event in events if event["event"] == "citation")[
+        "material_type"
+    ] == "slides"
     assert db.rows[1].refusal is True
     assert "不能解释图意" in db.rows[1].content

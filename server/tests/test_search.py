@@ -482,6 +482,7 @@ def test_domain_release_search_uses_only_its_bound_index_job(client) -> None:
     assert restored.status_code == 200
     restored_data = restored.json()["data"]
     assert restored_data["course_id"] == course_id
+    assert restored_data["material_type"] == "textbook"
     assert restored_data["material_version_id"] == version_id
     assert restored_data["publication_snapshot_id"] == current_snapshot_id
     assert restored_data["index_job_id"] == index_job_id
@@ -580,6 +581,7 @@ def test_student_search_defaults_to_assigned_release_snapshot_and_legacy_without
     assert default_data["domain_release"]["id"] == domain_release_id
     assert default_data["items"]
     pointer = default_data["items"][0]
+    assert pointer["material_type"] == "slides"
     async def load_pointer(pointer_id: str) -> EvidencePointer:
         async with session_factory() as db:
             return await db.get(EvidencePointer, pointer_id)

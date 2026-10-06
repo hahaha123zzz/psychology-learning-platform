@@ -917,11 +917,11 @@ class LearningEvent(Base, ULIDPrimaryKeyMixin):
         UniqueConstraint("user_id", "event_key", name="uq_learning_events_user_key"),
         CheckConstraint(
             "event_type IN ('task_viewed','answer_submitted','tutor_responded',"
-            "'lab_trial_completed','feedback_submitted')",
+            "'lab_trial_completed','feedback_submitted','RESOURCE_OPENED')",
             name="ck_learning_events_type",
         ),
         CheckConstraint(
-            "source_type IN ('tutor','assessment','practice','review','lab','system')",
+            "source_type IN ('tutor','assessment','practice','review','lab','system','resource')",
             name="ck_learning_events_source",
         ),
         CheckConstraint(

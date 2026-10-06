@@ -243,6 +243,44 @@ def test_tutor_citation_labels_omit_unavailable_physical_page() -> None:
     assert _citation_label(2, "PDF 段落", pdf_paragraph.physical_page) == "[2] PDF 段落 第1页"
 
 
+def test_saved_citation_material_type_values_and_legacy_fallback_without_database() -> None:
+    from app.modules.tutor.router import ChatTurnRead, _serialize_citation
+
+    allowed = ("textbook", "slides", "handout", "exercise", "reference", "other")
+    for material_type in allowed:
+        citation = _serialize_citation(
+            {"evidence_pointer_id": "synthetic", "material_type": material_type}
+        )
+        assert citation["material_type"] == material_type
+    assert _serialize_citation({"evidence_pointer_id": "legacy"})["material_type"] is None
+    assert _serialize_citation({"material_type": "untrusted-category"})["material_type"] is None
+    assert _serialize_citation({"material_type": ["slides"]})["material_type"] is None
+    assert _serialize_citation("legacy-scalar") == "legacy-scalar"
+    legacy_turn = ChatTurnRead(
+        id="legacy-turn",
+        role="tutor",
+        content="legacy response",
+        citations=None,
+        verification=None,
+        refusal=False,
+        created_at="2026-10-06T00:00:00+00:00",
+    )
+    assert legacy_turn.citations is None
+
+
+def test_material_type_is_in_search_reader_and_saved_chat_openapi_without_database() -> None:
+    from app.main import app
+
+    schema = app.openapi()
+    values = ["textbook", "slides", "handout", "exercise", "reference", "other"]
+    search_item = schema["components"]["schemas"]["SearchResultRead"]
+    pointer = schema["components"]["schemas"]["EvidencePointerRead"]
+    citation = schema["components"]["schemas"]["ChatCitationRead"]
+    assert search_item["properties"]["material_type"]["enum"] == values
+    assert pointer["properties"]["material_type"]["enum"] == values
+    assert citation["properties"]["material_type"]["anyOf"][0]["enum"] == values
+
+
 def test_chat_session_creation_validates_mode_context(client) -> None:
     course_id, _, _ = _prepare(client, publish=True)
     tutor_without_chapter = client.post(
@@ -1191,6 +1229,9 @@ def test_turn_stream_answers_with_citations_and_persists(client) -> None:
     turns = detail.json()["data"]["turns"]
     assert [t["role"] for t in turns] == ["student", "tutor"]
     assert turns[1]["citations"]
+    assert turns[1]["citations"][0]["material_type"] == "slides"
+    citation_event = next(data for name, data in events if name == "citation")
+    assert citation_event["material_type"] == "slides"
     assert turns[1]["verification"]["claims"]
 
 

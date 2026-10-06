@@ -6,7 +6,7 @@ from app.core.errors import ApiError
 from app.core.response import ok
 from app.db.models import LearningEvent, User
 from app.db.session import get_db_session
-from app.modules.auth.dependencies import get_current_user, has_course_scope
+from app.modules.auth.dependencies import get_current_user, has_course_scope, require_course_role
 from app.modules.learning_events import schemas, service
 
 router = APIRouter()
@@ -14,11 +14,39 @@ router = APIRouter()
 
 @router.post("/learning-events", response_model=None)
 async def append_learning_event(
-    body: schemas.LearningEventCreate,
+    body: schemas.LearningEventCreate | schemas.ResourceOpenedEventCreate,
     request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
+    if isinstance(body, schemas.ResourceOpenedEventCreate):
+        await require_course_role(body.course_id, user, db, roles={"student"})
+        payload = await service.derive_resource_open_event(
+            db,
+            user_id=user.id,
+            course_id=body.course_id,
+            pointer_id=body.evidence_pointer_id,
+        )
+        event, replay = await service.append_event(
+            db,
+            user_id=user.id,
+            event_key=body.event_key,
+            course_id=body.course_id,
+            event_type="RESOURCE_OPENED",
+            source_type="resource",
+            source_ref=body.evidence_pointer_id,
+            payload=payload,
+            occurred_at=None,
+            qualification_status="rejected",
+            qualification_reason="resource_usage_non_evidence",
+        )
+        await db.commit()
+        await db.refresh(event)
+        data = schemas.LearningEventOut.model_validate(
+            event, from_attributes=True
+        ).model_dump(mode="json")
+        return ok(request, data, status_code=200 if replay else 201, idempotent_replay=replay)
+
     if not await has_course_scope(user, body.course_id, db):
         raise ApiError(status_code=404, code="COURSE_NOT_FOUND", message="课程不存在或无权访问")
     if body.event_type == "tutor_responded":
@@ -54,8 +82,7 @@ async def list_learning_events(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    if not await has_course_scope(user, course_id, db):
-        raise ApiError(status_code=404, code="COURSE_NOT_FOUND", message="课程不存在或无权访问")
+    await require_course_role(course_id, user, db, roles={"student"})
     result = await db.execute(
         select(LearningEvent)
         .where(LearningEvent.user_id == user.id, LearningEvent.course_id == course_id)
