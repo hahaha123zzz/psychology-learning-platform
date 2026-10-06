@@ -39,6 +39,8 @@ MATERIAL_TITLE = "合成教材：实验设计与图表（原生定位版）"
 QUESTION_STEM = "【本地合成演示】研究者操纵的变量是什么？"
 ASSESSMENT_TITLE = "合成练习：实验变量辨析（五题版）"
 COURSE_RELEASE_NAME = "V1.2 学生闭环合成课程版本（五题 Practice）"
+PINNED_COURSE_RELEASE_NAME = f"{COURSE_RELEASE_NAME}（固定 DomainRelease）"
+DOMAIN_PACK = {"chapters": ["synthetic-experimental-variables"]}
 PRACTICE_QUESTION_SPECS = (
     {
         "type": "single",
@@ -319,6 +321,49 @@ def publish_demo_release(client, course_id: str, release: dict) -> dict:
     return published_response.json()["data"]
 
 
+def ensure_demo_domain_release(client, course_id: str) -> str:
+    """创建或复用本地合成 DomainRelease，供索引与课程版本精确固定。"""
+    releases = expect(
+        client.get(f"/api/v1/courses/{course_id}/domain-releases"),
+        200,
+        "list synthetic domain releases",
+    )
+    release = next(
+        (
+            item
+            for item in releases
+            if item.get("manifest", {}).get("domain_pack", item.get("manifest"))
+            == DOMAIN_PACK
+            and item.get("status") in {"draft", "published"}
+        ),
+        None,
+    )
+    if release is None:
+        release = expect(
+            client.post(
+                f"/api/v1/courses/{course_id}/domain-releases",
+                headers={"Idempotency-Key": "student-demo-domain-release-v12"},
+                json={"manifest": {"domain_pack": DOMAIN_PACK}},
+            ),
+            201,
+            "create synthetic domain release",
+        )
+    if release["status"] == "draft":
+        release = expect(
+            client.post(
+                f"/api/v1/courses/{course_id}/domain-releases/{release['id']}/publish",
+                headers={
+                    "Idempotency-Key": f"student-demo-domain-publish:{release['id']}"
+                },
+            ),
+            200,
+            "publish synthetic domain release",
+        )
+    if release["status"] != "published":
+        raise RuntimeError("合成 DomainRelease 必须处于 published 状态")
+    return release["id"]
+
+
 async def ensure_database() -> None:
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import create_async_engine
@@ -410,6 +455,19 @@ async def learning_session_release_binding(task_id: str) -> tuple[str | None, st
         )
 
 
+async def chat_session_release_binding(session_id: str) -> tuple[str | None, str | None]:
+    from app.db.models import ChatSession
+    from app.db.session import session_factory
+
+    async with session_factory() as db:
+        row = await db.get(ChatSession, session_id)
+        return (
+            (row.course_release_assignment_id, row.course_release_id)
+            if row is not None
+            else (None, None)
+        )
+
+
 def seed_api_data() -> dict[str, str]:
     from fastapi.testclient import TestClient
 
@@ -437,6 +495,7 @@ def seed_api_data() -> dict[str, str]:
                 "create synthetic course",
             )
         course_id = course["id"]
+        domain_release_id = ensure_demo_domain_release(client, course_id)
 
         student_ids = []
         for student_email in STUDENT_EMAILS:
@@ -498,35 +557,69 @@ def seed_api_data() -> dict[str, str]:
             )
             wait_for_job(client, parse["job_id"])
             embed = expect(
-                client.post(f"/api/v1/material-versions/{version_id}/embed"),
+                client.post(
+                    f"/api/v1/material-versions/{version_id}/embed",
+                    params={"domain_release_id": domain_release_id},
+                    headers={
+                        "Idempotency-Key": (
+                            f"student-demo-index:{version_id}:{domain_release_id}"
+                        )
+                    },
+                ),
                 202,
                 "embed synthetic PDF",
             )
             wait_for_job(client, embed["job_id"])
             expect(
-                client.post(f"/api/v1/material-versions/{version_id}/publish"),
+                client.post(
+                    f"/api/v1/material-versions/{version_id}/publish",
+                    params={"domain_release_id": domain_release_id},
+                ),
                 200,
                 "publish synthetic PDF",
             )
         else:
             current = material.get("current_version") or {}
             version_id = current.get("id", "")
-            if (
-                not version_id
-                or current.get("status") != "parsed"
-                or material.get("visibility") != "published"
-            ):
+            if not version_id or current.get("status") != "parsed":
                 raise RuntimeError(
-                    "同名演示教材已存在但未发布；请使用专属 Demo 库排障后再重跑"
+                    "同名演示教材尚未解析成功；请使用专属 Demo 库排障后再重跑"
                 )
+            # 该端点会复用同一教材版本、Embedding 与 DomainRelease 的现有快照；
+            # 若旧快照缺少 DomainRelease，则会先以精确领域版本重建索引并替换快照。
+            embed = expect(
+                client.post(
+                    f"/api/v1/material-versions/{version_id}/embed",
+                    params={"domain_release_id": domain_release_id},
+                    headers={
+                        "Idempotency-Key": (
+                            f"student-demo-index:{version_id}:{domain_release_id}"
+                        )
+                    },
+                ),
+                202,
+                "ensure pinned synthetic index",
+            )
+            wait_for_job(client, embed["job_id"])
+            expect(
+                client.post(
+                    f"/api/v1/material-versions/{version_id}/publish",
+                    params={"domain_release_id": domain_release_id},
+                ),
+                200,
+                "ensure pinned synthetic publication",
+            )
 
-        login(client, STUDENT_EMAIL)
+        # 种子阶段尚未切换班级 Release；教师身份只用于生成带确切领域快照的
+        # 合成题目 EvidencePointer。学生侧资格路径由后续联调单独验证。
+        login(client, TEACHER_EMAIL)
         search = expect(
             client.post(
                 "/api/v1/knowledge/search",
                 json={
                     "course_id": course_id,
                     "material_version_ids": [version_id],
+                    "domain_release_id": domain_release_id,
                     "query": "independent variable manipulated researcher",
                     "top_k": 8,
                     "purpose": "course_qa",
@@ -561,6 +654,7 @@ def seed_api_data() -> dict[str, str]:
                 json={
                     "course_id": course_id,
                     "material_version_ids": [version_id],
+                    "domain_release_id": domain_release_id,
                     "query": "measure score recall",
                     "object_types": ["table"],
                     "top_k": 8,
@@ -757,8 +851,16 @@ def seed_api_data() -> dict[str, str]:
             200,
             "list synthetic course releases",
         )
-        release_name = COURSE_RELEASE_NAME
-        release = next((item for item in releases if item["name"] == release_name), None)
+        release_name = PINNED_COURSE_RELEASE_NAME
+        release = next(
+            (
+                item
+                for item in releases
+                if item["name"] == release_name
+                and item.get("domain_release_id") == domain_release_id
+            ),
+            None,
+        )
         if release is None:
             release = expect(
                 client.post(
@@ -766,7 +868,8 @@ def seed_api_data() -> dict[str, str]:
                     json={
                         "name": release_name,
                         "material_ids": [material["id"]],
-                        "domain_pack": {"chapters": ["synthetic-experimental-variables"]},
+                        "domain_release_id": domain_release_id,
+                        "domain_pack": DOMAIN_PACK,
                         "pedagogy_pack": {"tasks": ["retrieve", "explain", "practice", "review"]},
                         "assessment_pack": {"release_ids": [assessment_id]},
                     },
@@ -802,8 +905,49 @@ def seed_api_data() -> dict[str, str]:
             )
 
         home_tasks = {}
+        course_qa_sessions = {}
         for student_email in STUDENT_EMAILS:
             login(client, student_email)
+            session_title = f"V1.2 Demo course_qa {release['id']} {student_email}"
+            sessions = expect(
+                client.get("/api/v1/chat/sessions"),
+                200,
+                f"list synthetic course_qa sessions for {student_email}",
+            )
+            course_qa = next(
+                (
+                    item
+                    for item in sessions
+                    if item.get("course_id") == course_id
+                    and item.get("mode") == "course_qa"
+                    and item.get("title") == session_title
+                ),
+                None,
+            )
+            if course_qa is not None:
+                chat_binding = asyncio.run(chat_session_release_binding(course_qa["id"]))
+                asyncio.run(engine.dispose())
+            else:
+                chat_binding = (None, None)
+            if course_qa is None or chat_binding[0] is None or chat_binding[1] != release["id"]:
+                course_qa = expect(
+                    client.post(
+                        "/api/v1/chat/sessions",
+                        json={
+                            "course_id": course_id,
+                            "mode": "course_qa",
+                            "title": session_title,
+                        },
+                    ),
+                    201,
+                    f"create pinned synthetic course_qa session for {student_email}",
+                )
+                chat_binding = asyncio.run(chat_session_release_binding(course_qa["id"]))
+                asyncio.run(engine.dispose())
+            if chat_binding[0] is None or chat_binding[1] != release["id"]:
+                raise RuntimeError("合成 course_qa 会话必须固定到班级指派的 CourseRelease")
+            course_qa_sessions[student_email] = course_qa["id"]
+
             home = expect(
                 client.get("/api/v1/student/home"),
                 200,
@@ -866,6 +1010,7 @@ def seed_api_data() -> dict[str, str]:
         "class_id": course_class["id"],
         "learning_task_id": home_task,
         "learning_task_ids_by_student": home_tasks,
+        "course_qa_session_ids_by_student": course_qa_sessions,
         "table_pointer_id": table_item["evidence_pointer_id"],
         "figure_pointer_id": figure_item["evidence_pointer_id"],
     }

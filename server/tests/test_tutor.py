@@ -1786,6 +1786,7 @@ def test_single_incorrect_guided_answer_is_evidence_without_mastery_or_profile_c
     ] == "check"
     assert respond("我不知道")["state"] == "hint"
     assert respond("我不知道")["state"] == "practice"
+    wrong_answer_event_version = learning["state_version"]
     wrong_answer = respond("我不知道")
     assert wrong_answer["state"] == "summary"
     assert wrong_answer["correct"] is False
@@ -1796,7 +1797,7 @@ def test_single_incorrect_guided_answer_is_evidence_without_mastery_or_profile_c
             event = await db.scalar(
                 select(LearningEvent).where(
                     LearningEvent.event_key
-                    == f"learning-session-response:{learning['id']}:{wrong_answer['state_version']}"
+                    == f"learning-session-response:{learning['id']}:{wrong_answer_event_version}"
                 )
             )
             assert event is not None

@@ -25,6 +25,7 @@ test("Reader returns only the server-confirmed persistent pointer ID to Learn Se
   assert.match(learn, /setSelectionContextPointerId\(pointerId\)/);
   assert.match(learn, /className="learn-selection-context" role="status"/);
   assert.match(learn, /onClick=\{\(\) => setSelectionContextPointerId\(""\)\}/);
+  assert.match(learn, /label="重新打开所选来源"[\s\S]*?pointerId=\{selectionContextPointerId\}/);
   assert.doesNotMatch(learn, /selectionContextPointerId[^\n]*(?:excerpt|material_version_id|selected_text)/);
   assert.doesNotMatch(reader, /onReturnToLearn\([^)]*,/);
 });
