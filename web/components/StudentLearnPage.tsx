@@ -14,13 +14,14 @@ type Citation = { pointerId?: string; label: string };
 type Turn = { role: "student" | "tutor"; content: string; citations: Citation[]; status?: string; explanation?: "table"; pendingExplanation?: "table" };
 type TablePointerResponse = {
   evidence_pointer_id: string;
+  course_id: string;
   material_title: string;
   chapter_path: string | null;
   physical_page: number | null;
   object_type: string;
   excerpt: string;
 };
-type SelectedTablePointer = Omit<TablePointerResponse, "excerpt">;
+type SelectedTablePointer = Omit<TablePointerResponse, "course_id" | "excerpt">;
 type SavedChatSession = {
   id: string;
   course_id: string;
@@ -152,6 +153,7 @@ function StudentLearnContent({ courseId }: { courseId: string }) {
       const pointer = await api<TablePointerResponse>(`/evidence-pointers/${encodeURIComponent(pointerId)}`);
       if (
         pointer.evidence_pointer_id !== pointerId ||
+        pointer.course_id !== courseId ||
         pointer.object_type !== "table" ||
         !pointer.excerpt.trim()
       ) {

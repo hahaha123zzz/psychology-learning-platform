@@ -12,6 +12,7 @@ test("Reader handoff reloads and validates only a server-owned native table poin
   const selection = source.slice(source.indexOf("async function selectTablePointer"), source.indexOf("async function search"));
   assert.match(selection, /api<TablePointerResponse>\(`\/evidence-pointers\/\$\{encodeURIComponent\(pointerId\)\}`\)/);
   assert.match(selection, /pointer\.evidence_pointer_id !== pointerId/);
+  assert.match(selection, /pointer\.course_id !== courseId/);
   assert.match(selection, /pointer\.object_type !== "table"/);
   assert.match(selection, /!pointer\.excerpt\.trim\(\)/);
   assert.doesNotMatch(selection, /excerpt:\s*pointer\.excerpt/);
