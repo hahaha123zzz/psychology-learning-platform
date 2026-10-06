@@ -6,6 +6,7 @@ from app.core.errors import ApiError
 from app.core.response import ok
 from app.db.models import LearningEvent, User
 from app.db.session import get_db_session
+from app.modules.assessments.policy import ensure_ai_support_available
 from app.modules.auth.dependencies import get_current_user, has_course_scope, require_course_role
 from app.modules.learning_events import schemas, service
 
@@ -21,6 +22,7 @@ async def append_learning_event(
 ) -> Response:
     if isinstance(body, schemas.ResourceOpenedEventCreate):
         await require_course_role(body.course_id, user, db, roles={"student"})
+        await ensure_ai_support_available(db, user_id=user.id)
         payload = await service.derive_resource_open_event(
             db,
             user_id=user.id,

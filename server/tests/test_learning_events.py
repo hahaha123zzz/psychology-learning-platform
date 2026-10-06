@@ -381,6 +381,55 @@ def test_resource_open_event_is_exact_pinned_non_evidence_and_idempotent(client)
     asyncio.run(delete_usage_event())
 
 
+def test_resource_open_event_is_blocked_during_formal_assessment(client) -> None:
+    from app.db.models import Assessment, Attempt, LearningEvent
+    from app.db.session import session_factory
+
+    course_id, student_id, pointer_id = _prepare_resource_open_pointer(client)
+    _login(client, "mt@uni.edu")
+    teacher_id = client.get("/api/v1/me").json()["data"]["id"]
+
+    async def seed_formal_attempt() -> None:
+        async with session_factory() as db:
+            assessment = Assessment(
+                course_id=course_id,
+                title="合成正式测评中的资源打开限制",
+                status="published",
+                purpose="formal",
+                result_visibility_policy="after_close",
+                created_by=teacher_id,
+            )
+            db.add(assessment)
+            await db.flush()
+            db.add(Attempt(assessment_id=assessment.id, user_id=student_id))
+            await db.commit()
+
+    asyncio.run(seed_formal_attempt())
+    _login(client, "ms@uni.edu")
+    response = client.post(
+        "/api/v1/learning-events",
+        json={
+            "event_key": "resource-open-during-formal-attempt",
+            "course_id": course_id,
+            "evidence_pointer_id": pointer_id,
+        },
+    )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "EXAM_AI_SUPPORT_RESTRICTED"
+
+    async def assert_event_not_recorded() -> None:
+        async with session_factory() as db:
+            count = await db.scalar(
+                select(func.count()).select_from(LearningEvent).where(
+                    LearningEvent.user_id == student_id,
+                    LearningEvent.event_key == "resource-open-during-formal-attempt",
+                )
+            )
+            assert count == 0
+
+    asyncio.run(assert_event_not_recorded())
+
+
 def test_resource_open_event_rejects_unpinned_pointer_and_extra_fields(client) -> None:
     from app.core.errors import ApiError
     from app.db.models import EvidencePointer
