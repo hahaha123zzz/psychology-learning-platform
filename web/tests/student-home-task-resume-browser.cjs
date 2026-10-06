@@ -76,7 +76,7 @@ async function main() {
     page.on("requestfailed", (request) => {
       const url = new URL(request.url());
       if (url.pathname.startsWith("/api/v1/")) {
-        failedApiRequests.push({ path: url.pathname, error: request.failure()?.errorText ?? "unknown" });
+        failedApiRequests.push({ method: request.method(), path: url.pathname, error: request.failure()?.errorText ?? "unknown" });
       }
     });
 
@@ -102,6 +102,10 @@ async function main() {
     assert.equal(restored?.state_version, task.state_version);
     assert.equal(restored?.status, task.status);
 
+    await page.waitForFunction((expectedTitle) =>
+      Array.from(document.querySelectorAll(".functional-nav .data-nav.active"))
+        .some((item) => item.textContent?.trim() === expectedTitle),
+    course.title, { timeout: 20_000 });
     const activeNavLabels = await page.locator(".functional-nav .data-nav.active").allInnerTexts();
     assert.ok(activeNavLabels.some((label) => label.trim() === course.title),
       "the restored view must select the same course");
@@ -109,9 +113,10 @@ async function main() {
     assert.ok(restoreReads.length >= 1 && restoreReads.every((item) => item.path === restorePath && item.method === "GET"));
     assert.deepEqual(businessWrites, [], "the flow must issue no business writes");
     assert.deepEqual(apiErrors, [], "the flow must have no API errors");
+    const interruptedHomeReads = new Set(["/api/v1/student/home", "/api/v1/courses"]);
     assert.ok(failedApiRequests.every((item) =>
-      item.path === "/api/v1/student/home" && item.error === "net::ERR_ABORTED"),
-    "only a duplicate Home GET cancelled by navigation may fail");
+      item.method === "GET" && interruptedHomeReads.has(item.path) && item.error === "net::ERR_ABORTED"),
+    "only duplicate Home/course reads cancelled by navigation may fail");
     assert.ok(homeReads.some((item) => item.status === 200), "the rendered Home route must have a successful Home GET");
     assert.deepEqual(pageErrors, [], "the flow must have no page errors");
 
