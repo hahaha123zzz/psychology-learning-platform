@@ -1,6 +1,7 @@
 import io
 
 import pymupdf
+from sqlalchemy import select
 
 from app.modules.materials.parsers.stub_pdf import StubPdfParser
 from tests.conftest import create_user_sync, make_pdf
@@ -279,3 +280,285 @@ def test_uploaded_draft_invisible_to_students_listing_placeholder(client) -> Non
     response = _upload(client, course_id)
     assert response.status_code == 201
     assert response.json()["data"]["status"] == "uploaded"
+
+
+def _prepare_course_with_student_release_assignment(client):
+    from app.db.base import new_ulid
+    from tests.test_search import _create_student_search_release, _prepare
+
+    course_id, student_id, version_id = _prepare(client, publish=True)
+    teacher_id = client.get("/api/v1/me").json()["data"]["id"]
+    _create_student_search_release(
+        client,
+        course_id=course_id,
+        student_id=student_id,
+        teacher_id=teacher_id,
+        version_id=version_id,
+        domain_release_id=new_ulid(),
+    )
+    return course_id, student_id, version_id, teacher_id
+
+
+def test_student_material_list_uses_assigned_version_after_material_rotation(client) -> None:
+    import asyncio
+
+    from app.db.base import new_ulid
+    from app.db.models import Material, MaterialVersion
+    from app.db.session import session_factory
+
+    course_id, student_id, pinned_version_id, teacher_id = (
+        _prepare_course_with_student_release_assignment(client)
+    )
+
+    async def rotate_current_version() -> None:
+        async with session_factory() as db:
+            pinned_version = await db.get(MaterialVersion, pinned_version_id)
+            assert pinned_version is not None
+            material = await db.get(Material, pinned_version.material_id)
+            assert material is not None
+            replacement = MaterialVersion(
+                id=new_ulid(),
+                material_id=material.id,
+                version_no=pinned_version.version_no + 1,
+                status="parsed",
+                object_key=f"synthetic/{new_ulid()}.pdf",
+                sha256="f" * 64,
+                size_bytes=1,
+                content_type="application/pdf",
+                original_filename="synthetic-rotated.pdf",
+                created_by=teacher_id,
+            )
+            db.add(replacement)
+            await db.flush()
+            material.current_version_id = replacement.id
+            await db.commit()
+
+    asyncio.run(rotate_current_version())
+
+    _login(client, "ms@uni.edu")
+    response = client.get(f"/api/v1/courses/{course_id}/materials")
+    assert response.status_code == 200, response.text
+    rows = response.json()["data"]
+    assert len(rows) == 1
+    assert rows[0]["current_version"]["id"] == pinned_version_id
+    assert rows[0]["current_version"]["version_no"] == 1
+
+
+def test_student_material_list_legacy_fallback_only_for_never_assigned_course(client) -> None:
+    from tests.test_search import _prepare
+
+    course_id, _student_id, version_id = _prepare(client, publish=True)
+    _login(client, "ms@uni.edu")
+    response = client.get(f"/api/v1/courses/{course_id}/materials")
+    assert response.status_code == 200, response.text
+    assert [item["current_version"]["id"] for item in response.json()["data"]] == [version_id]
+
+
+def test_student_material_list_allows_assigned_release_with_no_materials(client) -> None:
+    import asyncio
+
+    from app.db.models import CourseRelease, CourseReleaseAssignment
+    from app.db.session import session_factory
+
+    course_id, _student_id, _version_id, _teacher_id = (
+        _prepare_course_with_student_release_assignment(client)
+    )
+
+    async def empty_release_manifest() -> None:
+        async with session_factory() as db:
+            assignment = await db.scalar(
+                select(CourseReleaseAssignment).where(
+                    CourseReleaseAssignment.course_id == course_id,
+                    CourseReleaseAssignment.status == "active",
+                )
+            )
+            assert assignment is not None
+            release = await db.get(CourseRelease, assignment.course_release_id)
+            assert release is not None
+            release.manifest = {
+                **release.manifest,
+                "materials": [],
+                "material_version_ids": [],
+                "publication_snapshots": [],
+            }
+            await db.commit()
+
+    asyncio.run(empty_release_manifest())
+    _login(client, "ms@uni.edu")
+    response = client.get(f"/api/v1/courses/{course_id}/materials")
+    assert response.status_code == 200, response.text
+    assert response.json()["data"] == []
+
+
+def test_student_material_list_keeps_staff_projection_unchanged(client) -> None:
+    course_id, _student_id, version_id, _teacher_id = (
+        _prepare_course_with_student_release_assignment(client)
+    )
+    _login(client, "mt@uni.edu")
+    response = client.get(f"/api/v1/courses/{course_id}/materials")
+    assert response.status_code == 200, response.text
+    rows = response.json()["data"]
+    assert len(rows) == 1
+    assert rows[0]["current_version"]["id"] == version_id
+    assert rows[0]["visibility"] == "published"
+    assert "quality_gate_status" in rows[0]["current_version"]
+    assert "workflow_state" in rows[0]["current_version"]
+    assert "published_snapshot_id" in rows[0]["current_version"]
+
+
+def test_student_material_list_rejects_multiple_active_assignments(client) -> None:
+    import asyncio
+
+    from app.db.models import (
+        ClassMember,
+        CourseClass,
+        CourseReleaseAssignment,
+    )
+    from app.db.session import session_factory
+
+    course_id, student_id, _version_id, teacher_id = (
+        _prepare_course_with_student_release_assignment(client)
+    )
+
+    async def add_second_active_assignment() -> None:
+        async with session_factory() as db:
+            first = await db.scalar(
+                select(CourseReleaseAssignment).where(
+                    CourseReleaseAssignment.course_id == course_id,
+                    CourseReleaseAssignment.status == "active",
+                )
+            )
+            assert first is not None
+            second_class = CourseClass(
+                course_id=course_id,
+                code="MATERIAL-LIST-SECOND",
+                name="合成第二班",
+                created_by=teacher_id,
+            )
+            db.add(second_class)
+            await db.flush()
+            db.add_all(
+                [
+                    ClassMember(class_id=second_class.id, user_id=student_id),
+                    CourseReleaseAssignment(
+                        course_id=course_id,
+                        class_id=second_class.id,
+                        course_release_id=first.course_release_id,
+                        status="active",
+                        assigned_by=teacher_id,
+                    ),
+                ]
+            )
+            await db.commit()
+
+    asyncio.run(add_second_active_assignment())
+
+    _login(client, "ms@uni.edu")
+    response = client.get(f"/api/v1/courses/{course_id}/materials")
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "COURSE_RELEASE_ASSIGNMENT_AMBIGUOUS"
+
+
+def test_student_material_list_denies_assignment_history_without_active_class_membership(
+    client,
+) -> None:
+    import asyncio
+
+    from app.db.models import ClassMember, CourseClass
+    from app.db.session import session_factory
+
+    course_id, student_id, _version_id, _teacher_id = (
+        _prepare_course_with_student_release_assignment(client)
+    )
+
+    async def remove_active_class_membership() -> None:
+        async with session_factory() as db:
+            membership = await db.scalar(
+                select(ClassMember)
+                .join(CourseClass, CourseClass.id == ClassMember.class_id)
+                .where(
+                    CourseClass.course_id == course_id,
+                    ClassMember.user_id == student_id,
+                )
+            )
+            assert membership is not None
+            membership.status = "removed"
+            await db.commit()
+
+    asyncio.run(remove_active_class_membership())
+
+    _login(client, "ms@uni.edu")
+    response = client.get(f"/api/v1/courses/{course_id}/materials")
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "COURSE_NOT_FOUND"
+
+
+def test_student_material_list_rejects_invalid_release_and_pins(client) -> None:
+    import asyncio
+    from copy import deepcopy
+
+    from app.db.models import CourseRelease, CourseReleaseAssignment
+    from app.db.session import session_factory
+
+    course_id, _student_id, _version_id, _teacher_id = (
+        _prepare_course_with_student_release_assignment(client)
+    )
+
+    async def corrupt_pin_then_release_status() -> None:
+        async with session_factory() as db:
+            assignment = await db.scalar(
+                select(CourseReleaseAssignment).where(
+                    CourseReleaseAssignment.course_id == course_id,
+                    CourseReleaseAssignment.status == "active",
+                )
+            )
+            assert assignment is not None
+            release = await db.get(CourseRelease, assignment.course_release_id)
+            assert release is not None
+            original_manifest = deepcopy(release.manifest)
+            invalid_manifest = deepcopy(original_manifest)
+            invalid_manifest["publication_snapshots"][0]["publication_snapshot_id"] = "missing"
+            release.manifest = invalid_manifest
+            await db.commit()
+
+    asyncio.run(corrupt_pin_then_release_status())
+    _login(client, "ms@uni.edu")
+    invalid_pin = client.get(f"/api/v1/courses/{course_id}/materials")
+    assert invalid_pin.status_code == 409
+    assert invalid_pin.json()["error"]["code"] == "COURSE_RELEASE_ASSIGNMENT_INVALID"
+
+    async def invalidate_release() -> None:
+        async with session_factory() as db:
+            assignment = await db.scalar(
+                select(CourseReleaseAssignment).where(
+                    CourseReleaseAssignment.course_id == course_id,
+                    CourseReleaseAssignment.status == "active",
+                )
+            )
+            assert assignment is not None
+            release = await db.get(CourseRelease, assignment.course_release_id)
+            assert release is not None
+            release.status = "draft"
+            await db.commit()
+
+    asyncio.run(invalidate_release())
+    invalid_release = client.get(f"/api/v1/courses/{course_id}/materials")
+    assert invalid_release.status_code == 409
+    assert invalid_release.json()["error"]["code"] == "COURSE_RELEASE_ASSIGNMENT_INVALID"
+
+
+def test_student_material_list_course_membership_revocation_precedes_release_lookup(client) -> None:
+    course_id, student_id, _version_id, _teacher_id = (
+        _prepare_course_with_student_release_assignment(client)
+    )
+    _login(client, "mt@uni.edu")
+    members = client.get(f"/api/v1/courses/{course_id}/members")
+    assert members.status_code == 200
+    member = next(item for item in members.json()["data"] if item["user_id"] == student_id)
+    removed = client.delete(f"/api/v1/courses/{course_id}/members/{member['id']}")
+    assert removed.status_code == 200
+
+    _login(client, "ms@uni.edu")
+    response = client.get(f"/api/v1/courses/{course_id}/materials")
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "COURSE_NOT_FOUND"

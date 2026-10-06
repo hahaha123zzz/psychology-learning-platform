@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, Response, UploadFile
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, exists, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -9,6 +9,7 @@ from app.core.response import ok
 from app.core.storage import put_object
 from app.core.task_dispatcher import dispatch_parse_job
 from app.db.models import (
+    CourseReleaseAssignment,
     DomainRelease,
     Job,
     Material,
@@ -38,6 +39,147 @@ from app.modules.materials.schemas import (
 router = APIRouter()
 
 MATERIALS_UPLOAD_ENDPOINT = "POST:/api/v1/courses/{course_id}/materials"
+
+
+async def _assigned_student_material_rows(
+    db: AsyncSession, *, user_id: str, course_id: str
+) -> list[tuple[Material, MaterialVersion]] | None:
+    """返回学生当前 Release 固定资料；None 仅表示该课程从未有过 assignment。"""
+    binding = await course_service.resolve_active_student_course_release(
+        db, user_id=user_id, course_id=course_id
+    )
+    if binding is None:
+        has_assignment_history = await db.scalar(
+            select(exists().where(CourseReleaseAssignment.course_id == course_id))
+        )
+        if has_assignment_history:
+            raise ApiError(
+                status_code=404,
+                code="COURSE_NOT_FOUND",
+                message="课程不存在或无权访问",
+            )
+        return None
+
+    _, release = binding
+    manifest = release.manifest if isinstance(release.manifest, dict) else {}
+    material_ids = manifest.get("materials")
+    version_ids = manifest.get("material_version_ids")
+    pins = manifest.get("publication_snapshots")
+    if (
+        not isinstance(material_ids, list)
+        or not isinstance(version_ids, list)
+        or not isinstance(pins, list)
+        or len(material_ids) != len(version_ids)
+        or len(material_ids) != len(pins)
+        or any(not isinstance(value, str) or not value for value in material_ids)
+        or any(not isinstance(value, str) or not value for value in version_ids)
+        or len(set(material_ids)) != len(material_ids)
+        or len(set(version_ids)) != len(version_ids)
+        or (material_ids and release.domain_release_id is None)
+    ):
+        raise ApiError(
+            status_code=409,
+            code="COURSE_RELEASE_ASSIGNMENT_INVALID",
+            message="当前班级课程版本缺少可验证的教材发布快照。",
+        )
+
+    if not material_ids:
+        return []
+
+    required_pin_fields = {
+        "material_id",
+        "material_version_id",
+        "publication_snapshot_id",
+        "index_job_id",
+        "embedding_version",
+        "domain_release_id",
+    }
+    valid_pins: list[dict[str, str]] = []
+    for material_id, version_id, pin in zip(material_ids, version_ids, pins, strict=True):
+        if (
+            not isinstance(pin, dict)
+            or set(pin) != required_pin_fields
+            or any(not isinstance(pin.get(key), str) or not pin[key] for key in required_pin_fields)
+            or pin["material_id"] != material_id
+            or pin["material_version_id"] != version_id
+            or pin["domain_release_id"] != release.domain_release_id
+        ):
+            raise ApiError(
+                status_code=409,
+                code="COURSE_RELEASE_ASSIGNMENT_INVALID",
+                message="当前班级课程版本缺少可验证的教材发布快照。",
+            )
+        valid_pins.append(pin)
+
+    rows = (
+        await db.execute(
+            select(Material, MaterialVersion)
+            .join(MaterialVersion, MaterialVersion.material_id == Material.id)
+            .where(
+                Material.course_id == course_id,
+                Material.status == "active",
+                Material.visibility == "published",
+                Material.id.in_(material_ids),
+                MaterialVersion.id.in_(version_ids),
+                MaterialVersion.status == "parsed",
+            )
+        )
+    ).all()
+    by_pair = {(material.id, version.id): (material, version) for material, version in rows}
+    if set(by_pair) != set(zip(material_ids, version_ids, strict=True)):
+        raise ApiError(
+            status_code=409,
+            code="COURSE_RELEASE_ASSIGNMENT_INVALID",
+            message="当前班级课程版本中的教材快照不可用。",
+        )
+
+    snapshot_ids = [pin["publication_snapshot_id"] for pin in valid_pins]
+    index_job_ids = [pin["index_job_id"] for pin in valid_pins]
+    snapshots = (
+        await db.execute(
+            select(PublicationSnapshot).where(PublicationSnapshot.id.in_(snapshot_ids))
+        )
+    ).scalars()
+    snapshots_by_id = {item.id: item for item in snapshots}
+    index_jobs = (
+        await db.execute(select(Job).where(Job.id.in_(index_job_ids)))
+    ).scalars()
+    index_jobs_by_id = {item.id: item for item in index_jobs}
+    domain_release = await db.get(DomainRelease, release.domain_release_id)
+    for pin in valid_pins:
+        snapshot = snapshots_by_id.get(pin["publication_snapshot_id"])
+        index_job = index_jobs_by_id.get(pin["index_job_id"])
+        payload = (
+            index_job.payload
+            if index_job is not None and isinstance(index_job.payload, dict)
+            else {}
+        )
+        if (
+            snapshot is None
+            or snapshot.material_id != pin["material_id"]
+            or snapshot.material_version_id != pin["material_version_id"]
+            or snapshot.index_job_id != pin["index_job_id"]
+            or snapshot.embedding_version != pin["embedding_version"]
+            or snapshot.domain_release_id != pin["domain_release_id"]
+            or index_job is None
+            or index_job.kind != "material_embed"
+            or index_job.status != "succeeded"
+            or payload.get("material_version_id") != pin["material_version_id"]
+            or payload.get("domain_release_id") != pin["domain_release_id"]
+            or domain_release is None
+            or domain_release.course_id != course_id
+            or domain_release.status not in {"published", "deprecated"}
+        ):
+            raise ApiError(
+                status_code=409,
+                code="COURSE_RELEASE_ASSIGNMENT_INVALID",
+                message="当前班级课程版本中的教材发布快照不可验证。",
+            )
+
+    return [
+        by_pair[(material_id, version_id)]
+        for material_id, version_id in zip(material_ids, version_ids, strict=True)
+    ]
 
 
 @router.post("/courses/{course_id}/upload-sessions", response_model=None)
@@ -468,6 +610,11 @@ async def list_materials(
 ) -> Response:
     role = await require_course_role(course_id, user, db, roles={"teacher", "assistant", "student"})
     is_staff = role in ("teacher", "assistant")
+    assigned_rows = None
+    if not is_staff:
+        assigned_rows = await _assigned_student_material_rows(
+            db, user_id=user.id, course_id=course_id
+        )
     query = (
         select(Material, MaterialVersion)
         .outerjoin(MaterialVersion, Material.current_version_id == MaterialVersion.id)
@@ -482,9 +629,13 @@ async def list_materials(
         )
     else:
         query = query.where(Material.status.in_(("active", "archived")))
-    result = await db.execute(query)
+    if assigned_rows is not None:
+        material_rows = assigned_rows
+    else:
+        result = await db.execute(query)
+        material_rows = result.all()
     items = []
-    for material, version in result.all():
+    for material, version in material_rows:
         item: dict = {
             "id": material.id,
             "title": material.title,
