@@ -27,6 +27,10 @@ def test_mini_lab_qualification_requires_pending_measure_without_database(
         course_id="synthetic-course-id",
         status="completed",
         derived_measure=measure,
+        trial_data=[
+            {"phase": phase, "response": 0}
+            for phase in ("intro", "predict", "run", "inspect", "explain", "summary")
+        ],
     )
     event = SimpleNamespace(
         source_ref=session.id,
@@ -42,6 +46,121 @@ def test_mini_lab_qualification_requires_pending_measure_without_database(
     evidence_ids, reason = asyncio.run(_qualify_lab_result(FakeDatabase(), event))
     assert evidence_ids == []
     assert reason == "mini_lab_result_not_pending"
+
+
+def test_mini_lab_button_only_explain_and_summary_are_not_qualified_without_database() -> None:
+    from app.modules.learning_events.qualification import _qualify_lab_result
+
+    measure = {
+        "trial_count": 6,
+        "explanation_complete": False,
+        "transfer_complete": False,
+        "qualification_status": "pending",
+    }
+    session = SimpleNamespace(
+        id="synthetic-session-id",
+        user_id="synthetic-user-id",
+        course_id="synthetic-course-id",
+        status="completed",
+        derived_measure=measure,
+        trial_data=[
+            {"phase": phase, "response": 0}
+            for phase in ("intro", "predict", "run", "inspect", "explain", "summary")
+        ],
+        lab_key="synthetic-lab",
+    )
+    event = SimpleNamespace(
+        source_ref=session.id,
+        user_id=session.user_id,
+        course_id=session.course_id,
+        payload={key: value for key, value in measure.items() if key != "qualification_status"},
+    )
+
+    class FakeDatabase:
+        async def scalar(self, _statement):
+            return session
+
+    evidence_ids, reason = asyncio.run(_qualify_lab_result(FakeDatabase(), event))
+    assert evidence_ids == []
+    assert reason == "mini_lab_explanation_or_transfer_unverified"
+
+
+def test_mini_lab_legacy_true_flags_do_not_qualify_button_only_response() -> None:
+    from app.modules.learning_events.qualification import _qualify_lab_result
+
+    measure = {
+        "trial_count": 6,
+        "explanation_complete": True,
+        "transfer_complete": True,
+        "qualification_status": "pending",
+    }
+    session = SimpleNamespace(
+        id="synthetic-legacy-session-id",
+        user_id="synthetic-user-id",
+        course_id="synthetic-course-id",
+        status="completed",
+        derived_measure=measure,
+        trial_data=[
+            {"phase": phase, "response": 0}
+            for phase in ("intro", "predict", "run", "inspect", "explain", "summary")
+        ],
+        lab_key="synthetic-lab",
+    )
+    event = SimpleNamespace(
+        source_ref=session.id,
+        user_id=session.user_id,
+        course_id=session.course_id,
+        payload={key: value for key, value in measure.items() if key != "qualification_status"},
+    )
+
+    class FakeDatabase:
+        async def scalar(self, _statement):
+            return session
+
+    evidence_ids, reason = asyncio.run(_qualify_lab_result(FakeDatabase(), event))
+    assert evidence_ids == []
+    assert reason == "mini_lab_explanation_or_transfer_unverified"
+
+
+@pytest.mark.parametrize("missing_phase", ["predict", "run"])
+def test_mini_lab_missing_required_phase_response_is_rejected_without_database(
+    missing_phase: str,
+) -> None:
+    from app.modules.learning_events.qualification import _qualify_lab_result
+
+    measure = {
+        "trial_count": 6,
+        "explanation_complete": False,
+        "transfer_complete": False,
+        "qualification_status": "pending",
+    }
+    trial_data = [
+        {"phase": phase, "response": None if phase == missing_phase else 0}
+        for phase in ("intro", "predict", "run", "inspect", "explain", "summary")
+    ]
+    session = SimpleNamespace(
+        id="synthetic-session-id",
+        user_id="synthetic-user-id",
+        course_id="synthetic-course-id",
+        status="completed",
+        derived_measure=measure,
+        trial_data=trial_data,
+        lab_key="synthetic-lab",
+    )
+    event = SimpleNamespace(
+        source_ref=session.id,
+        user_id=session.user_id,
+        course_id=session.course_id,
+        payload={key: value for key, value in measure.items() if key != "qualification_status"},
+    )
+
+    class FakeDatabase:
+        async def scalar(self, _statement):
+            return session
+
+    evidence_ids, reason = asyncio.run(_qualify_lab_result(FakeDatabase(), event))
+    assert evidence_ids == []
+    assert reason == "mini_lab_required_response_missing"
 
 
 def _login(client, email: str, password: str = "correct-password") -> None:

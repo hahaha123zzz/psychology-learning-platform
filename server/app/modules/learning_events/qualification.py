@@ -76,6 +76,26 @@ async def qualify_event(
     event.qualification_status = status
     event.qualification_reason = reason
     event.qualified_at = datetime.now(UTC)
+    if (
+        getattr(event, "event_type", None) == "lab_trial_completed"
+        and getattr(event, "source_type", None) == "lab"
+        and getattr(event, "event_key", None) == f"lab:{event.source_ref}:completed"
+    ):
+        session = await db.scalar(
+            select(MiniLabSession).where(MiniLabSession.id == event.source_ref)
+        )
+        if (
+            session is not None
+            and session.status == "completed"
+            and session.user_id == event.user_id
+            and session.course_id == event.course_id
+            and isinstance(session.derived_measure, dict)
+        ):
+            session.derived_measure = {
+                **session.derived_measure,
+                "qualification_status": status,
+                "qualification_reason": reason,
+            }
     qualification = LearningQualification(
         event_id=event.id,
         user_id=event.user_id,
@@ -196,7 +216,7 @@ async def _qualify_tutor_response(
 async def _qualify_lab_result(
     db: AsyncSession, event: LearningEvent
 ) -> tuple[list[str], str]:
-    """只从服务端 MiniLab 会话结果生成迁移证据。"""
+    """拒绝尚无答案与评分合同的 MiniLab 结果；仅保留可审计参与事件。"""
     if not event.source_ref or not isinstance(event.payload, dict):
         return [], "missing_authoritative_lab_reference"
     session = await db.scalar(
@@ -215,33 +235,23 @@ async def _qualify_lab_result(
     measure = session.derived_measure
     if measure.get("qualification_status") != "pending":
         return [], "mini_lab_result_not_pending"
+    trial_data = session.trial_data if isinstance(session.trial_data, list) else []
+    responses_by_phase = {
+        trial.get("phase"): trial.get("response")
+        for trial in trial_data
+        if isinstance(trial, dict)
+    }
+    if any(responses_by_phase.get(phase) is None for phase in ("predict", "run")):
+        return [], "mini_lab_required_response_missing"
     if (
         event.payload.get("trial_count") != measure.get("trial_count")
         or event.payload.get("explanation_complete") != measure.get("explanation_complete")
         or event.payload.get("transfer_complete") != measure.get("transfer_complete")
     ):
         return [], "mini_lab_measure_mismatch"
-    if not measure.get("explanation_complete") or not measure.get("transfer_complete"):
-        return [], "mini_lab_explanation_or_transfer_incomplete"
-    evidence_ids = await memory_service.record_evidence(
-        db,
-        user_id=event.user_id,
-        course_id=event.course_id,
-        knowledge_points=[f"lab:{session.lab_key}"],
-        question_version_id=session.id,
-        attempt_id=session.id,
-        source_type="practice",
-        hints_used=0,
-        correct=True,
-        dimension="transfer",
-        independence_status="independent",
-        context_key=f"lab:{session.lab_key}",
-    )
-    await memory_service.recompute_mastery(
-        db, user_id=event.user_id, course_id=event.course_id
-    )
-    session.derived_measure = {**measure, "qualification_status": "qualified"}
-    return evidence_ids, "authoritative_mini_lab_result"
+    # Explain/Summary 仅有按钮回调，没有答案或评分结果；历史行中的 true
+    # 标志也不构成验证。没有独立批准的版本化评分合同前，一律不投影证据。
+    return [], "mini_lab_explanation_or_transfer_unverified"
 
 
 async def qualify_pending_events(db: AsyncSession, *, limit: int = 100) -> dict[str, int]:

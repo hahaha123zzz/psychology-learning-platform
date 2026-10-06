@@ -11,6 +11,7 @@ from app.core.errors import ApiError
 from app.core.response import ok
 from app.db.models import LearningEvent, MiniLabSession, User
 from app.db.session import get_db_session
+from app.modules.assessments.policy import ensure_ai_support_available
 from app.modules.auth.dependencies import get_current_user, require_course_role
 from app.modules.labs import schemas
 
@@ -107,6 +108,13 @@ def _validate_responses(item: MiniLabSession, trial_data: list[dict]) -> None:
             status_code=500, code="MINI_LAB_DEFINITION_INVALID", message="实验定义不可用"
         )
     for trial in trial_data:
+        if trial["phase"] in {"predict", "run"} and trial["response"] is None:
+            raise ApiError(
+                status_code=422,
+                code="MINI_LAB_REQUIRED_RESPONSE_MISSING",
+                message="预测和运行阶段必须保存一个选项响应",
+                details={"phase": trial["phase"]},
+            )
         choice_count = (
             len(choices if trial["phase"] == "predict" else run_choices)
             if trial["phase"] in {"predict", "run"}
@@ -173,6 +181,7 @@ async def create_lab(
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
     await require_course_role(body.course_id, user, db, roles={"student"})
+    await ensure_ai_support_available(db, user_id=user.id)
     definition = LAB_CATALOG.get(body.lab_key)
     if definition is None:
         raise ApiError(status_code=404, code="MINI_LAB_NOT_FOUND", message="实验不存在")
@@ -233,6 +242,7 @@ async def save_lab_progress(
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
     item = await _owned(db, session_id, user, lock=True)
+    await ensure_ai_support_available(db, user_id=user.id)
     if item.status != "running":
         raise ApiError(
             status_code=409, code="MINI_LAB_INVALID_STATE", message="实验会话不能继续记录"
@@ -282,6 +292,7 @@ async def invalidate_lab(
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
     item = await _owned(db, session_id, user, lock=True)
+    await ensure_ai_support_available(db, user_id=user.id)
     payload_hash = hashlib.sha256(
         json.dumps(
             {"expected_version": body.expected_version, "reason": body.reason},
@@ -334,6 +345,7 @@ async def submit_result(
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
     item = await _owned(db, session_id, user, lock=True)
+    await ensure_ai_support_available(db, user_id=user.id)
     submitted_trials = [trial.model_dump(mode="json") for trial in body.trial_data]
     if item.status == "completed":
         if submitted_trials == item.trial_data:
@@ -370,8 +382,10 @@ async def submit_result(
             code="MINI_LAB_TRIAL_CONFLICT",
             message="提交结果与服务端已保存阶段不一致，请恢复最新会话",
         )
-    explanation_complete = trial_data[4]["response"] is not None
-    transfer_complete = trial_data[5]["response"] is not None
+    # 当前 Explain/Summary 屏幕只有“查看总结/完成”按钮，没有学生答案或评分合同。
+    # 按钮序号只能证明参与，不能作为经验证的解释/迁移证据。
+    explanation_complete = False
+    transfer_complete = False
     rts = [trial["rt"] for trial in trial_data if isinstance(trial["rt"], int)]
     item.trial_data = trial_data
     item.phase = "summary"
