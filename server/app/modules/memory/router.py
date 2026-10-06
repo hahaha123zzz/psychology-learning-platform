@@ -571,9 +571,11 @@ async def get_growth_tabs(
             await db.execute(
                 select(MemoryItem)
                 .where(
-                    MemoryItem.user_id == user.id,
-                    MemoryItem.course_id == course_id,
-                    MemoryItem.stale.is_(False),
+                    *memory_service.effective_memory_conditions(
+                        user_id=user.id,
+                        course_id=course_id,
+                        now=datetime.now(UTC),
+                    ),
                     MemoryItem.kind.in_(("weakness", "strength")),
                 )
                 .order_by(MemoryItem.updated_at.desc(), MemoryItem.id.desc())

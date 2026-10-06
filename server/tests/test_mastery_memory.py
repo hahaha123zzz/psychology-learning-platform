@@ -691,6 +691,100 @@ def test_student_growth_tabs_are_explainable_and_ratio_free(client) -> None:
     assert "correct_ratio" not in str(payload)
 
 
+def test_growth_tabs_only_projects_effective_scoped_weakness_memories(client) -> None:
+    course_id, student_id, _, _ = _prepare_published(client)
+    _login(client, "ms@uni.edu")
+
+    from app.db.base import new_ulid
+    from app.db.models import MemoryItem
+    from app.db.session import session_factory
+
+    other_user_id = create_user_sync(email="growth-memory-other@uni.edu")
+    other_course_id = new_ulid()
+    now = datetime.now(UTC)
+    rows = [
+        (
+            student_id,
+            course_id,
+            "current-valid",
+            now - timedelta(days=1),
+            now + timedelta(days=1),
+            False,
+            "none",
+        ),
+        (
+            student_id,
+            course_id,
+            "resolved-conflict",
+            now - timedelta(days=1),
+            None,
+            False,
+            "resolved",
+        ),
+        (student_id, course_id, "future", now + timedelta(days=1), None, False, "none"),
+        (
+            student_id,
+            course_id,
+            "expired",
+            now - timedelta(days=2),
+            now - timedelta(days=1),
+            False,
+            "none",
+        ),
+        (student_id, course_id, "stale", now - timedelta(days=1), None, True, "none"),
+        (student_id, course_id, "open-conflict", now - timedelta(days=1), None, False, "open"),
+        (other_user_id, course_id, "other-user", now - timedelta(days=1), None, False, "none"),
+        (student_id, other_course_id, "other-course", now - timedelta(days=1), None, False, "none"),
+    ]
+
+    async def _seed_memories() -> None:
+        async with session_factory() as session:
+            session.add_all(
+                [
+                    MemoryItem(
+                        id=new_ulid(),
+                        user_id=owner_id,
+                        course_id=owner_course_id,
+                        layer="L1",
+                        kind="weakness",
+                        content=f"对“{label}”的合成掌握仍不稳定，待复核。",
+                        source_type="practice",
+                        source_ref=f"synthetic:{label}",
+                        provenance_level="inferred",
+                        evidence_refs=[f"synthetic-evidence:{label}"],
+                        valid_from=valid_from,
+                        expires_at=expires_at,
+                        conflict_group_id=new_ulid() if conflict_status == "open" else None,
+                        conflict_status=conflict_status,
+                        confidence=0.7,
+                        stale=stale,
+                        updated_at=now - timedelta(minutes=position),
+                    )
+                    for position, (
+                        owner_id,
+                        owner_course_id,
+                        label,
+                        valid_from,
+                        expires_at,
+                        stale,
+                        conflict_status,
+                    ) in enumerate(rows)
+                ]
+            )
+            await session.commit()
+
+    asyncio.run(_seed_memories())
+    response = client.get(f"/api/v1/student/growth/tabs?course_id={course_id}")
+    assert response.status_code == 200
+    misconceptions = response.json()["data"]["misconceptions"]
+    explanations = [item["explanation"] for item in misconceptions]
+    assert explanations == [
+        "对“current-valid”的合成掌握仍不稳定，待复核。",
+        "对“resolved-conflict”的合成掌握仍不稳定，待复核。",
+    ]
+    assert all(item["status"] == "待验证" for item in misconceptions)
+
+
 def test_student_growth_tabs_hint_support_summary_uses_valid_scoped_attempts(client) -> None:
     course_id, student_id, _, _ = _prepare_published(client)
     _login(client, "ms@uni.edu")
