@@ -7,7 +7,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy import and_, case, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -363,6 +363,60 @@ def _growth_last_evidence(
     return latest
 
 
+async def _growth_hint_support_summary(
+    db: AsyncSession, *, user_id: str, course_id: str
+) -> dict[str, int]:
+    """按有效作答 attempt 去重汇总提示支持程度，不返回作答内容或比例。"""
+    supported_attempt = func.max(
+        case(
+            (
+                or_(
+                    LearningEvidence.independence_status == "supported",
+                    LearningEvidence.hints_used > 0,
+                ),
+                1,
+            ),
+            else_=0,
+        )
+    )
+    all_independent_without_hints = func.min(
+        case(
+            (
+                and_(
+                    LearningEvidence.independence_status == "independent",
+                    LearningEvidence.hints_used == 0,
+                ),
+                1,
+            ),
+            else_=0,
+        )
+    )
+    rows = (
+        await db.execute(
+            select(
+                supported_attempt.label("supported_attempt"),
+                all_independent_without_hints.label("independent_attempt"),
+            )
+            .where(
+                LearningEvidence.user_id == user_id,
+                LearningEvidence.course_id == course_id,
+                LearningEvidence.quality_status == "valid",
+                LearningEvidence.attempt_id.is_not(None),
+            )
+            .group_by(LearningEvidence.attempt_id)
+        )
+    ).all()
+    summary = {"attempt_count": len(rows), "supported": 0, "independent": 0, "other": 0}
+    for row in rows:
+        if row.supported_attempt:
+            summary["supported"] += 1
+        elif row.independent_attempt:
+            summary["independent"] += 1
+        else:
+            summary["other"] += 1
+    return summary
+
+
 @router.get("/student/growth/overview", response_model=None)
 async def get_growth_overview(
     request: Request,
@@ -504,6 +558,9 @@ async def get_growth_tabs(
     latest_evidence_by_knowledge_point = await _latest_valid_growth_evidence_metadata(
         db, user_id=user.id, course_id=course_id, states=states
     )
+    hint_support_summary = await _growth_hint_support_summary(
+        db, user_id=user.id, course_id=course_id
+    )
     memories = list(
         (
             await db.execute(
@@ -548,6 +605,7 @@ async def get_growth_tabs(
         {
             "course_id": course_id,
             "freshness": {"status": "fresh", "generated_at": datetime.now(UTC).isoformat()},
+            "hint_support_summary": hint_support_summary,
             "knowledge": [
                 {
                     "knowledge_point": state.knowledge_point,

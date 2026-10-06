@@ -691,6 +691,105 @@ def test_student_growth_tabs_are_explainable_and_ratio_free(client) -> None:
     assert "correct_ratio" not in str(payload)
 
 
+def test_student_growth_tabs_hint_support_summary_uses_valid_scoped_attempts(client) -> None:
+    course_id, student_id, _, _ = _prepare_published(client)
+    _login(client, "ms@uni.edu")
+
+    from app.db.base import new_ulid
+    from app.db.models import LearningEvidence
+    from app.db.session import session_factory
+
+    other_user_id = create_user_sync(email="growth-hints-other@uni.edu")
+    other_course_id = new_ulid()
+    attempt_ids = {
+        key: new_ulid()
+        for key in (
+            "supported",
+            "hints",
+            "independent",
+            "unknown",
+            "mixed",
+            "invalid",
+            "foreign-user",
+            "foreign-course",
+        )
+    }
+
+    empty = client.get(f"/api/v1/student/growth/tabs?course_id={course_id}")
+    assert empty.status_code == 200
+    assert empty.json()["data"]["hint_support_summary"] == {
+        "attempt_count": 0,
+        "supported": 0,
+        "independent": 0,
+        "other": 0,
+    }
+
+    rows = [
+        # 一个 attempt 内存在 supported 行时只计一次 supported。
+        (student_id, course_id, attempt_ids["supported"], "supported", 0, "valid"),
+        (student_id, course_id, attempt_ids["supported"], "independent", 0, "valid"),
+        # 有提示数即归 supported，即使 independence_status 未知。
+        (student_id, course_id, attempt_ids["hints"], "unknown", 2, "valid"),
+        # 同一 attempt 的多条 independent、零提示记录只计一次。
+        (student_id, course_id, attempt_ids["independent"], "independent", 0, "valid"),
+        (student_id, course_id, attempt_ids["independent"], "independent", 0, "valid"),
+        (student_id, course_id, attempt_ids["unknown"], "unknown", 0, "valid"),
+        # 并非全 independent 的 mixed attempt 归入 other。
+        (student_id, course_id, attempt_ids["mixed"], "independent", 0, "valid"),
+        (student_id, course_id, attempt_ids["mixed"], "unknown", 0, "valid"),
+        # 越权 scope、失效记录和空 attempt 均不进入汇总。
+        (student_id, course_id, attempt_ids["invalid"], "supported", 1, "invalidated"),
+        (other_user_id, course_id, attempt_ids["foreign-user"], "supported", 1, "valid"),
+        (student_id, other_course_id, attempt_ids["foreign-course"], "supported", 1, "valid"),
+        (student_id, course_id, None, "supported", 1, "valid"),
+    ]
+
+    async def _seed_evidence() -> None:
+        async with session_factory() as session:
+            session.add_all(
+                [
+                    LearningEvidence(
+                        id=new_ulid(),
+                        user_id=owner_id,
+                        course_id=owner_course_id,
+                        knowledge_point="synthetic-hint-support",
+                        question_version_id=new_ulid(),
+                        attempt_id=attempt_id,
+                        source_type="practice",
+                        dimension="apply",
+                        independence_status=independence_status,
+                        quality_status=quality_status,
+                        hints_used=hints_used,
+                        correct=True,
+                        weight=1.0,
+                    )
+                    for (
+                        owner_id,
+                        owner_course_id,
+                        attempt_id,
+                        independence_status,
+                        hints_used,
+                        quality_status,
+                    ) in rows
+                ]
+            )
+            await session.commit()
+
+    asyncio.run(_seed_evidence())
+    response = client.get(f"/api/v1/student/growth/tabs?course_id={course_id}")
+    assert response.status_code == 200
+    summary = response.json()["data"]["hint_support_summary"]
+    assert summary == {
+        "attempt_count": 5,
+        "supported": 2,
+        "independent": 1,
+        "other": 2,
+    }
+    assert summary["attempt_count"] == (
+        summary["supported"] + summary["independent"] + summary["other"]
+    )
+
+
 def test_student_growth_last_evidence_metadata_fails_closed(client) -> None:
     course_id, student_id, _, _ = _prepare_published(client)
     _login(client, "ms@uni.edu")
