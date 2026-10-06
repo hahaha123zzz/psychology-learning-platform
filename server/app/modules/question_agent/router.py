@@ -167,7 +167,12 @@ async def create_branch(
         )
     await require_course_role(parent.course_id, user, db, roles={"teacher", "assistant", "student"})
     await authorize_chat_session_release_scope(db, session_row=parent, user_id=user.id)
-    policy = await load_effective_policy(db, user_id=user.id, course_id=parent.course_id)
+    policy = await load_effective_policy(
+        db,
+        user_id=user.id,
+        course_id=parent.course_id,
+        course_release_id=parent.course_release_id,
+    )
     if not set(policy["allowed_actions"]) - {"pause", "handoff"}:
         raise ApiError(
             status_code=403,
@@ -256,7 +261,12 @@ async def merge_branch(
         raise ApiError(status_code=404, code="BRANCH_NOT_FOUND", message="分支不存在或无权访问")
     await authorize_chat_session_release_scope(db, session_row=parent, user_id=user.id)
     await authorize_chat_session_release_scope(db, session_row=branch, user_id=user.id)
-    policy = await load_effective_policy(db, user_id=user.id, course_id=parent.course_id)
+    policy = await load_effective_policy(
+        db,
+        user_id=user.id,
+        course_id=parent.course_id,
+        course_release_id=parent.course_release_id,
+    )
     if not set(policy["allowed_actions"]) - {"pause", "handoff"}:
         raise ApiError(
             status_code=403,

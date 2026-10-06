@@ -321,6 +321,7 @@ def test_branch_inherits_release_binding_and_keeps_it_after_assignment_rotation(
         MaterialVersion,
         PublicationSnapshot,
         RetrievalUnit,
+        UserPreference,
     )
     from app.db.session import session_factory
     from tests.conftest import create_user_sync, publish_course_release_for_test
@@ -625,6 +626,83 @@ def test_branch_inherits_release_binding_and_keeps_it_after_assignment_rotation(
     assert merged.status_code == 200
     assert merged.json()["data"]["replayed"] is False
     assert asyncio.run(read_child_binding()) == (assignment_id, release_id)
+
+    async def tighten_pinned_policy_and_broaden_replacements() -> None:
+        async with session_factory() as db:
+            pinned_release = await db.get(CourseRelease, release_id)
+            replacement = await db.get(CourseRelease, replacement_release_id)
+            assert pinned_release is not None and replacement is not None
+            pinned_release.manifest = {
+                **(pinned_release.manifest or {}),
+                "teaching_policy": {
+                    "allowed_actions": ["pause", "handoff"],
+                    "max_hints": 0,
+                },
+            }
+            replacement.manifest = {
+                **(replacement.manifest or {}),
+                "teaching_policy": {
+                    "allowed_actions": [
+                        "diagnose", "teach", "check", "hint", "practice",
+                        "summarize", "pause", "handoff",
+                    ],
+                    "max_hints": 3,
+                },
+            }
+            preference = await db.scalar(
+                select(UserPreference).where(UserPreference.user_id == student_id)
+            )
+            if preference is None:
+                db.add(
+                    UserPreference(
+                        user_id=student_id,
+                        preferences={
+                            "teaching_policy": {
+                                "allowed_actions": [
+                                    "diagnose", "teach", "check", "hint", "practice",
+                                    "summarize", "pause", "handoff",
+                                ],
+                                "max_hints": 3,
+                            },
+                            "response_length": "DETAILED",
+                            "example_order": "EXAMPLE_FIRST",
+                        },
+                    )
+                )
+            else:
+                preference.preferences = {
+                    **(preference.preferences or {}),
+                    "teaching_policy": {
+                        "allowed_actions": [
+                            "diagnose", "teach", "check", "hint", "practice",
+                            "summarize", "pause", "handoff",
+                        ],
+                        "max_hints": 3,
+                    },
+                    "response_length": "DETAILED",
+                    "example_order": "EXAMPLE_FIRST",
+                }
+            await db.commit()
+
+    asyncio.run(tighten_pinned_policy_and_broaden_replacements())
+    pinned_policy_turn = client.post(
+        f"/api/v1/chat/sessions/{parent_id}/turns",
+        json={"content": "受限课程版本的追问", "client_turn_id": "branch-pin-policy-turn"},
+    )
+    assert pinned_policy_turn.status_code == 403
+    assert pinned_policy_turn.json()["error"]["code"] == "TEACHING_POLICY_RESTRICTED"
+    pinned_policy_branch = client.post(
+        f"/api/v1/chat/sessions/{parent_id}/branches",
+        json={"source_turn_id": student_turn["id"], "selection": "教材问题"},
+    )
+    assert pinned_policy_branch.status_code == 403
+    assert pinned_policy_branch.json()["error"]["code"] == "TEACHING_POLICY_RESTRICTED"
+    pinned_policy_merge = client.post(
+        f"/api/v1/chat/sessions/{parent_id}/branches/{branch_id}/merge",
+        json={"note": "保留分支想法", "confirmed": True, "merge_key": "branch-pin-merge"},
+    )
+    assert pinned_policy_merge.status_code == 403
+    assert pinned_policy_merge.json()["error"]["code"] == "TEACHING_POLICY_RESTRICTED"
 
     async def revoke_membership() -> None:
         async with session_factory() as db:

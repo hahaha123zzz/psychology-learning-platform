@@ -649,6 +649,22 @@ async def create_learning_session(
             material_id=material.id,
             material_version_id=version.id,
         )
+    effective_policy = await load_effective_policy(
+        db,
+        user_id=user.id,
+        course_id=body.course_id,
+        course_release_id=release_id,
+    )
+    if "teach" not in effective_policy["allowed_actions"]:
+        raise ApiError(
+            status_code=403,
+            code="TEACHING_ACTION_NOT_ALLOWED",
+            message="当前教学策略不允许开始讲解。",
+            details={
+                "policy_version": effective_policy["version"],
+                "action": "teach",
+            },
+        )
     tutor_message = await tutor_service.start_learning_session(
         db,
         material_version_id=body.material_version_id,

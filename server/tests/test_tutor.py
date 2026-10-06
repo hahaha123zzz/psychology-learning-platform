@@ -1832,6 +1832,28 @@ def test_guided_hint_policy_rejections_preserve_version_state_and_evidence(clien
             }
         )
 
+    async def set_restricted_policy() -> None:
+        await set_teaching_policy({"allowed_actions": ["pause", "handoff"]})
+
+    preferences = client.get("/api/v1/me/preferences").json()["data"]
+    presentation_preferences = client.patch(
+        "/api/v1/me/preferences",
+        json={
+            "version": preferences["version"],
+            "response_length": "DETAILED",
+            "example_order": "EXAMPLE_FIRST",
+        },
+    )
+    assert presentation_preferences.status_code == 200, presentation_preferences.text
+
+    asyncio.run(set_restricted_policy())
+    blocked_start = client.post(
+        "/api/v1/learning-sessions",
+        json={"course_id": course_id, "material_version_id": version_id},
+    )
+    assert blocked_start.status_code == 403
+    assert blocked_start.json()["error"]["code"] == "TEACHING_ACTION_NOT_ALLOWED"
+
     asyncio.run(set_budget_policy())
     budget_learning = create_learning()
     first = post_response(budget_learning["id"], budget_learning["state_version"], "继续")
