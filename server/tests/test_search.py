@@ -19,7 +19,11 @@ from app.db.models import (
     RetrievalUnit,
 )
 from app.db.session import session_factory
-from app.modules.knowledge.service import _has_hash_keyword_anchor, _search_tokens
+from app.modules.knowledge.service import (
+    _caption_closure_pointer,
+    _has_hash_keyword_anchor,
+    _search_tokens,
+)
 from app.modules.materials.service import _clear_parse_outputs
 from tests.conftest import create_user_sync, make_pdf
 from tests.test_materials import _login, _setup_course, _upload
@@ -566,6 +570,66 @@ def test_hash_keyword_anchor_requires_two_meaningful_query_terms() -> None:
     assert _has_hash_keyword_anchor("A mapo tofu recipe", tokens)
 
 
+def test_caption_closure_pointer_requires_approved_same_version_exact_pin() -> None:
+    neighbor = {
+        "object_id": "01M00000000000000000000001",
+        "object_type": "paragraph",
+        "physical_page": 1,
+        "reading_order": 3,
+        "bbox": [10.0, 20.0, 100.0, 40.0],
+        "text": "Local synthetic caption text.",
+        "relation_type": "caption_of",
+        "_parser": "stub-pdf",
+        "chapter_path": "1",
+        "_material_version_id": "01M00000000000000000000002",
+        "_relation_review_status": "approved",
+    }
+    pin = {
+        "publication_snapshot_id": "01M00000000000000000000003",
+        "index_job_id": "01M00000000000000000000004",
+        "domain_release_id": "01M00000000000000000000005",
+    }
+    kwargs = {
+        "course_id": "01M00000000000000000000006",
+        "material_id": "01M00000000000000000000007",
+        "material_version_id": "01M00000000000000000000002",
+        "material_title": "Synthetic PDF",
+        "neighbor": neighbor,
+        "publication_pin": pin,
+    }
+
+    pointer = _caption_closure_pointer(**kwargs)
+    assert pointer is not None
+    assert pointer.source_object_id == neighbor["object_id"]
+    assert pointer.object_type == "paragraph"
+    assert pointer.excerpt == neighbor["text"]
+    assert pointer.publication_snapshot_id == pin["publication_snapshot_id"]
+    assert pointer.index_job_id == pin["index_job_id"]
+    assert pointer.domain_release_id == pin["domain_release_id"]
+    assert pointer.physical_page == 1
+    assert pointer.anchors[0]["bbox"] == neighbor["bbox"]
+
+    for changed_neighbor, changed_pin in (
+        ({**neighbor, "_relation_review_status": "rejected"}, pin),
+        ({**neighbor, "_material_version_id": "01M00000000000000000000008"}, pin),
+        ({**neighbor, "relation_type": "next"}, pin),
+        ({**neighbor, "object_type": "figure"}, pin),
+        (neighbor, None),
+        (neighbor, {**pin, "index_job_id": ""}),
+        (neighbor, {key: value for key, value in pin.items() if key != "domain_release_id"}),
+    ):
+        assert (
+            _caption_closure_pointer(
+                **{
+                    **kwargs,
+                    "neighbor": changed_neighbor,
+                    "publication_pin": changed_pin,
+                }
+            )
+            is None
+        )
+
+
 def test_search_returns_only_approved_adjacent_evidence_closure(client) -> None:
     course_id, _, version_id = _prepare(client, publish=False, content=ADJACENT_PARAGRAPHS_PDF)
     _login(client, "mt@uni.edu")
@@ -656,13 +720,84 @@ def test_native_pdf_table_search_pins_table_and_adjacent_figure(client, monkeypa
                     )
                 ).scalars()
             )
-            return table, units
+            paragraph = await db.scalar(
+                select(KnowledgeObject).where(
+                    KnowledgeObject.material_version_id == version_id,
+                    KnowledgeObject.type == "paragraph",
+                )
+            )
+            return table, units, paragraph
 
-    table, units = asyncio.run(load_table_and_chunks())
+    table, units, caption_paragraph = asyncio.run(load_table_and_chunks())
     assert units
+    assert caption_paragraph is not None
     assert all(unit.unit_type == "table_cells" and unit.channel_hint == "sparse" for unit in units)
     assert all(unit.bbox == table.bbox for unit in units)
     assert all(table_text not in embedded for embedded in embedded_texts)
+
+    approved_caption_id = new_ulid()
+    rejected_paragraph_id = new_ulid()
+    async def create_caption_relations() -> None:
+        async with session_factory() as db:
+            db.add_all(
+                [
+                    ObjectRelation(
+                        source_object_id=table.id,
+                        target_object_id=caption_paragraph.id,
+                        relation_type="explains",
+                        source="test:synthetic-approved-caption",
+                        confidence=1.0,
+                        review_status="approved",
+                    ),
+                    KnowledgeObject(
+                        id=approved_caption_id,
+                        material_version_id=version_id,
+                        type="paragraph",
+                        chapter_path=caption_paragraph.chapter_path,
+                        physical_page=1,
+                        reading_order=caption_paragraph.reading_order + 10,
+                        bbox=[72.0, 440.0, 240.0, 460.0],
+                        raw_content="Synthetic caption text for the local figure.",
+                        parser="stub-pdf",
+                        parser_version="native-layout-v3.3",
+                        confidence=0.95,
+                        review_status="approved",
+                    ),
+                    ObjectRelation(
+                        source_object_id=table.id,
+                        target_object_id=approved_caption_id,
+                        relation_type="caption_of",
+                        source="test:synthetic-approved-caption",
+                        confidence=1.0,
+                        review_status="approved",
+                    ),
+                    KnowledgeObject(
+                        id=rejected_paragraph_id,
+                        material_version_id=version_id,
+                        type="paragraph",
+                        chapter_path=caption_paragraph.chapter_path,
+                        physical_page=1,
+                        reading_order=caption_paragraph.reading_order + 20,
+                        bbox=[72.0, 400.0, 240.0, 420.0],
+                        raw_content="Rejected synthetic nearby text.",
+                        parser="stub-pdf",
+                        parser_version="native-layout-v3.3",
+                        confidence=0.95,
+                        review_status="approved",
+                    ),
+                    ObjectRelation(
+                        source_object_id=table.id,
+                        target_object_id=rejected_paragraph_id,
+                        relation_type="caption_of",
+                        source="test:synthetic-rejected-caption",
+                        confidence=1.0,
+                        review_status="rejected",
+                    ),
+                ]
+            )
+            await db.commit()
+
+    asyncio.run(create_caption_relations())
 
     _login(client, "mt@uni.edu")
     teacher_id = client.get("/api/v1/me").json()["data"]["id"]
@@ -725,7 +860,9 @@ def test_native_pdf_table_search_pins_table_and_adjacent_figure(client, monkeypa
         },
     )
     assert response.status_code == 200, response.text
-    item = response.json()["data"]["items"][0]
+    search_items = response.json()["data"]["items"]
+    assert len(search_items) == 1
+    item = search_items[0]
     assert item["object_type"] == "table"
     assert item["source_object_id"] == table.id
     assert item["evidence_pointer_id"]
@@ -742,15 +879,44 @@ def test_native_pdf_table_search_pins_table_and_adjacent_figure(client, monkeypa
     assert figure_closure["relation_type"] in {"previous", "next"}
     assert figure_closure["physical_page"] == 1
     assert figure_closure["evidence_pointer_id"]
+    caption_closure = next(
+        neighbor
+        for neighbor in item["closure"]
+        if neighbor["object_id"] == caption_paragraph.id
+        and neighbor["relation_type"] == "explains"
+    )
+    approved_caption_closure = next(
+        neighbor for neighbor in item["closure"] if neighbor["object_id"] == approved_caption_id
+    )
+    assert caption_closure["relation_type"] == "explains"
+    assert caption_closure["text"] == caption_paragraph.raw_content
+    assert caption_closure["evidence_pointer_id"]
+    assert approved_caption_closure["relation_type"] == "caption_of"
+    assert approved_caption_closure["text"] == "Synthetic caption text for the local figure."
+    assert approved_caption_closure["evidence_pointer_id"]
+    assert rejected_paragraph_id not in {entry["object_id"] for entry in item["closure"]}
     table_pointer = client.get(
         f"/api/v1/evidence-pointers/{item['evidence_pointer_id']}"
     )
     figure_pointer = client.get(
         f"/api/v1/evidence-pointers/{figure_closure['evidence_pointer_id']}"
     )
+    caption_pointer = client.get(
+        f"/api/v1/evidence-pointers/{caption_closure['evidence_pointer_id']}"
+    )
+    approved_caption_pointer = client.get(
+        f"/api/v1/evidence-pointers/{approved_caption_closure['evidence_pointer_id']}"
+    )
     assert table_pointer.status_code == 200
     assert figure_pointer.status_code == 200
-    for response_pointer in (table_pointer, figure_pointer):
+    assert caption_pointer.status_code == 200
+    assert approved_caption_pointer.status_code == 200
+    for response_pointer in (
+        table_pointer,
+        figure_pointer,
+        caption_pointer,
+        approved_caption_pointer,
+    ):
         restored_pointer = response_pointer.json()["data"]
         assert restored_pointer["course_id"] == course_id
         assert restored_pointer["publication_snapshot_id"] == domain_snapshot_id
@@ -760,6 +926,16 @@ def test_native_pdf_table_search_pins_table_and_adjacent_figure(client, monkeypa
     assert figure_pointer.json()["data"]["source_object_id"] == figure_closure["object_id"]
     assert figure_pointer.json()["data"]["physical_page"] == 1
     assert figure_pointer.json()["data"]["bbox"] == figure_closure["bbox"]
+    caption_data = caption_pointer.json()["data"]
+    assert caption_data["object_type"] == "paragraph"
+    assert caption_data["source_object_id"] == caption_paragraph.id
+    assert caption_data["excerpt"] == caption_paragraph.raw_content
+    assert caption_data["physical_page"] == caption_paragraph.physical_page
+    assert caption_data["bbox"] == caption_paragraph.bbox
+    approved_caption_data = approved_caption_pointer.json()["data"]
+    assert approved_caption_data["source_object_id"] == approved_caption_id
+    assert approved_caption_data["excerpt"] == approved_caption_closure["text"]
+    assert approved_caption_data["publication_snapshot_id"] == domain_snapshot_id
 
     figure_page = client.get(
         f"/api/v1/evidence-pointers/{figure_closure['evidence_pointer_id']}/page-image",
@@ -769,9 +945,34 @@ def test_native_pdf_table_search_pins_table_and_adjacent_figure(client, monkeypa
     assert figure_page.headers["x-reader-physical-page"] == "1"
     assert figure_page.content.startswith(b"\x89PNG\r\n\x1a\n")
 
+    caption_page = client.get(
+        f"/api/v1/evidence-pointers/{caption_closure['evidence_pointer_id']}/page-image",
+        params={"physical_page": caption_paragraph.physical_page},
+    )
+    assert caption_page.status_code == 200
+    assert caption_page.headers["x-reader-physical-page"] == str(caption_paragraph.physical_page)
+
+    unpinned_search = client.post(
+        "/api/v1/knowledge/search",
+        json={"course_id": course_id, "query": "measure score recall", "object_types": ["table"]},
+    )
+    assert unpinned_search.status_code == 200, unpinned_search.text
+    unpinned_item = unpinned_search.json()["data"]["items"][0]
+    unpinned_caption = next(
+        entry
+        for entry in unpinned_item["closure"]
+        if entry["object_id"] == caption_paragraph.id and entry["relation_type"] == "explains"
+    )
+    assert "evidence_pointer_id" not in unpinned_caption
+    unpinned_caption_of = next(
+        entry for entry in unpinned_item["closure"] if entry["object_id"] == approved_caption_id
+    )
+    assert "evidence_pointer_id" not in unpinned_caption_of
+
     _login(client, "mt@uni.edu")
     teacher_id = client.get("/api/v1/me").json()["data"]["id"]
     cross_version_figure_id = new_ulid()
+    cross_version_paragraph_id = new_ulid()
     cross_version_id = new_ulid()
 
     async def create_cross_version_relation() -> None:
@@ -809,11 +1010,37 @@ def test_native_pdf_table_search_pins_table_and_adjacent_figure(client, monkeypa
                 )
             )
             db.add(
+                KnowledgeObject(
+                    id=cross_version_paragraph_id,
+                    material_version_id=cross_version_id,
+                    type="paragraph",
+                    chapter_path="1",
+                    physical_page=1,
+                    reading_order=6,
+                    bbox=[72.0, 410.0, 240.0, 430.0],
+                    raw_content="Cross-version synthetic caption text.",
+                    parser="stub-pdf",
+                    parser_version="native-layout-v3.3",
+                    confidence=0.95,
+                    review_status="approved",
+                )
+            )
+            db.add(
                 ObjectRelation(
                     source_object_id=table.id,
                     target_object_id=cross_version_figure_id,
                     relation_type="next",
                     source="test:cross-version",
+                    confidence=1.0,
+                    review_status="approved",
+                )
+            )
+            db.add(
+                ObjectRelation(
+                    source_object_id=table.id,
+                    target_object_id=cross_version_paragraph_id,
+                    relation_type="explains",
+                    source="test:cross-version-caption",
                     confidence=1.0,
                     review_status="approved",
                 )
@@ -835,6 +1062,9 @@ def test_native_pdf_table_search_pins_table_and_adjacent_figure(client, monkeypa
     assert cross_version_figure_id not in {
         neighbor["object_id"] for neighbor in cross_version_closure.get(table.id, [])
     }
+    assert cross_version_paragraph_id not in {
+        neighbor["object_id"] for neighbor in cross_version_closure.get(table.id, [])
+    }
 
     cross_version_search = client.post(
         "/api/v1/knowledge/search",
@@ -850,6 +1080,9 @@ def test_native_pdf_table_search_pins_table_and_adjacent_figure(client, monkeypa
     cross_version_item = cross_version_search.json()["data"]["items"][0]
     assert cross_version_item["source_object_id"] == table.id
     assert cross_version_figure_id not in {
+        neighbor["object_id"] for neighbor in cross_version_item["closure"]
+    }
+    assert cross_version_paragraph_id not in {
         neighbor["object_id"] for neighbor in cross_version_item["closure"]
     }
 

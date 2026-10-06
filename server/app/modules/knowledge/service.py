@@ -37,6 +37,9 @@ TABLE_RETRIEVAL_UNIT_BUILD_STRATEGY = "pdf-table-cells"
 RETRIEVAL_UNIT_BUILD_VERSION = "v1"
 EVIDENCE_CLOSURE_RELATIONS = ("previous", "next", "caption_of", "explains", "references")
 MAX_EVIDENCE_CLOSURE_OBJECTS = 4
+PUBLICATION_POINTER_PIN_KEYS = frozenset(
+    {"publication_snapshot_id", "index_job_id", "domain_release_id"}
+)
 
 TSQ_TOKEN_RE = re.compile(r"[\u4e00-\u9fff]+|[a-zA-Z0-9]+")
 SEARCH_STOPWORDS = frozenset(
@@ -124,7 +127,7 @@ async def _load_evidence_closure(
         "SELECT r.source_object_id, r.relation_type, target.id, target.type, "
         "target.physical_page, target.reading_order, target.bbox, "
         "COALESCE(target.normalized_content, target.raw_content), target.parser, "
-        "target.chapter_path "
+        "target.chapter_path, target.material_version_id, r.review_status "
         "FROM object_relations r "
         "JOIN knowledge_objects source ON source.id = r.source_object_id "
         "JOIN knowledge_objects target ON target.id = r.target_object_id "
@@ -166,9 +169,90 @@ async def _load_evidence_closure(
                 "relation_type": row[1],
                 "_parser": row[8],
                 "chapter_path": row[9],
+                "_material_version_id": row[10],
+                "_relation_review_status": row[11],
             }
         )
     return closure
+
+
+def _caption_closure_pointer(
+    *,
+    course_id: str,
+    material_id: str,
+    material_version_id: str,
+    material_title: str,
+    neighbor: dict,
+    publication_pin: dict[str, str] | None,
+) -> EvidencePointer | None:
+    """只为已审核、同版本的文本闭包创建带完整发布 pin 的 Reader 指针。"""
+    if (
+        neighbor.get("_relation_review_status") != "approved"
+        or neighbor.get("_material_version_id") != material_version_id
+        or neighbor.get("relation_type") not in {"caption_of", "explains"}
+        or neighbor.get("object_type") != "paragraph"
+        or not isinstance(neighbor.get("text"), str)
+        or not neighbor["text"].strip()
+        or not isinstance(publication_pin, dict)
+        or set(publication_pin) != PUBLICATION_POINTER_PIN_KEYS
+        or any(not isinstance(value, str) or not value for value in publication_pin.values())
+    ):
+        return None
+
+    page_value = neighbor.get("physical_page")
+    physical_page = (
+        page_value
+        if neighbor.get("_parser") == "stub-pdf"
+        and type(page_value) is int
+        and page_value >= 1
+        else None
+    )
+    bbox_value = neighbor.get("bbox")
+    bbox = (
+        bbox_value
+        if physical_page is not None
+        and isinstance(bbox_value, list)
+        and len(bbox_value) == 4
+        and all(isinstance(value, (int, float)) and math.isfinite(value) for value in bbox_value)
+        and bbox_value[0] < bbox_value[2]
+        and bbox_value[1] < bbox_value[3]
+        else None
+    )
+    coordinate_space = "pdf_user_bottom_left" if bbox is not None else "unavailable"
+    anchors = (
+        [
+            {
+                "physical_page": physical_page,
+                "bbox": bbox,
+                "coordinate_space": coordinate_space,
+                "precision": "stored_source_object_bbox",
+            }
+        ]
+        if physical_page is not None and bbox is not None
+        else []
+    )
+    excerpt = neighbor["text"]
+    return EvidencePointer(
+        id=new_ulid(),
+        course_id=course_id,
+        material_id=material_id,
+        material_version_id=material_version_id,
+        publication_snapshot_id=publication_pin["publication_snapshot_id"],
+        index_job_id=publication_pin["index_job_id"],
+        domain_release_id=publication_pin["domain_release_id"],
+        source_object_id=neighbor["object_id"],
+        retrieval_unit_id=None,
+        material_title=material_title,
+        excerpt=excerpt,
+        excerpt_sha256=hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
+        chapter_path=neighbor["chapter_path"],
+        physical_page=physical_page,
+        reading_order=neighbor["reading_order"],
+        object_type="paragraph",
+        coordinate_space=coordinate_space,
+        bbox=bbox,
+        anchors=anchors,
+    )
 
 
 # ---- 分块构建 ----
@@ -774,7 +858,7 @@ async def hybrid_search(
             expires_at=expires,
         )
         closure_items = [
-            {key: value for key, value in neighbor.items() if key != "_parser"}
+            {key: value for key, value in neighbor.items() if not key.startswith("_")}
             for neighbor in closure_by_source.get(info["source_object_id"], [])
         ]
         for neighbor, source_neighbor in zip(
@@ -782,6 +866,18 @@ async def hybrid_search(
             closure_by_source.get(info["source_object_id"], []),
             strict=True,
         ):
+            caption_pointer = _caption_closure_pointer(
+                course_id=course_id,
+                material_id=info["material_id"],
+                material_version_id=info["material_version_id"],
+                material_title=info["material_title"],
+                neighbor=source_neighbor,
+                publication_pin=publication_pin,
+            )
+            if caption_pointer is not None:
+                db.add(caption_pointer)
+                neighbor["evidence_pointer_id"] = caption_pointer.id
+
             neighbor_bbox = neighbor["bbox"]
             neighbor_page = neighbor["physical_page"]
             if not (
