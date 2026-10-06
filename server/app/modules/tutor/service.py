@@ -1783,6 +1783,27 @@ async def respond_learning_session(
     state = session_row.state
     action = "wait_for_student"
 
+    terminal_hint_emits_practice = (
+        state in {"check", "hint"}
+        and content.strip() not in ("从零开始", "没懂", "不会")
+        and not correct
+        and session_row.hint_level + 1 >= MAX_HINT_LEVEL
+    )
+    if (
+        terminal_hint_emits_practice
+        and effective_policy
+        and "practice" not in effective_policy["allowed_actions"]
+    ):
+        raise ApiError(
+            status_code=403,
+            code="TEACHING_ACTION_NOT_ALLOWED",
+            message="当前教学策略不允许进入练习阶段。",
+            details={
+                "policy_version": effective_policy["version"],
+                "action": "practice",
+            },
+        )
+
     if content.strip() in ("从零开始", "没懂", "不会"):
         if effective_policy and "teach" not in effective_policy["allowed_actions"]:
             raise ApiError(

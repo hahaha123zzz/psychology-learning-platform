@@ -1749,6 +1749,132 @@ def test_learning_microcycle_repairs_misconceptions_and_uses_grounded_example_fa
     assert "研究者控制参与者" not in example["message"]
 
 
+def test_terminal_hint_requires_practice_policy_before_emitting_example(client) -> None:
+    import asyncio
+
+    from sqlalchemy import func, select
+
+    from app.db.models import (
+        LearningEvent,
+        LearningEvidence,
+        LearningSession,
+        MasteryState,
+        UserPreference,
+    )
+    from app.db.session import session_factory
+
+    course_id, student_id, version_id = _prepare(client, publish=True)
+    _login(client, "ms@uni.edu")
+    preference = client.get("/api/v1/me/preferences").json()["data"]
+    presentation = client.patch(
+        "/api/v1/me/preferences",
+        json={
+            "version": preference["version"],
+            "response_length": "DETAILED",
+            "example_order": "EXAMPLE_FIRST",
+        },
+    )
+    assert presentation.status_code == 200, presentation.text
+
+    async def set_policy(*, allow_practice: bool = False) -> None:
+        async with session_factory() as db:
+            row = await db.scalar(
+                select(UserPreference).where(UserPreference.user_id == student_id)
+            )
+            assert row is not None
+            row.preferences = {
+                **row.preferences,
+                "teaching_policy": {
+                    "allowed_actions": [
+                        "diagnose", "teach", "check", "hint",
+                        *( ["practice"] if allow_practice else [] ),
+                    ],
+                    "max_hints": 3,
+                },
+            }
+            await db.commit()
+
+    async def state_and_side_effect_counts(learning_id: str) -> tuple:
+        async with session_factory() as db:
+            learning_row = await db.get(LearningSession, learning_id)
+            assert learning_row is not None
+            event_count = await db.scalar(
+                select(func.count()).select_from(LearningEvent).where(
+                    LearningEvent.event_key.like(
+                        f"learning-session-response:{learning_id}:%"
+                    )
+                )
+            )
+            evidence_count = await db.scalar(
+                select(func.count()).select_from(LearningEvidence).where(
+                    LearningEvidence.user_id == student_id,
+                    LearningEvidence.course_id == course_id,
+                )
+            )
+            mastery_count = await db.scalar(
+                select(func.count()).select_from(MasteryState).where(
+                    MasteryState.user_id == student_id,
+                    MasteryState.course_id == course_id,
+                )
+            )
+            return (
+                learning_row.state,
+                learning_row.version,
+                learning_row.hint_level,
+                event_count or 0,
+                evidence_count or 0,
+                mastery_count or 0,
+            )
+
+    asyncio.run(set_policy())
+    started = client.post(
+        "/api/v1/learning-sessions",
+        json={"course_id": course_id, "material_version_id": version_id},
+    )
+    assert started.status_code == 201, started.text
+    learning = started.json()["data"]
+
+    def respond(content: str):
+        response = client.post(
+            f"/api/v1/learning-sessions/{learning['id']}/responses",
+            json={"state_version": learning["state_version"], "content": content},
+        )
+        assert response.status_code == 200, response.text
+        learning.update(response.json()["data"])
+
+    respond("继续")
+    assert learning["state"] == "teach"
+    respond("我不知道")
+    assert learning["hint_level"] == 1
+    respond("Independent variable control improves internal validity in experiments.")
+    assert learning["state"] == "check"
+    respond("我不知道")
+    assert learning["state"] == "hint"
+    assert learning["hint_level"] == 2
+
+    before = asyncio.run(state_and_side_effect_counts(learning["id"]))
+    assert before[0] == "hint"
+    assert before[2] == 2
+    blocked = client.post(
+        f"/api/v1/learning-sessions/{learning['id']}/responses",
+        json={"state_version": learning["state_version"], "content": "我不知道"},
+    )
+    assert blocked.status_code == 403
+    assert blocked.json()["error"]["code"] == "TEACHING_ACTION_NOT_ALLOWED"
+    assert blocked.json()["error"]["details"]["action"] == "practice"
+    assert asyncio.run(state_and_side_effect_counts(learning["id"])) == before
+
+    asyncio.run(set_policy(allow_practice=True))
+    allowed = client.post(
+        f"/api/v1/learning-sessions/{learning['id']}/responses",
+        json={"state_version": learning["state_version"], "content": "我不知道"},
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["data"]["state"] == "practice"
+    assert allowed.json()["data"]["action"] == "show_example"
+    assert allowed.json()["data"]["hint_level"] == 3
+
+
 def test_guided_hint_policy_rejections_preserve_version_state_and_evidence(client) -> None:
     import asyncio
 

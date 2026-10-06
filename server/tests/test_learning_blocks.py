@@ -1,6 +1,9 @@
 import asyncio
 from types import SimpleNamespace
 
+import pytest
+
+from app.core.errors import ApiError
 from app.modules.tutor import service as tutor_service
 from app.modules.tutor.planner import decide_progress
 from app.modules.tutor.service import (
@@ -189,3 +192,49 @@ def test_tutor_microcycle_uses_chapter_terms_and_does_not_invent_examples() -> N
     assert "不急着判断对错" in misconception_repair_message(texts, ["conditioning"])
     assert "暂不提供例子" in example_message([], [])
     assert "明确标记的例子" in example_message(["Concept definition."], [])
+
+
+def test_terminal_hint_practice_gate_rejects_before_mutating_session(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state="hint",
+        hint_level=2,
+        version=7,
+        material_version_id="material-version-id",
+        chapter_object_id=None,
+        tutor_message="上一次的提示",
+    )
+
+    async def load_chapter_texts(
+        _db, *, material_version_id: str, chapter_object_id: str | None
+    ):
+        assert material_version_id == "material-version-id"
+        assert chapter_object_id is None
+        return ["Internal validity depends on control of experimental conditions."]
+
+    monkeypatch.setattr(tutor_service, "load_chapter_texts", load_chapter_texts)
+    policy = {
+        "version": "effective-policy.v1",
+        "allowed_actions": ["diagnose", "teach", "check", "hint"],
+        "max_hints": 3,
+        "max_support_gradient": 3,
+    }
+
+    with pytest.raises(ApiError) as raised:
+        asyncio.run(
+            tutor_service.respond_learning_session(
+                None,
+                session,
+                "我不知道",
+                effective_policy=policy,
+            )
+        )
+
+    assert raised.value.status_code == 403
+    assert raised.value.code == "TEACHING_ACTION_NOT_ALLOWED"
+    assert raised.value.details["action"] == "practice"
+    assert (session.state, session.version, session.hint_level, session.tutor_message) == (
+        "hint",
+        7,
+        2,
+        "上一次的提示",
+    )
