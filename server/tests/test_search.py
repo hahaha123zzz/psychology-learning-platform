@@ -825,6 +825,7 @@ def test_evidence_pointer_restores_immutable_reference_after_ticket_expiry(clien
     assert restored.status_code == 200
     body = restored.json()["data"]
     assert body["evidence_pointer_id"] == pointer_id
+    assert body["course_id"] == course_id
     assert body["material_version_id"] == version_id
     assert body["excerpt"] == item["text"]
     assert body["restored"] is True

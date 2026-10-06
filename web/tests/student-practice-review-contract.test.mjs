@@ -41,13 +41,18 @@ test("the browser audit covers the seeded wrong answer, purpose guard, and due-t
     new URL("./student-practice-review-browser.cjs", import.meta.url),
     "utf8",
   );
-  assert.match(browser, /合成练习：实验变量辨析（图表版）/);
+  assert.match(browser, /合成练习：实验变量辨析（五题版）/);
+  assert.match(browser, /items\.length, 5/);
+  assert.match(browser, /"single", "multiple", "true_false", "short_answer", "essay"/);
   assert.match(browser, /const questionStem/);
   assert.match(browser, /B\. 因变量/);
   assert.match(browser, /purpose: "formal"/);
-  assert.match(browser, /assert\.equal\(assessment\.current_attempt_id \?\? null, null/);
+  assert.match(browser, /UI005_RESUME_SYNTHETIC_ATTEMPT === "true"/);
+  assert.match(browser, /assert\.ok\(!activeAttemptId \|\| resumeSyntheticAttempt/);
   assert.match(browser, /businessWrites/);
   assert.match(browser, /selected_keys, \["B"\]/);
+  assert.match(browser, /新 attempt 必须各自保存五种交互题答案一次/);
+  assert.match(browser, /savedAnswers.size, 5/);
   assert.match(browser, /verifyWrites\.length/);
   assert.match(browser, /尚未到复习时间/);
   assert.match(browser, /复习答案已提交/);

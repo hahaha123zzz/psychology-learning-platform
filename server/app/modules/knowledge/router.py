@@ -434,6 +434,7 @@ async def get_evidence_pointer(
         request,
         {
             "evidence_pointer_id": pointer.id,
+            "course_id": pointer.course_id,
             "material_title": pointer.material_title,
             "material_id": pointer.material_id,
             "material_version_id": pointer.material_version_id,

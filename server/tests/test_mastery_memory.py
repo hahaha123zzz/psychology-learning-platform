@@ -656,12 +656,38 @@ def test_student_growth_projection_hides_raw_correct_ratio(client) -> None:
 
 
 def test_student_growth_tabs_are_explainable_and_ratio_free(client) -> None:
-    course_id, _, _, _ = _prepare_published(client)
+    course_id, student_id, _, _ = _prepare_published(client)
     _login(client, "ms@uni.edu")
+
+    from app.db.models import MasteryState
+    from app.db.session import session_factory
+
+    async def _seed_knowledge_state() -> None:
+        async with session_factory() as session:
+            session.add(
+                MasteryState(
+                    user_id=student_id,
+                    course_id=course_id,
+                    knowledge_point="合成知识点",
+                    state="learning",
+                    evidence_count=3,
+                    correct_ratio=0.67,
+                    weight_score=0.5,
+                    context_count=2,
+                    independent_evidence_count=1,
+                    algorithm_version="mastery-v2-independent-context",
+                    state_reason="由合成练习证据更新",
+                )
+            )
+            await session.commit()
+
+    asyncio.run(_seed_knowledge_state())
     response = client.get(f"/api/v1/student/growth/tabs?course_id={course_id}")
     assert response.status_code == 200
     payload = response.json()["data"]
     assert {"knowledge", "skills", "misconceptions", "trajectory"} <= payload.keys()
+    assert any(item["knowledge_point"] == "合成知识点" for item in payload["knowledge"])
+    assert payload["skills"] == [], "知识点掌握状态不得伪装成独立技能状态"
     assert "correct_ratio" not in str(payload)
 
 

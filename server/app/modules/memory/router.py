@@ -488,17 +488,9 @@ async def get_growth_tabs(
                 }
                 for state in states
             ],
-            "skills": [
-                {
-                    "skill": state.knowledge_point,
-                    "status": "已形成稳定表现"
-                    if state.state in ("proficient", "mastered")
-                    else "正在形成",
-                    "evidence_count": state.evidence_count,
-                    "next_step": _growth_next_step(state.state, 0),
-                }
-                for state in states
-            ],
+            # 知识点掌握证据不能被重命名为领域技能证据；在独立
+            # DomainSkillState 来源接入前，明确返回空集合。
+            "skills": [],
             "misconceptions": [
                 {
                     "knowledge_point": item.content.removeprefix("对“").split("”", 1)[0]

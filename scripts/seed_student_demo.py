@@ -32,7 +32,52 @@ COURSE_TITLE = "实验心理学｜学生端合成演示"
 COURSE_TERM = "V0.9 Demo"
 MATERIAL_TITLE = "合成教材：实验设计与图表（原生定位版）"
 QUESTION_STEM = "【本地合成演示】研究者操纵的变量是什么？"
-ASSESSMENT_TITLE = "合成练习：实验变量辨析（图表版）"
+ASSESSMENT_TITLE = "合成练习：实验变量辨析（五题版）"
+COURSE_RELEASE_NAME = "V1.2 学生闭环合成课程版本（五题 Practice）"
+PRACTICE_QUESTION_SPECS = (
+    {
+        "type": "single",
+        "stem": QUESTION_STEM,
+        "options": [
+            {"key": "A", "text": "自变量", "is_correct": True},
+            {"key": "B", "text": "因变量", "is_correct": False},
+        ],
+        "difficulty": 1,
+        "explanation": "自变量是研究者主动操纵的变量；此题为合成演示题。",
+    },
+    {
+        "type": "multiple",
+        "stem": "【本地合成演示】哪些做法有助于控制无关变量？",
+        "options": [
+            {"key": "A", "text": "统一指导语", "is_correct": True},
+            {"key": "B", "text": "随机分派被试", "is_correct": True},
+            {"key": "C", "text": "只记录显著结果", "is_correct": False},
+        ],
+        "difficulty": 2,
+        "explanation": "统一程序与随机分派有助于减少混淆；筛选显著结果会引入偏差。",
+    },
+    {
+        "type": "true_false",
+        "stem": "【本地合成演示】因变量是研究者测量的结果。",
+        "answer": {"correct": True},
+        "difficulty": 1,
+        "explanation": "因变量是实验中被测量的结果变量。",
+    },
+    {
+        "type": "short_answer",
+        "stem": "【本地合成演示】用一句话说明控制组的作用。",
+        "rubric": "指出控制组提供比较基准，帮助解释干预或条件变化。",
+        "difficulty": 2,
+        "explanation": "控制组提供对照，帮助判断结果是否与实验条件有关。",
+    },
+    {
+        "type": "essay",
+        "stem": "【本地合成演示】简述研究者如何用实验比较学习时间对回忆的影响。",
+        "rubric": "说明操纵学习时间、测量回忆结果，并控制或随机分派其他因素。",
+        "difficulty": 2,
+        "explanation": "回答需区分操纵的学习时间与测量的回忆表现。",
+    },
+)
 TABLE_TEXT = "Measure | Score\nRecall | 42"
 
 
@@ -157,6 +202,118 @@ def wait_for_job(client, job_id: str, timeout: float = 45.0) -> dict:
     raise TimeoutError("Synthetic material ingestion timed out")
 
 
+async def ensure_demo_release_reviewer(course_id: str, release_id: str) -> tuple[str, str]:
+    """为合成课程发布准备稳定的课程级审核者账号与权限。"""
+    from sqlalchemy import select
+
+    from app.core.config import get_settings
+    from app.core.security import hash_password
+    from app.db.models import CourseRelease, RoleAssignment, User
+    from app.db.session import session_factory
+
+    email = f"release-reviewer-{release_id.lower()}@student-demo.edu"
+    async with session_factory() as db:
+        release = await db.get(CourseRelease, release_id)
+        if release is None or release.course_id != course_id:
+            raise RuntimeError("合成课程 Release 不存在或课程不匹配")
+        author_id = release.created_by
+        user = await db.scalar(select(User).where(User.email == email))
+        if user is None:
+            user = User(
+                organization_id=get_settings().default_organization_id,
+                email=email,
+                password_hash=hash_password(DEMO_PASSWORD),
+                display_name="V1.2 合成课程审核者",
+                status="active",
+                is_teacher=False,
+            )
+            db.add(user)
+            await db.flush()
+        assignment = await db.scalar(
+            select(RoleAssignment).where(
+                RoleAssignment.user_id == user.id,
+                RoleAssignment.role == "course_publisher",
+                RoleAssignment.scope_type == "course",
+                RoleAssignment.scope_id == course_id,
+            )
+        )
+        if assignment is None:
+            db.add(
+                RoleAssignment(
+                    user_id=user.id,
+                    role="course_publisher",
+                    scope_type="course",
+                    scope_id=course_id,
+                    status="active",
+                    granted_by=author_id,
+                )
+            )
+        else:
+            assignment.status = "active"
+        user.password_hash = hash_password(DEMO_PASSWORD)
+        user.status = "active"
+        await db.commit()
+    return email, DEMO_PASSWORD
+
+
+def publish_demo_release(client, course_id: str, release: dict) -> dict:
+    """通过独立课程审核者发布带固定教材快照的本地合成 Release。"""
+    from app.db.session import engine
+
+    preview = expect(
+        client.get(f"/api/v1/courses/{course_id}/releases/{release['id']}/preview"),
+        200,
+        "preview synthetic course release",
+    )
+    reviewer_email, reviewer_password = asyncio.run(
+        ensure_demo_release_reviewer(course_id, release["id"])
+    )
+    # Direct async DB setup used asyncio.run; discard that loop's pool connections
+    # before TestClient resumes on its managed event loop.
+    asyncio.run(engine.dispose())
+    client.cookies.clear()
+    expect(
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": reviewer_email, "password": reviewer_password},
+        ),
+        200,
+        "login synthetic release reviewer",
+    )
+    review_response = client.post(
+        f"/api/v1/courses/{course_id}/releases/{release['id']}/reviews",
+        headers={"Idempotency-Key": f"student-demo-review:{release['id']}"},
+        json={
+            "expected_version": release["version"],
+            "manifest_sha256": preview["manifest_sha256"],
+            "decision": "approved",
+            "reason": "本地 V1.2 学生端合成演示课程审核",
+        },
+    )
+    if review_response.status_code not in {200, 201}:
+        raise RuntimeError(
+            f"review synthetic release: {review_response.status_code}: "
+            f"{review_response.text[:1200]}"
+        )
+    published_response = client.post(
+        f"/api/v1/courses/{course_id}/releases/{release['id']}/publish",
+        headers={"Idempotency-Key": f"student-demo-publish:{release['id']}"},
+        json={"expected_version": release["version"]},
+    )
+    if published_response.status_code != 200:
+        raise RuntimeError(
+            f"publish synthetic release: {published_response.status_code}: "
+            f"{published_response.text[:1200]}"
+        )
+    client.cookies.clear()
+    result = client.post(
+        "/api/v1/auth/login",
+        json={"email": TEACHER_EMAIL, "password": DEMO_PASSWORD},
+    )
+    expect(result, 200, "restore synthetic teacher session")
+    return published_response.json()["data"]
+
+
 async def ensure_database() -> None:
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import create_async_engine
@@ -232,9 +389,23 @@ async def make_synthetic_reviews_due(course_id: str) -> None:
         await db.commit()
 
 
+async def learning_session_release_binding(task_id: str) -> tuple[str | None, str | None]:
+    from app.db.models import LearningSession
+    from app.db.session import session_factory
+
+    async with session_factory() as db:
+        row = await db.get(LearningSession, task_id)
+        return (
+            (row.course_release_assignment_id, row.course_release_id)
+            if row is not None
+            else (None, None)
+        )
+
+
 def seed_api_data() -> dict[str, str]:
     from fastapi.testclient import TestClient
 
+    from app.db.session import engine
     from app.main import app
 
     with TestClient(app) as client:
@@ -441,50 +612,43 @@ def seed_api_data() -> dict[str, str]:
             200,
             "list synthetic questions",
         )
-        question = next(
-            (
-                item
-                for item in questions
-                if item.get("current_version", {}).get("stem") == QUESTION_STEM
-            ),
-            None,
-        )
-        if question is None:
-            question = expect(
-                client.post(
-                    f"/api/v1/courses/{course_id}/questions",
-                    json={
-                        "type": "single",
-                        "stem": QUESTION_STEM,
-                        "options": [
-                            {"key": "A", "text": "自变量", "is_correct": True},
-                            {"key": "B", "text": "因变量", "is_correct": False},
-                        ],
-                        "difficulty": 1,
-                        "explanation": "自变量是研究者操纵的变量；此题为合成演示题。",
-                        "evidence_ids": [evidence_pointer_id],
-                    },
+        question_ids = []
+        for spec in PRACTICE_QUESTION_SPECS:
+            question = next(
+                (
+                    item
+                    for item in questions
+                    if item.get("current_version", {}).get("stem") == spec["stem"]
                 ),
-                201,
-                "create synthetic practice question",
+                None,
             )
-            expect(
-                client.post(
-                    f"/api/v1/questions/{question['id']}/review",
-                    json={
-                        "action": "approve",
-                        "version": question["version"],
-                        "comment": "本地合成 Demo 自动验收",
-                    },
-                ),
-                200,
-                "approve synthetic practice question",
-            )
-            expect(
-                client.post(f"/api/v1/questions/{question['id']}/publish"),
-                200,
-                "publish synthetic practice question",
-            )
+            if question is None:
+                question = expect(
+                    client.post(
+                        f"/api/v1/courses/{course_id}/questions",
+                        json={**spec, "evidence_ids": [evidence_pointer_id]},
+                    ),
+                    201,
+                    f"create synthetic {spec['type']} practice question",
+                )
+                expect(
+                    client.post(
+                        f"/api/v1/questions/{question['id']}/review",
+                        json={
+                            "action": "approve",
+                            "version": question["version"],
+                            "comment": "本地合成 Demo 自动验收",
+                        },
+                    ),
+                    200,
+                    f"approve synthetic {spec['type']} practice question",
+                )
+                expect(
+                    client.post(f"/api/v1/questions/{question['id']}/publish"),
+                    200,
+                    f"publish synthetic {spec['type']} practice question",
+                )
+            question_ids.append(question["id"])
 
         assessments = expect(
             client.get(f"/api/v1/courses/{course_id}/assessments"),
@@ -505,9 +669,9 @@ def seed_api_data() -> dict[str, str]:
                     f"/api/v1/courses/{course_id}/assessments",
                     json={
                         "title": ASSESSMENT_TITLE,
-                        "question_ids": [question["id"]],
+                        "question_ids": question_ids,
                         "purpose": "practice",
-                        "ai_policy": "full_after_submit",
+                        "ai_policy": "disabled",
                         "points_per_question": 1,
                     },
                 ),
@@ -536,17 +700,143 @@ def seed_api_data() -> dict[str, str]:
             ),
             None,
         )
-        question_version_id = (
-            (published_question or {}).get("current_version", {}).get("id")
-        )
+        question_version_id = (published_question or {}).get("current_version", {}).get("id")
         if not question_version_id:
             raise RuntimeError("无法取得已发布合成题的固定版本 ID")
+
+        classes = expect(
+            client.get(f"/api/v1/courses/{course_id}/classes"),
+            200,
+            "list synthetic classes",
+        )
+        course_class = next((item for item in classes if item["code"] == "DEMO-V12"), None)
+        if course_class is None:
+            course_class = expect(
+                client.post(
+                    f"/api/v1/courses/{course_id}/classes",
+                    json={"code": "DEMO-V12", "name": "V1.2 学生闭环合成班"},
+                ),
+                201,
+                "create synthetic class",
+            )
+        class_members = expect(
+            client.get(
+                f"/api/v1/courses/{course_id}/classes/{course_class['id']}/members"
+            ),
+            200,
+            "list synthetic class members",
+        )
+        if not any(item["user_id"] == student_id for item in class_members):
+            expect(
+                client.post(
+                    f"/api/v1/courses/{course_id}/classes/{course_class['id']}/members",
+                    json={"user_id": student_id},
+                ),
+                201,
+                "add synthetic student to class",
+            )
+
+        releases = expect(
+            client.get(f"/api/v1/courses/{course_id}/releases"),
+            200,
+            "list synthetic course releases",
+        )
+        release_name = COURSE_RELEASE_NAME
+        release = next((item for item in releases if item["name"] == release_name), None)
+        if release is None:
+            release = expect(
+                client.post(
+                    f"/api/v1/courses/{course_id}/releases",
+                    json={
+                        "name": release_name,
+                        "material_ids": [material["id"]],
+                        "domain_pack": {"chapters": ["synthetic-experimental-variables"]},
+                        "pedagogy_pack": {"tasks": ["retrieve", "explain", "practice", "review"]},
+                        "assessment_pack": {"release_ids": [assessment_id]},
+                    },
+                ),
+                201,
+                "create synthetic course release",
+            )
+        if release["status"] == "draft":
+            release = publish_demo_release(client, course_id, release)
+        elif release["status"] != "published":
+            raise RuntimeError("合成 V1.2 课程 Release 必须处于 draft 或 published")
+
+        assignment = expect(
+            client.get(
+                f"/api/v1/courses/{course_id}/classes/{course_class['id']}/release-assignment"
+            ),
+            200,
+            "get synthetic class release assignment",
+        )
+        if assignment is None or assignment["course_release_id"] != release["id"]:
+            expect(
+                client.put(
+                    f"/api/v1/courses/{course_id}/classes/{course_class['id']}/release-assignment",
+                    headers={"Idempotency-Key": f"student-demo-assignment:{release['id']}"},
+                    json={
+                        "course_release_id": release["id"],
+                        "expected_version": assignment["version"] if assignment else 0,
+                        "close_reason": "V1.2 合成课程版本替换",
+                    },
+                ),
+                200,
+                "assign synthetic course release to class",
+            )
+
+        login(client, STUDENT_EMAIL)
+        home = expect(client.get("/api/v1/student/home"), 200, "get synthetic student home")
+        current_task = home.get("current_task")
+        current_binding = (
+            asyncio.run(learning_session_release_binding(current_task["id"]))
+            if current_task is not None
+            else (None, None)
+        )
+        if current_task is not None:
+            asyncio.run(engine.dispose())
+        if (
+            current_task is None
+            or current_task.get("course_id") != course_id
+            or current_task.get("material_version_id") != version_id
+            or current_binding[0] is None
+            or current_binding[1] != release["id"]
+        ):
+            current_task = expect(
+                client.post(
+                    "/api/v1/learning-sessions",
+                    json={
+                        "course_id": course_id,
+                        "material_version_id": version_id,
+                    },
+                ),
+                201,
+                "create synthetic resumable learning task",
+            )
+        if (
+            current_task.get("course_id") != course_id
+            or current_task.get("material_version_id") != version_id
+        ):
+            raise RuntimeError("Home 当前合成任务必须绑定本次课程与教材版本")
+        assignment_id, pinned_release_id = asyncio.run(
+            learning_session_release_binding(current_task["id"])
+        )
+        asyncio.run(engine.dispose())
+        if not assignment_id or pinned_release_id != release["id"]:
+            raise RuntimeError("Home 当前合成任务必须固定到班级指派的 CourseRelease")
+        home = expect(client.get("/api/v1/student/home"), 200, "verify synthetic student home task")
+        home_task = home.get("current_task")
+        if not home_task or home_task.get("id") != current_task.get("id"):
+            raise RuntimeError("Home 未返回刚创建或复用的可恢复合成任务")
 
     return {
         "course_id": course_id,
         "material_version_id": version_id,
         "assessment_id": assessment_id,
         "question_version_id": question_version_id,
+        "course_release_id": release["id"],
+        "class_id": course_class["id"],
+        "learning_task_id": home_task["id"],
         "table_pointer_id": table_item["evidence_pointer_id"],
         "figure_pointer_id": figure_item["evidence_pointer_id"],
     }
