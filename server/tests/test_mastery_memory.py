@@ -36,6 +36,53 @@ def _prepare_published(client):
     return course_id, student_id, version_id, assessment_id
 
 
+def test_my_mastery_requires_current_course_membership(client) -> None:
+    course_id, student_id = _setup_course(client)
+    members = client.get(f"/api/v1/courses/{course_id}/members")
+    assert members.status_code == 200
+    member = next(item for item in members.json()["data"] if item["user_id"] == student_id)
+
+    from app.db.base import new_ulid
+    from app.db.models import MasteryState
+    from app.db.session import session_factory
+
+    async def _seed_mastery_state() -> None:
+        async with session_factory() as session:
+            session.add(
+                MasteryState(
+                    id=new_ulid(),
+                    user_id=student_id,
+                    course_id=course_id,
+                    knowledge_point="合成掌握点",
+                    state="learning",
+                    evidence_count=1,
+                    correct_ratio=0.5,
+                    weight_score=0.5,
+                    context_count=1,
+                    independent_evidence_count=0,
+                    algorithm_version="mastery-test",
+                    state_reason="合成证据",
+                )
+            )
+            await session.commit()
+
+    asyncio.run(_seed_mastery_state())
+
+    _login(client, "ms@uni.edu")
+    active_response = client.get(f"/api/v1/me/mastery?course_id={course_id}")
+    assert active_response.status_code == 200
+    assert active_response.json()["data"][0]["knowledge_point"] == "合成掌握点"
+
+    _login(client, "mt@uni.edu")
+    removed = client.delete(f"/api/v1/courses/{course_id}/members/{member['id']}")
+    assert removed.status_code == 200
+
+    _login(client, "ms@uni.edu")
+    denied_response = client.get(f"/api/v1/me/mastery?course_id={course_id}")
+    assert denied_response.status_code == 404
+    assert denied_response.json()["error"]["code"] == "COURSE_NOT_FOUND"
+
+
 def test_mastery_state_derived_from_graded_attempt(client) -> None:
     course_id, student_id, version_id, assessment_id = _prepare_published(client)
     _login(client, "ms@uni.edu")

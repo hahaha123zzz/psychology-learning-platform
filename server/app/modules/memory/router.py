@@ -214,6 +214,8 @@ async def get_my_mastery(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
+    if not await has_course_scope(user, course_id, db):
+        raise ApiError(status_code=404, code="COURSE_NOT_FOUND", message="课程不存在或无权访问")
     states = (
         await db.execute(
             select(MasteryState)
