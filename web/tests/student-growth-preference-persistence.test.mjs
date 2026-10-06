@@ -20,6 +20,17 @@ test("Growth reads course-scoped projections and filters the global review list 
   assert.match(growth, /focus\.state_reason/);
 });
 
+test("Growth shows last-evidence source, time, dimension, and independence without inventing a cause", () => {
+  assert.match(support, /type GrowthLastEvidence = \{ source_type\?: string \| null; created_at\?: string \| null; dimension\?: string \| null; independence_status\?: string \| null \}/);
+  assert.match(growth, /GrowthEvidenceMetadata evidence=\{focus\.last_evidence\}/);
+  assert.match(growth, /const tabKnowledgeByPoint = new Map\(\(tabs\?\.knowledge \?\? \[\]\)\.map/);
+  assert.match(growth, /GrowthEvidenceMetadata evidence=\{tabKnowledgeByPoint\.get\(item\.knowledge_point\)\?\.last_evidence\}/);
+  for (const label of ["来源：", "时间：", "维度：", "独立性："]) assert.ok(support.includes(label));
+  assert.match(support, /不可用或已过期（原因未提供）/);
+  assert.match(growth, /tab === "skills" && <p className="empty-state">当前服务端只有知识点掌握记录，没有独立技能证据/);
+  assert.doesNotMatch(growth, /setSkills|skills\.push|skills:.*knowledge/);
+});
+
 test("Preference loads the current values and saves with the server version", () => {
   assert.match(preferences, /api<Preferences>\("\/me\/preferences"\)/);
   assert.match(preferences, /api<Preferences>\("\/me\/preferences", \{ method: "PATCH"/);
