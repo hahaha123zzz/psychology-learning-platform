@@ -81,9 +81,11 @@ function anchorsFor(view: EvidencePointerView): EvidenceAnchor[] {
 export default function EvidencePointerDrawer({
   pointerId,
   label = "查看教材引用",
+  onAskTutor,
 }: {
   pointerId: string;
   label?: string;
+  onAskTutor?: (evidencePointerId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -384,6 +386,20 @@ export default function EvidencePointerDrawer({
                 ? "该对象只保存了图像位置；系统未解析图像含义。"
                 : "此对象没有可显示的文字摘录。")}
             </blockquote>
+            {view.object_type === "figure" && !view.excerpt.trim() && (
+              <p className="evidence-pointer-limitation">
+                图像语义尚未解析；当前只能定位，不能据此解释图像内容。
+              </p>
+            )}
+            {view.object_type === "table" && view.excerpt.trim() && onAskTutor && (
+              <Button
+                onClick={() => onAskTutor(view.evidence_pointer_id)}
+                type="button"
+                variant="secondary"
+              >
+                向 Tutor 提问
+              </Button>
+            )}
             <dl>
               <div><dt>教材版本</dt><dd>{view.material_version_id}</dd></div>
               <div><dt>引用校验</dt><dd>SHA-256 {view.excerpt_sha256}</dd></div>
