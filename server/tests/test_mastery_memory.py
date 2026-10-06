@@ -691,6 +691,232 @@ def test_student_growth_tabs_are_explainable_and_ratio_free(client) -> None:
     assert "correct_ratio" not in str(payload)
 
 
+def test_student_growth_last_evidence_metadata_fails_closed(client) -> None:
+    course_id, student_id, _, _ = _prepare_published(client)
+    _login(client, "ms@uni.edu")
+
+    from app.db.base import new_ulid
+    from app.db.models import LearningEvidence, MasteryState
+    from app.db.session import session_factory
+
+    other_user_id = create_user_sync(email="growth-other@uni.edu")
+    evidence_ids = {
+        name: new_ulid()
+        for name in (
+            "valid",
+            "valid_old",
+            "other_user",
+            "other_course",
+            "invalid",
+            "stale_old",
+            "stale_latest",
+        )
+    }
+    missing_id = new_ulid()
+    other_course_id = new_ulid()
+    created_at = datetime(2026, 10, 6, 8, 30, tzinfo=UTC)
+
+    async def _seed_growth_evidence() -> None:
+        async with session_factory() as session:
+            for knowledge_point, evidence_id in (
+                ("kp-valid", evidence_ids["valid"]),
+                ("kp-other-user", evidence_ids["other_user"]),
+                ("kp-other-course", evidence_ids["other_course"]),
+                ("kp-invalid", evidence_ids["invalid"]),
+                ("kp-missing", missing_id),
+                ("kp-stale", evidence_ids["stale_old"]),
+                ("kp-wrong-point", evidence_ids["valid"]),
+            ):
+                session.add(
+                    MasteryState(
+                        id=new_ulid(),
+                        user_id=student_id,
+                        course_id=course_id,
+                        knowledge_point=knowledge_point,
+                        state="learning",
+                        evidence_count=1,
+                        correct_ratio=0.5,
+                        weight_score=0.5,
+                        context_count=1,
+                        independent_evidence_count=1,
+                        last_evidence_id=evidence_id,
+                        algorithm_version="mastery-test",
+                        state_reason="合成测试状态",
+                    )
+                )
+            session.add_all(
+                [
+                    LearningEvidence(
+                        id=evidence_ids["valid_old"],
+                        user_id=student_id,
+                        course_id=course_id,
+                        knowledge_point="kp-valid",
+                        question_version_id=new_ulid(),
+                        source_type="practice",
+                        dimension="recall",
+                        independence_status="supported",
+                        quality_status="valid",
+                        hints_used=1,
+                        correct=False,
+                        weight=1.0,
+                        created_at=created_at - timedelta(minutes=1),
+                    ),
+                    LearningEvidence(
+                        id=evidence_ids["valid"],
+                        user_id=student_id,
+                        course_id=course_id,
+                        knowledge_point="kp-valid",
+                        question_version_id=new_ulid(),
+                        source_type="practice",
+                        dimension="apply",
+                        independence_status="independent",
+                        quality_status="valid",
+                        hints_used=0,
+                        correct=True,
+                        weight=1.0,
+                        created_at=created_at,
+                    ),
+                    LearningEvidence(
+                        id=evidence_ids["stale_old"],
+                        user_id=student_id,
+                        course_id=course_id,
+                        knowledge_point="kp-stale",
+                        question_version_id=new_ulid(),
+                        source_type="practice",
+                        dimension="recall",
+                        independence_status="independent",
+                        quality_status="valid",
+                        hints_used=0,
+                        correct=True,
+                        weight=1.0,
+                        created_at=created_at - timedelta(minutes=2),
+                    ),
+                    LearningEvidence(
+                        id=evidence_ids["stale_latest"],
+                        user_id=student_id,
+                        course_id=course_id,
+                        knowledge_point="kp-stale",
+                        question_version_id=new_ulid(),
+                        source_type="review",
+                        dimension="retention",
+                        independence_status="independent",
+                        quality_status="valid",
+                        hints_used=0,
+                        correct=True,
+                        weight=1.0,
+                        created_at=created_at - timedelta(minutes=1),
+                    ),
+                    LearningEvidence(
+                        id=evidence_ids["other_user"],
+                        user_id=other_user_id,
+                        course_id=course_id,
+                        knowledge_point="kp-other-user",
+                        question_version_id=new_ulid(),
+                        source_type="review",
+                        dimension="recall",
+                        independence_status="supported",
+                        quality_status="valid",
+                        hints_used=0,
+                        correct=True,
+                        weight=1.0,
+                    ),
+                    LearningEvidence(
+                        id=evidence_ids["other_course"],
+                        user_id=student_id,
+                        course_id=other_course_id,
+                        knowledge_point="kp-other-course",
+                        question_version_id=new_ulid(),
+                        source_type="practice",
+                        dimension="understand",
+                        independence_status="unknown",
+                        quality_status="valid",
+                        hints_used=0,
+                        correct=True,
+                        weight=1.0,
+                    ),
+                    LearningEvidence(
+                        id=evidence_ids["invalid"],
+                        user_id=student_id,
+                        course_id=course_id,
+                        knowledge_point="kp-invalid",
+                        question_version_id=new_ulid(),
+                        source_type="practice",
+                        dimension="discriminate",
+                        independence_status="independent",
+                        quality_status="invalidated",
+                        invalidated_reason="synthetic invalidation",
+                        hints_used=0,
+                        correct=False,
+                        weight=0.0,
+                    ),
+                ]
+            )
+            await session.commit()
+
+    asyncio.run(_seed_growth_evidence())
+
+    overview = client.get(f"/api/v1/student/growth/overview?course_id={course_id}")
+    tabs = client.get(f"/api/v1/student/growth/tabs?course_id={course_id}")
+    assert overview.status_code == tabs.status_code == 200
+    expected_metadata = {
+        "evidence_id": evidence_ids["valid"],
+        "source_type": "practice",
+        "created_at": created_at.isoformat(),
+        "dimension": "apply",
+        "independence_status": "independent",
+    }
+    for collection in (
+        overview.json()["data"]["explainability_refs"],
+        tabs.json()["data"]["knowledge"],
+    ):
+        by_knowledge_point = {item["knowledge_point"]: item for item in collection}
+        assert by_knowledge_point["kp-valid"]["last_evidence"] == expected_metadata
+        for knowledge_point in (
+            "kp-other-user",
+            "kp-other-course",
+            "kp-invalid",
+            "kp-missing",
+            "kp-stale",
+            "kp-wrong-point",
+        ):
+            assert by_knowledge_point[knowledge_point]["last_evidence"] is None
+    valid_ref = next(
+        item
+        for item in overview.json()["data"]["explainability_refs"]
+        if item["knowledge_point"] == "kp-valid"
+    )
+    assert set(expected_metadata) == set(valid_ref["last_evidence"])
+    assert "correct" not in str(overview.json()["data"]["explainability_refs"])
+    assert "correct" not in str(tabs.json()["data"]["knowledge"])
+
+
+def test_growth_last_evidence_requires_latest_pointer_for_same_knowledge_point() -> None:
+    from types import SimpleNamespace
+
+    from app.modules.memory.router import _growth_last_evidence
+
+    latest = {
+        "kp-latest": {
+            "evidence_id": "latest-evidence-id",
+            "source_type": "practice",
+            "created_at": "2026-10-06T08:30:00+00:00",
+            "dimension": "apply",
+            "independence_status": "independent",
+        }
+    }
+    matching = SimpleNamespace(
+        knowledge_point="kp-latest", last_evidence_id="latest-evidence-id"
+    )
+    stale = SimpleNamespace(knowledge_point="kp-latest", last_evidence_id="older-evidence-id")
+    wrong_knowledge_point = SimpleNamespace(
+        knowledge_point="kp-other", last_evidence_id="latest-evidence-id"
+    )
+
+    assert _growth_last_evidence(matching, latest) == latest["kp-latest"]
+    assert _growth_last_evidence(stale, latest) is None
+    assert _growth_last_evidence(wrong_knowledge_point, latest) is None
+
+
 def test_privacy_deletion_openapi_exposes_partial_retention_receipt(client) -> None:
     from app.main import app
 

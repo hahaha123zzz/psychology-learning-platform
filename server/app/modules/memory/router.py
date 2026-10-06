@@ -306,6 +306,63 @@ def _growth_next_step(state: str, review_count: int) -> str:
     return "先完成一项有依据的学习活动"
 
 
+async def _latest_valid_growth_evidence_metadata(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    course_id: str,
+    states: list[MasteryState],
+) -> dict[str, dict[str, object]]:
+    """读取这些掌握点的最新有效证据 metadata，不读取答题正文或正确性。"""
+    knowledge_points = {state.knowledge_point for state in states if state.last_evidence_id}
+    if not knowledge_points:
+        return {}
+    rows = (
+        await db.execute(
+            select(
+                LearningEvidence.id,
+                LearningEvidence.knowledge_point,
+                LearningEvidence.source_type,
+                LearningEvidence.created_at,
+                LearningEvidence.dimension,
+                LearningEvidence.independence_status,
+            )
+            .where(
+                LearningEvidence.user_id == user_id,
+                LearningEvidence.course_id == course_id,
+                LearningEvidence.quality_status == "valid",
+                LearningEvidence.knowledge_point.in_(knowledge_points),
+            )
+            .order_by(
+                LearningEvidence.knowledge_point.asc(),
+                LearningEvidence.created_at.desc(),
+                LearningEvidence.id.desc(),
+            )
+        )
+    ).all()
+    latest: dict[str, dict[str, object]] = {}
+    for row in rows:
+        if row.knowledge_point in latest:
+            continue
+        latest[row.knowledge_point] = {
+            "evidence_id": row.id,
+            "source_type": row.source_type,
+            "created_at": row.created_at.isoformat(),
+            "dimension": row.dimension,
+            "independence_status": row.independence_status,
+        }
+    return latest
+
+
+def _growth_last_evidence(
+    state: MasteryState, latest_by_knowledge_point: dict[str, dict[str, object]]
+) -> dict[str, object] | None:
+    latest = latest_by_knowledge_point.get(state.knowledge_point)
+    if latest is None or latest["evidence_id"] != state.last_evidence_id:
+        return None
+    return latest
+
+
 @router.get("/student/growth/overview", response_model=None)
 async def get_growth_overview(
     request: Request,
@@ -344,6 +401,12 @@ async def get_growth_overview(
         (state for state in states if state.state in ("needs_consolidation", "learning")),
         states[0] if states else None,
     )
+    evidence_states = states[:20]
+    if focus is not None and all(item.id != focus.id for item in evidence_states):
+        evidence_states.append(focus)
+    latest_evidence_by_knowledge_point = await _latest_valid_growth_evidence_metadata(
+        db, user_id=user.id, course_id=course_id, states=evidence_states
+    )
     return ok(
         request,
         {
@@ -355,6 +418,9 @@ async def get_growth_overview(
                     "state": focus.state,
                     "state_reason": focus.state_reason,
                     "next_step": _growth_next_step(focus.state, review_count),
+                    "last_evidence": _growth_last_evidence(
+                        focus, latest_evidence_by_knowledge_point
+                    ),
                 }
                 if focus
                 else None
@@ -372,6 +438,9 @@ async def get_growth_overview(
                     "state_reason": state.state_reason,
                     "algorithm_version": state.algorithm_version,
                     "updated_at": state.updated_at.isoformat(),
+                    "last_evidence": _growth_last_evidence(
+                        state, latest_evidence_by_knowledge_point
+                    ),
                 }
                 for state in states[:20]
             ],
@@ -432,6 +501,9 @@ async def get_growth_tabs(
             )
         ).scalars()
     )
+    latest_evidence_by_knowledge_point = await _latest_valid_growth_evidence_metadata(
+        db, user_id=user.id, course_id=course_id, states=states
+    )
     memories = list(
         (
             await db.execute(
@@ -485,6 +557,9 @@ async def get_growth_tabs(
                     "algorithm_version": state.algorithm_version,
                     "next_step": _growth_next_step(state.state, 0),
                     "updated_at": state.updated_at.isoformat(),
+                    "last_evidence": _growth_last_evidence(
+                        state, latest_evidence_by_knowledge_point
+                    ),
                 }
                 for state in states
             ],
