@@ -22,6 +22,9 @@ test("future review tasks expose due guidance and cannot call the verify API", (
   assert.match(source, /function reviewIsDue\(review: Review\)/);
   assert.match(source, /Date\.parse\(review\.due_at\)/);
   assert.match(practice, /disabled=\{!reviewAnswers\[review\.id\] \|\| !due\}/);
+  assert.match(practice, /aria-describedby=\{!due \? `review-due-\$\{review\.id\}` : undefined\}/);
+  assert.match(practice, /id=\{`review-due-\$\{review\.id\}`\} role="status"/);
+  assert.match(practice, /data-review-task-id=\{review\.id\}/);
   assert.match(practice, /尚未到复习时间，届时可验证并完成/);
   assert.match(practice, /api\(`\/review-tasks\/\$\{task\.id\}\/verify`/);
   assert.match(practice, /task\.version === undefined\) return/);
@@ -42,6 +45,10 @@ test("the browser audit covers the seeded wrong answer, purpose guard, and due-t
   assert.match(browser, /const questionStem/);
   assert.match(browser, /B\. 因变量/);
   assert.match(browser, /purpose: "formal"/);
+  assert.match(browser, /assert\.equal\(assessment\.current_attempt_id \?\? null, null/);
+  assert.match(browser, /businessWrites/);
+  assert.match(browser, /selected_keys, \["B"\]/);
+  assert.match(browser, /verifyWrites\.length/);
   assert.match(browser, /尚未到复习时间/);
   assert.match(browser, /复习答案已提交/);
 });

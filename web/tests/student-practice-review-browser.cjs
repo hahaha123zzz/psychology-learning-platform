@@ -32,6 +32,14 @@ async function main() {
   const browser = await chromium.launch({ executablePath: browserPath, headless: false, slowMo: 20 });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const pageErrors = [];
+  const businessWrites = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (!pathname.startsWith("/api/v1/") || ["GET", "HEAD", "OPTIONS"].includes(request.method())) return;
+    let body = null;
+    try { body = request.postDataJSON(); } catch { /* 无 JSON body 的写请求仍需计数。 */ }
+    businessWrites.push({ method: request.method(), pathname, body });
+  });
   page.on("pageerror", (error) => pageErrors.push(error.message));
   let formalGuardObserved = false;
 
@@ -51,13 +59,22 @@ async function main() {
     const assessment = assessmentResponse.body.data.find((item) => item.title === assessmentTitle);
     assert.ok(assessment, "应存在已 seed 的合成练习");
     assert.equal(assessment.purpose, "practice", "目标测评必须是 practice");
+    assert.equal(assessment.current_attempt_id ?? null, null,
+      "为避免触碰已有作答，只能在无活动 synthetic attempt 时运行本脚本");
+    const detailResponse = await readApi(page, `/assessments/${assessment.id}`);
+    assert.equal(detailResponse.status, 200);
+    assert.equal(detailResponse.body.data.items.length, 1, "合成题预期只有一个评分项目");
+    const syntheticQuestion = detailResponse.body.data.items[0];
+    assert.equal(syntheticQuestion.stem, questionStem);
+    assert.equal(syntheticQuestion.options.find((option) => option.key === "A")?.text, "自变量");
+    assert.equal(syntheticQuestion.options.find((option) => option.key === "B")?.text, "因变量");
 
     const beforeReviewsResponse = await readApi(page, "/review-tasks?due_only=false");
     assert.equal(beforeReviewsResponse.status, 200);
     const beforeReviews = beforeReviewsResponse.body.data.filter((item) => item.course_id === course.id);
     const beforeReviewIds = new Set(beforeReviews.map((item) => item.id));
     const priorDueReview = beforeReviews.find((item) => item.reason === "wrong_answer"
-      && item.question?.stem === questionStem
+      && item.question_version_id === syntheticQuestion.question_version_id
       && Date.parse(item.due_at) <= Date.now());
 
     const practicePath = `/student/courses/${course.id}/practice`;
@@ -110,19 +127,18 @@ async function main() {
     const afterReviewsResponse = await readApi(page, "/review-tasks?due_only=false");
     assert.equal(afterReviewsResponse.status, 200);
     const afterReviews = afterReviewsResponse.body.data.filter((item) => item.course_id === course.id);
-    const generatedReview = afterReviews.find((item) => !beforeReviewIds.has(item.id)
+    const generatedReviews = afterReviews.filter((item) => !beforeReviewIds.has(item.id)
       && item.reason === "wrong_answer"
-      && item.question?.stem === questionStem);
+      && item.question_version_id === syntheticQuestion.question_version_id);
+    assert.equal(generatedReviews.length, 1, "一次错答只能生成一个目标 pending review task");
+    const generatedReview = generatedReviews[0];
     assert.ok(generatedReview, "错答后必须由 API 生成新的 pending wrong_answer review task");
     assert.equal(generatedReview.status, "pending");
     assert.equal(generatedReview.question.options.find((option) => option.key === "A")?.text, "自变量",
       "Review 复用的不可变题目版本应含已知正确选项 A");
     assert.equal(generatedReview.question.options.find((option) => option.key === "B")?.text, "因变量");
 
-    const reviewRows = page.locator(".practice-grid > .support-panel").first().locator(".review-row");
-    const generatedIndex = afterReviews.findIndex((item) => item.id === generatedReview.id);
-    assert.ok(generatedIndex >= 0);
-    const generatedRow = reviewRows.nth(generatedIndex);
+    const generatedRow = page.locator(`[data-review-task-id="${generatedReview.id}"]`);
     await generatedRow.waitFor({ state: "visible", timeout: 20_000 });
     const generatedChoice = generatedRow.getByRole("combobox", { name: "选择复习答案" });
     assert.match(await generatedChoice.locator('option[value="A"]').textContent(), /A\. 自变量/);
@@ -144,9 +160,7 @@ async function main() {
 
     let completedDueReviewId = generatedIsDue ? generatedReview.id : null;
     if (!generatedIsDue && priorDueReview) {
-      const dueIndex = afterReviews.findIndex((item) => item.id === priorDueReview.id);
-      assert.ok(dueIndex >= 0, "原有 due task 应仍出现在 Review 列表");
-      const dueRow = reviewRows.nth(dueIndex);
+      const dueRow = page.locator(`[data-review-task-id="${priorDueReview.id}"]`);
       await dueRow.waitFor({ state: "visible" });
       assert.equal(priorDueReview.question.options.find((option) => option.key === "A")?.text, "自变量");
       await dueRow.getByRole("combobox", { name: "选择复习答案" }).selectOption("A");
@@ -163,6 +177,26 @@ async function main() {
       assert.ok(!completedResponse.body.data.some((item) => item.id === completedDueReviewId),
         "验证完成后，pending 列表应不再包含已完成任务");
     }
+    const starts = businessWrites.filter((item) => item.method === "POST"
+      && item.pathname === `/api/v1/assessments/${assessment.id}/attempts`);
+    const answerWrites = businessWrites.filter((item) => item.method === "PUT"
+      && item.pathname.endsWith(`/answers/${syntheticQuestion.question_version_id}`));
+    const submissions = businessWrites.filter((item) => item.method === "POST"
+      && /^\/api\/v1\/attempts\/[^/]+\/submit$/.test(item.pathname));
+    const verifyWrites = businessWrites.filter((item) => item.method === "POST"
+      && /^\/api\/v1\/review-tasks\/[^/]+\/verify$/.test(item.pathname));
+    assert.equal(starts.length, 1, "本脚本只创建一次该合成练习 attempt");
+    assert.equal(answerWrites.length, 1, "本脚本只保存一次已知错误选项");
+    assert.deepEqual(answerWrites[0].body.response.selected_keys, ["B"]);
+    assert.equal(submissions.length, 1, "本脚本只提交一次错误作答");
+    assert.equal(verifyWrites.length, completedDueReviewId ? 1 : 0,
+      "只在已有到期合成复习项时验证一次；绝不提前验证新建的未来任务");
+    if (verifyWrites.length) assert.deepEqual(verifyWrites[0].body.response.selected_keys, ["A"]);
+    assert.ok(businessWrites.every((item) => item.pathname === `/api/v1/assessments/${assessment.id}/attempts`
+      || item.pathname.endsWith(`/answers/${syntheticQuestion.question_version_id}`)
+      || /^\/api\/v1\/attempts\/[^/]+\/submit$/.test(item.pathname)
+      || /^\/api\/v1\/review-tasks\/[^/]+\/verify$/.test(item.pathname)),
+    `只允许合成题的一次错误练习和最多一次到期 Review 验证：${JSON.stringify(businessWrites)}`);
     assert.deepEqual(pageErrors, [], "Practice→Review should not produce browser errors");
     console.log(JSON.stringify({
       assessment: assessmentTitle,
