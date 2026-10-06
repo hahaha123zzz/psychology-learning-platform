@@ -32,8 +32,12 @@ test("Preference loads the current values and saves with the server version", ()
 test("the browser flow restores the complete original preference snapshot in finally", () => {
   assert.match(browser, /const baselinePreferences/);
   assert.match(browser, /finally\s*\{/);
-  assert.match(browser, /method: "PATCH"/);
-  assert.match(browser, /\.\.\.savedBaseline/);
+  const cleanup = browser.slice(browser.indexOf("} finally {"), browser.indexOf("await browser.close();"));
+  assert.match(cleanup, /selectOption\(savedBaseline\.response_length\)/);
+  assert.match(cleanup, /selectOption\(savedBaseline\.example_order\)/);
+  assert.match(cleanup, /getByRole\("button", \{ name: "保存偏好"/);
+  assert.match(cleanup, /await page\.reload\(\)/);
+  assert.doesNotMatch(browser, /method:\s*"PATCH"|method:\s*"POST"|method:\s*"PUT"|method:\s*"DELETE"/);
   assert.match(browser, /assert\.deepEqual\(verified\.body\.data\.preferences, savedBaseline/);
   assert.match(browser, /\/student\/growth\/overview\?course_id=/);
   assert.match(browser, /response_length/);
@@ -41,4 +45,7 @@ test("the browser flow restores the complete original preference snapshot in fin
   assert.match(browser, /UI-006 cross-course review guard/);
   assert.match(browser, /await route\.abort\(\)/);
   assert.doesNotMatch(browser, /\/me\/privacy\/delete-request/);
+  assert.match(browser, /businessWrites\.length, 2/);
+  assert.match(browser, /UI006_STUDENT_PASSWORD/);
+  assert.doesNotMatch(browser, /student-demo-local-only-20261005/);
 });
