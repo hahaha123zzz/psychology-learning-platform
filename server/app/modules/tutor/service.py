@@ -159,6 +159,14 @@ class ChatSessionReleaseScope:
 
 
 @dataclass(frozen=True)
+class AuthorizedEvidencePointer:
+    pointer: EvidencePointer
+    publication_snapshot_id: str
+    index_job_id: str
+    domain_release_id: str | None
+
+
+@dataclass(frozen=True)
 class BoundChatRetrieval:
     items: list[dict[str, Any]]
     warnings: list[str]
@@ -541,7 +549,7 @@ async def authorize_selected_table_pointer(
     session_row: Any,
     user_id: str,
     pointer_id: str,
-) -> EvidencePointer:
+) -> AuthorizedEvidencePointer:
     """只接受精确绑定到当前 chat release 的表格指针或无文本图像指针。"""
     def unavailable() -> ApiError:
         return ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
@@ -630,10 +638,46 @@ async def authorize_selected_table_pointer(
 
     # 图像在 V0.9 只有固定位置，没有可验证语义；允许安全拒答以保留 Reader 入口。
     if pointer.object_type == "figure" and not pointer.excerpt.strip():
-        return pointer
+        return AuthorizedEvidencePointer(
+            pointer=pointer,
+            publication_snapshot_id=snapshot.id,
+            index_job_id=snapshot.index_job_id,
+            domain_release_id=binding.domain_release_id,
+        )
     if pointer.object_type != "table" or not pointer.excerpt.strip():
         raise unavailable()
-    return pointer
+    return AuthorizedEvidencePointer(
+        pointer=pointer,
+        publication_snapshot_id=snapshot.id,
+        index_job_id=snapshot.index_job_id,
+        domain_release_id=binding.domain_release_id,
+    )
+
+
+async def authorize_table_pointer_index_job(
+    db: AsyncSession,
+    *,
+    selected: AuthorizedEvidencePointer,
+    domain_release_id: str | None,
+) -> None:
+    """确保新 Table 回合的来源单元正是会话发布快照固定的索引任务。"""
+    pointer = selected.pointer
+    if pointer.retrieval_unit_id is None:
+        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
+    retrieval_unit = await db.get(RetrievalUnit, pointer.retrieval_unit_id)
+    expected_build_version = (
+        f"{knowledge_service.RETRIEVAL_UNIT_BUILD_VERSION}-{selected.index_job_id}"
+    )
+    if (
+        retrieval_unit is None
+        or retrieval_unit.unit_type != "table_cells"
+        or retrieval_unit.status != "ready"
+        or retrieval_unit.material_version_id != pointer.material_version_id
+        or retrieval_unit.source_object_id != pointer.source_object_id
+        or retrieval_unit.domain_release_id != domain_release_id
+        or retrieval_unit.build_version != expected_build_version
+    ):
+        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
 
 
 async def prepare_bound_chat_retrieval(
@@ -1150,10 +1194,13 @@ async def run_turn_stream(
     organization_id: str | None = None,
     response_length: str = "BALANCED",
     example_order: str = "CONCEPT_FIRST",
-    selected_evidence_pointer: EvidencePointer | None = None,
+    selected_evidence_context: AuthorizedEvidencePointer | None = None,
 ):
     """生成SSE事件流。仅当全部成功时才提交（半截结论不落库）。"""
     yield _sse("state", {"stage": "retrieving"})
+    selected_evidence_pointer = (
+        selected_evidence_context.pointer if selected_evidence_context is not None else None
+    )
 
     from app.modules.memory.service import is_crisis_content, safety_response
 
@@ -1203,8 +1250,8 @@ async def run_turn_stream(
         )
         return
 
-    if selected_evidence_pointer is not None:
-        pointer = selected_evidence_pointer
+    if selected_evidence_context is not None:
+        pointer = selected_evidence_context.pointer
         is_table = pointer.object_type == "table" and bool(pointer.excerpt.strip())
         if is_table:
             answer = (
@@ -1221,6 +1268,8 @@ async def run_turn_stream(
                 "type": "table",
                 "evidence_pointer_id": pointer.id,
                 "material_version_id": pointer.material_version_id,
+                "publication_snapshot_id": selected_evidence_context.publication_snapshot_id,
+                "index_job_id": selected_evidence_context.index_job_id,
             }
         else:
             answer = (
@@ -1234,6 +1283,8 @@ async def run_turn_stream(
                 "type": "figure",
                 "evidence_pointer_id": pointer.id,
                 "material_version_id": pointer.material_version_id,
+                "publication_snapshot_id": selected_evidence_context.publication_snapshot_id,
+                "index_job_id": selected_evidence_context.index_job_id,
                 "refusal_reason": "figure_semantics_unavailable",
             }
 
@@ -1257,6 +1308,8 @@ async def run_turn_stream(
             "material_version_id": pointer.material_version_id,
             "physical_page": pointer.physical_page,
             "label": citation_label,
+            "publication_snapshot_id": selected_evidence_context.publication_snapshot_id,
+            "index_job_id": selected_evidence_context.index_job_id,
         }
         yield _sse(
             "citation",

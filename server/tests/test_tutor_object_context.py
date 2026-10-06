@@ -7,7 +7,13 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.errors import ApiError
-from app.db.models import ChatTurn, Material, MaterialVersion, PublicationSnapshot
+from app.db.models import (
+    ChatTurn,
+    Material,
+    MaterialVersion,
+    PublicationSnapshot,
+    RetrievalUnit,
+)
 from app.modules.tutor import service as tutor_service
 from app.modules.tutor.router import (
     TurnCreate,
@@ -53,6 +59,7 @@ def _release_pointer_fixture(
         material_id="material-1",
         material_version_id="version-1",
         source_object_id="object-1",
+        retrieval_unit_id="unit-1" if object_type == "table" else None,
         object_type=object_type,
         excerpt=excerpt,
         material_title="合成教材",
@@ -75,6 +82,7 @@ def _release_pointer_fixture(
         domain_release_id=None,
     )
     snapshot = SimpleNamespace(
+        id=pin["publication_snapshot_id"],
         material_id=pointer.material_id,
         material_version_id=pointer.material_version_id,
         index_job_id=pin["index_job_id"],
@@ -92,11 +100,20 @@ def _release_pointer_fixture(
         material_id=pointer.material_id,
         status="parsed",
     )
+    retrieval_unit = SimpleNamespace(
+        unit_type="table_cells",
+        status="ready",
+        material_version_id=pointer.material_version_id,
+        source_object_id=pointer.source_object_id,
+        domain_release_id=None,
+        build_version="v1-index-job-1",
+    )
     rows = {
         (tutor_service.EvidencePointer, pointer.id): pointer,
         (PublicationSnapshot, pin["publication_snapshot_id"]): snapshot,
         (Material, pointer.material_id): material,
         (MaterialVersion, pointer.material_version_id): version,
+        (RetrievalUnit, "unit-1"): retrieval_unit,
     }
     return pointer, binding, material, rows
 
@@ -156,7 +173,10 @@ def test_selected_pointer_requires_exact_release_pin_and_current_access(monkeypa
             pointer_id=pointer.id,
         )
 
-    assert asyncio.run(resolve()) is pointer
+    authorized = asyncio.run(resolve())
+    assert authorized.pointer is pointer
+    assert authorized.publication_snapshot_id == "snapshot-1"
+    assert authorized.index_job_id == "index-job-1"
 
     foreign_rows = dict(rows)
     foreign_pointer = SimpleNamespace(**vars(pointer))
@@ -196,8 +216,64 @@ def test_empty_figure_pointer_is_authorized_only_as_location(monkeypatch) -> Non
             pointer_id=pointer.id,
         )
     )
-    assert resolved.object_type == "figure"
-    assert resolved.excerpt == ""
+    assert resolved.pointer.object_type == "figure"
+    assert resolved.pointer.excerpt == ""
+
+    nonempty_figure_pointer, _, _, nonempty_figure_rows = _release_pointer_fixture(
+        object_type="figure", excerpt="不可信图像描述"
+    )
+
+    async def resolve_nonempty_figure():
+        return await tutor_service.authorize_selected_table_pointer(
+            _PointerDb(nonempty_figure_rows),
+            session_row=session_row,
+            user_id="student-1",
+            pointer_id=nonempty_figure_pointer.id,
+        )
+
+    with pytest.raises(ApiError) as nonempty_error:
+        asyncio.run(resolve_nonempty_figure())
+    assert nonempty_error.value.status_code == 404
+
+
+def test_table_pointer_index_unit_must_match_pinned_index_job() -> None:
+    pointer, _, _, rows = _release_pointer_fixture()
+    selected = tutor_service.AuthorizedEvidencePointer(
+        pointer=pointer,
+        publication_snapshot_id="snapshot-1",
+        index_job_id="index-job-1",
+        domain_release_id=None,
+    )
+
+    async def verify(candidate_rows=rows):
+        await tutor_service.authorize_table_pointer_index_job(
+            _PointerDb(candidate_rows), selected=selected, domain_release_id=None
+        )
+
+    asyncio.run(verify())
+    wrong_type_rows = dict(rows)
+    wrong_type_rows[(RetrievalUnit, "unit-1")] = SimpleNamespace(
+        **{**vars(rows[(RetrievalUnit, "unit-1")]), "unit_type": "text_child"}
+    )
+    with pytest.raises(ApiError) as type_error:
+        asyncio.run(verify(wrong_type_rows))
+    assert type_error.value.status_code == 404
+
+    wrong_job_rows = dict(rows)
+    wrong_job_rows[(RetrievalUnit, "unit-1")] = SimpleNamespace(
+        **{**vars(rows[(RetrievalUnit, "unit-1")]), "build_version": "v1-other-job"}
+    )
+    with pytest.raises(ApiError) as job_error:
+        asyncio.run(verify(wrong_job_rows))
+    assert job_error.value.status_code == 404
+
+    wrong_source_rows = dict(rows)
+    wrong_source_rows[(RetrievalUnit, "unit-1")] = SimpleNamespace(
+        **{**vars(rows[(RetrievalUnit, "unit-1")]), "source_object_id": "another-object"}
+    )
+    with pytest.raises(ApiError) as source_error:
+        asyncio.run(verify(wrong_source_rows))
+    assert source_error.value.status_code == 404
 
 
 def test_selected_table_turn_is_local_extractive_and_replayable(monkeypatch) -> None:
@@ -209,6 +285,7 @@ def test_selected_table_turn_is_local_extractive_and_replayable(monkeypatch) -> 
         raise AssertionError("object-context turn must not invoke a provider")
 
     monkeypatch.setattr(tutor_service.knowledge_service, "hybrid_search", forbidden_provider)
+    monkeypatch.setattr(tutor_service.knowledge_service, "get_embedding_client", forbidden_provider)
     monkeypatch.setattr(tutor_service, "generate_grounded_answer", forbidden_provider)
     monkeypatch.setattr(tutor_service, "call_model", forbidden_provider)
 
@@ -222,7 +299,9 @@ def test_selected_table_turn_is_local_extractive_and_replayable(monkeypatch) -> 
                 client_turn_id="turn-context-0001",
                 content="怎么读这张表？",
                 purpose="course_qa",
-                selected_evidence_pointer=pointer,
+                selected_evidence_context=tutor_service.AuthorizedEvidencePointer(
+                    pointer, "snapshot-1", "index-job-1", None
+                ),
             )
         ]
 
@@ -259,6 +338,37 @@ def test_selected_table_turn_is_local_extractive_and_replayable(monkeypatch) -> 
     assert "event: citation" in replay_text
     assert "event: delta" in replay_text
 
+    mismatched_saved_turn = ChatTurn(
+        content=saved_tutor.content,
+        citations=[{"evidence_pointer_id": "01ARZ3NDEKTSV4RRFFQ69G5FAW"}],
+        verification=saved_tutor.verification,
+        finish_reason=saved_tutor.finish_reason,
+    )
+
+    async def replay_mismatch():
+        return [frame async for frame in _replay_saved_turn(mismatched_saved_turn)]
+
+    mismatch_text = "".join(asyncio.run(replay_mismatch()))
+    assert '"stage": "explaining_object"' not in mismatch_text
+
+    wrong_version_turn = ChatTurn(
+        content=saved_tutor.content,
+        citations=[
+            {
+                **saved_tutor.citations[0],
+                "material_version_id": "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+            }
+        ],
+        verification=saved_tutor.verification,
+        finish_reason=saved_tutor.finish_reason,
+    )
+
+    async def replay_wrong_version():
+        return [frame async for frame in _replay_saved_turn(wrong_version_turn)]
+
+    wrong_version_text = "".join(asyncio.run(replay_wrong_version()))
+    assert '"stage": "explaining_object"' not in wrong_version_text
+
 
 def test_empty_figure_pointer_refuses_without_table_explain() -> None:
     pointer, _, _, _ = _release_pointer_fixture(object_type="figure", excerpt="")
@@ -275,7 +385,9 @@ def test_empty_figure_pointer_refuses_without_table_explain() -> None:
                 client_turn_id="turn-figure-0001",
                 content="解释图像",
                 purpose="course_qa",
-                selected_evidence_pointer=pointer,
+                selected_evidence_context=tutor_service.AuthorizedEvidencePointer(
+                    pointer, "snapshot-1", "index-job-1", None
+                ),
             )
         ]
 

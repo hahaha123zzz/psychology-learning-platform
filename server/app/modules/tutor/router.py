@@ -47,6 +47,18 @@ async def _replay_saved_turn(tutor_turn: ChatTurn):
         isinstance(object_context, dict)
         and object_context.get("type") == "table"
         and isinstance(object_context.get("evidence_pointer_id"), str)
+        and isinstance(object_context.get("material_version_id"), str)
+        and isinstance(object_context.get("publication_snapshot_id"), str)
+        and isinstance(object_context.get("index_job_id"), str)
+        and any(
+            isinstance(citation, dict)
+            and citation.get("evidence_pointer_id") == object_context["evidence_pointer_id"]
+            and citation.get("material_version_id") == object_context["material_version_id"]
+            and citation.get("publication_snapshot_id")
+            == object_context["publication_snapshot_id"]
+            and citation.get("index_job_id") == object_context["index_job_id"]
+            for citation in citations
+        )
     )
     safety = tutor_turn.finish_reason == "safety"
     if safety:
@@ -551,6 +563,13 @@ async def create_turn(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    if selected_pointer is not None and selected_pointer.pointer.object_type == "table":
+        await tutor_service.authorize_table_pointer_index_job(
+            db,
+            selected=selected_pointer,
+            domain_release_id=selected_pointer.domain_release_id,
+        )
+
     async def event_stream():
         turn_stream = tutor_service.run_turn_stream(
             db,
@@ -563,7 +582,7 @@ async def create_turn(
             organization_id=user.organization_id,
             response_length=response_length,
             example_order=example_order,
-            selected_evidence_pointer=selected_pointer,
+            selected_evidence_context=selected_pointer,
         )
         try:
             async for event in turn_stream:

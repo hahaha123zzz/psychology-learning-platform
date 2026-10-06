@@ -43,10 +43,13 @@ def _seed_pinned_table_chat(client, *, course_id: str, student_id: str, version_
         CourseRelease,
         CourseReleaseAssignment,
         EvidencePointer,
+        KnowledgeObject,
         MaterialVersion,
         PublicationSnapshot,
+        RetrievalUnit,
     )
     from app.db.session import session_factory
+    from app.modules.knowledge import service as knowledge_service
 
     teacher_id = client.get("/api/v1/me").json()["data"]["id"]
 
@@ -99,18 +102,57 @@ def _seed_pinned_table_chat(client, *, course_id: str, student_id: str, version_
                 assigned_by=teacher_id,
             )
             db.add_all([assignment, ClassMember(class_id=course_class.id, user_id=student_id)])
-            pointers = [
-                EvidencePointer(
+            pointers = []
+            objects = []
+            retrieval_units = []
+            for index in (1, 2):
+                excerpt = f"合成组别{index} | 均值\n实验组 | {index + 3}"
+                object_id = new_ulid()
+                unit = RetrievalUnit(
+                    id=new_ulid(),
+                    material_version_id=version_id,
+                    domain_release_id=snapshot.domain_release_id,
+                    source_object_id=object_id,
+                    parent_object_id=None,
+                    unit_type="table_cells",
+                    channel_hint="sparse",
+                    char_start=0,
+                    char_end=len(excerpt),
+                    bbox=[10, 10, 100, 100],
+                    text_content=excerpt,
+                    content_hash=hashlib.sha256(excerpt.encode()).hexdigest(),
+                    build_strategy=knowledge_service.TABLE_RETRIEVAL_UNIT_BUILD_STRATEGY,
+                    build_version=(
+                        f"{knowledge_service.RETRIEVAL_UNIT_BUILD_VERSION}-{snapshot.index_job_id}"
+                    ),
+                    status="ready",
+                )
+                objects.append(
+                    KnowledgeObject(
+                        id=object_id,
+                        material_version_id=version_id,
+                        type="table",
+                        title=f"合成表格 {index}",
+                        chapter_path="合成章节",
+                        reading_order=index,
+                        physical_page=1,
+                        bbox=[10, 10, 100, 100],
+                        raw_content=excerpt,
+                        normalized_content=excerpt,
+                        parser="stub-pdf",
+                        parser_version="test",
+                    )
+                )
+                retrieval_units.append(unit)
+                pointers.append(EvidencePointer(
                     course_id=course_id,
                     material_id=version.material_id,
                     material_version_id=version_id,
-                    source_object_id=new_ulid(),
-                    retrieval_unit_id=None,
+                    source_object_id=object_id,
+                    retrieval_unit_id=unit.id,
                     material_title="合成心理学教材",
-                    excerpt=f"合成组别{index} | 均值\n实验组 | {index + 3}",
-                    excerpt_sha256=hashlib.sha256(
-                        f"合成组别{index} | 均值\n实验组 | {index + 3}".encode()
-                    ).hexdigest(),
+                    excerpt=excerpt,
+                    excerpt_sha256=hashlib.sha256(excerpt.encode()).hexdigest(),
                     chapter_path="合成章节",
                     physical_page=1,
                     reading_order=index,
@@ -124,14 +166,28 @@ def _seed_pinned_table_chat(client, *, course_id: str, student_id: str, version_
                             "coordinate_space": "pdf_user_bottom_left",
                         }
                     ],
+                ))
+            figure_object_id = new_ulid()
+            objects.append(
+                KnowledgeObject(
+                    id=figure_object_id,
+                    material_version_id=version_id,
+                    type="figure",
+                    title="合成图像",
+                    chapter_path="合成章节",
+                    reading_order=3,
+                    physical_page=1,
+                    bbox=[110, 10, 200, 100],
+                    raw_content="",
+                    parser="stub-pdf",
+                    parser_version="test",
                 )
-                for index in (1, 2)
-            ]
+            )
             figure = EvidencePointer(
                 course_id=course_id,
                 material_id=version.material_id,
                 material_version_id=version_id,
-                source_object_id=new_ulid(),
+                source_object_id=figure_object_id,
                 retrieval_unit_id=None,
                 material_title="合成心理学教材",
                 excerpt="",
@@ -150,7 +206,7 @@ def _seed_pinned_table_chat(client, *, course_id: str, student_id: str, version_
                     }
                 ],
             )
-            db.add_all([*pointers, figure])
+            db.add_all([*objects, *retrieval_units, *pointers, figure])
             await db.commit()
             return assignment.id, pointers[0].id, pointers[1].id, figure.id
 
@@ -986,6 +1042,15 @@ def test_selected_table_turn_uses_pinned_local_context_and_binds_idempotency(
     assert first_citation["evidence_pointer_id"] == pointer_id
     first_done = next(data for name, data in first_events if name == "done")
     assert first_done["saved"] is True
+    saved_turns = client.get(f"/api/v1/chat/sessions/{session['id']}").json()["data"]["turns"]
+    saved_student_turn, saved_tutor_turn = saved_turns[-2:]
+    object_context = saved_tutor_turn["verification"]["object_context"]
+    saved_citation = saved_tutor_turn["citations"][0]
+    assert saved_student_turn["citations"] == [{"evidence_pointer_id": pointer_id}]
+    assert object_context["evidence_pointer_id"] == pointer_id
+    assert object_context["material_version_id"] == version_id
+    assert object_context["publication_snapshot_id"] == saved_citation["publication_snapshot_id"]
+    assert object_context["index_job_id"] == saved_citation["index_job_id"]
 
     replay = client.post(endpoint, json=body)
     assert replay.status_code == 200, replay.text
