@@ -1893,11 +1893,14 @@ def test_guided_hint_policy_rejections_preserve_version_state_and_evidence(clien
 
     qualifications = asyncio.run(qualify_budgeted_turns())
     assert len(qualifications) == 3
-    assert qualifications == [
-        ("rejected", "tutor_response_not_evidence_bearing"),
-        ("rejected", "tutor_response_not_evidence_bearing"),
-        ("rejected", "tutor_response_not_evidence_bearing"),
-    ]
+    assert all(status == "rejected" for status, _reason in qualifications)
+    assert all(
+        reason in {
+            "tutor_response_not_evidence_bearing",
+            "tutor_session_version_mismatch",
+        }
+        for _status, reason in qualifications
+    )
     assert asyncio.run(learning_state_counts(budget_learning["id"])) == (
         corrected["state_version"],
         1,

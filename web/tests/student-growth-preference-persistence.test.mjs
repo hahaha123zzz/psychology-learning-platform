@@ -31,6 +31,15 @@ test("Growth shows last-evidence source, time, dimension, and independence witho
   assert.doesNotMatch(growth, /setSkills|skills\.push|skills:.*knowledge/);
 });
 
+test("Growth evidence browser audit uses synthetic metadata and proves read-only fail-closed rendering", () => {
+  const browser = fs.readFileSync(new URL("./student-growth-evidence-browser.cjs", import.meta.url), "utf8");
+  assert.match(browser, /const metadata = \{[\s\S]*source_type: "practice"[\s\S]*dimension: "apply"/);
+  assert.match(browser, /last_evidence: null/);
+  assert.match(browser, /不可用或已过期（原因未提供）/);
+  assert.match(browser, /private tutor|correctness secret/i);
+  assert.match(browser, /assert\.deepEqual\(writes, \[\]/);
+});
+
 test("Preference loads the current values and saves with the server version", () => {
   assert.match(preferences, /api<Preferences>\("\/me\/preferences"\)/);
   assert.match(preferences, /api<Preferences>\("\/me\/preferences", \{ method: "PATCH"/);
