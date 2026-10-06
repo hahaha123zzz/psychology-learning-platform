@@ -10,6 +10,8 @@
 - **追踪状态：** Acceptance matrix 的 UI-04/UI-05 仅有学生核心 7 路由的布局、首焦点和 reduced-motion 子集证据；键盘全页正反向遍历、Drawer 焦点恢复、44px 触控、读屏器、缩放、颜色对比、其余 11 组代表页和目标稿视觉签收仍未验收。记为 **P0-04 partial**，不可外推为 WCAG 或 V1 完成。
 - **引用恢复进展：** UI-004 已集成（`496b6e0`、`f64f32a`、`ff4c083`、`fbb53cf`；来源 `18037007`、`b20ef57`、`bb4329e`、`67d6347`）。Learn 仅在 URL 显式包含 `session_id` 时调用现有 GET，校验会话 ID、课程与 `course_qa` 模式后恢复已保存 turns 和 EvidencePointer；无效/错课程会话失败关闭，不自动搜索或创建会话/回合。普通新会话创建后以 `history.replaceState` 保存会话 ID 并保留其他 query 参数。切换课程时以 `courseId` key 卸载整份 Learn 状态，避免上一课程 turns/citations、session、搜索结果或 pending turn 留存。集成后 Web Node **64/64**、TypeScript 通过、ESLint **0 errors/2 existing warnings**；最终隔离 worktree production build **24/24 routes**，浏览器脚本语法检查通过。
 - **浏览器验收阻塞：** UI-004 实际保存会话 → Citation → Reader 固定版本/页 → refresh/back 链路尚未复验：API `8001` refused，PostgreSQL `5432`、Redis `6379`、MinIO `9000` 均不可连，API 在 MinIO startup check 失败。没有 seed、迁移或创建新演示数据；EVID-005 保持等待环境恢复。不得将静态测试或已有 EVID-004 的直接 Reader GET 误记为 UI 点击链路通过。
+- **Practice→Review due 状态：** UI-005 集成提交 `590d929`、`fbe2f67`、`edda2f9`（来源 `8932b86`、`3e8c60e`、`89b391a`）。服务端错答复习任务默认次日到期，未到期 `/verify` 返回 409；学生页现在保留预定任务，但禁用验证按钮并将到期说明关联到答案控件。Web Node **68/68**、TypeScript 通过、ESLint **0 errors/2 existing warnings**、隔离 production build **24/24 routes**、浏览器脚本语法通过。专用浏览器脚本只针对合成练习写入一次错答；仅在已有同题到期合成任务时才验证一次正确复习答案，否则确认新任务保持 pending 且不可提前验证。
+- **UI-005 浏览器状态：** 实际 Practice→Review 浏览器脚本尚未运行，API/DB/Redis/MinIO 的隔离环境仍不可用；未 seed、迁移或修改 Demo 数据。不能把脚本静态检查记为端到端验收。
 - **范围：** 使用本地合成学生数据；未读取或发送教材正文、图像、表格。此工程可用性抽查不代表真实课程、真实班级或生产验收。
 
 本报告只覆盖当前工作树已经编码并能在本机复现的结果。真实教材效果、外部模型质量和生产运行能力不在本报告中虚构。
