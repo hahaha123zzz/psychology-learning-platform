@@ -5,12 +5,13 @@ const { chromium } = require("playwright");
 const webOrigin = process.env.UI006_WEB_ORIGIN ?? "http://127.0.0.1:3001";
 const email = process.env.UI006_STUDENT_EMAIL;
 const password = process.env.UI006_STUDENT_PASSWORD;
+const courseQaSessionId = process.env.UI006_COURSEQA_SESSION_ID;
 const courseTitle = "实验心理学｜学生端合成演示";
 const browserPath = process.env.UI006_CHROME_PATH
   ?? "C:/Users/free/AppData/Local/ms-playwright/chromium-1228/chrome-win64/chrome.exe";
 
-if (!email || !password) {
-  throw new Error("请提供本地 synthetic 学生账号；脚本不会启动服务、seed 数据或操作其他学生。");
+if (!email || !password || !courseQaSessionId) {
+  throw new Error("请提供本地 synthetic 学生账号和现有 course_qa session ID；脚本不会启动服务、seed 数据或创建会话。");
 }
 
 async function api(page, path) {
@@ -32,6 +33,7 @@ async function main() {
   let courseId = null;
   let restoreError = null;
   let reviewGuardObserved = false;
+  let preferencePresentationVerified = false;
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
   try {
@@ -126,8 +128,12 @@ async function main() {
     assert.equal(preferenceResponse.status, 200, "preference baseline must come from the current synthetic student");
     savedBaseline = preferenceResponse.body.data.preferences;
     const baselinePreferences = structuredClone(savedBaseline);
-    const targetResponseLength = baselinePreferences.response_length === "DETAILED" ? "CONCISE" : "DETAILED";
-    const targetExampleOrder = baselinePreferences.example_order === "EXAMPLE_FIRST" ? "CONCEPT_FIRST" : "EXAMPLE_FIRST";
+    const targetResponseLength = "CONCISE";
+    const targetExampleOrder = "EXAMPLE_FIRST";
+    assert.ok(
+      baselinePreferences.response_length !== targetResponseLength || baselinePreferences.example_order !== targetExampleOrder,
+      "the synthetic student's baseline must differ so the browser can prove a preference change",
+    );
 
     await page.goto(`${webOrigin}/student/courses/${courseId}/me`);
     await page.getByRole("heading", { name: "我的", exact: true }).waitFor({ state: "visible" });
@@ -160,6 +166,43 @@ async function main() {
         .map((key) => [key, baselinePreferences[key]])),
       "other preference fields must remain unchanged",
     );
+
+    const savedSession = await api(page, `/chat/sessions/${encodeURIComponent(courseQaSessionId)}`);
+    assert.equal(savedSession.status, 200, "Tutor presentation check requires an existing readable synthetic session");
+    assert.equal(savedSession.body.data.id, courseQaSessionId);
+    assert.equal(savedSession.body.data.course_id, courseId, "course_qa session must belong to the synthetic course");
+    assert.equal(savedSession.body.data.mode, "course_qa", "guided sessions are not valid for this course-QA check");
+    assert.equal(savedSession.body.data.status, "active", "Tutor check requires an active session");
+    assert.ok(Array.isArray(savedSession.body.data.turns), "existing session must expose saved turns");
+    const existingTurnCount = savedSession.body.data.turns.length;
+    const restoreResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === "GET"
+        && url.pathname === `/api/v1/chat/sessions/${courseQaSessionId}`;
+    });
+    await page.goto(`${webOrigin}/student/courses/${courseId}/learn?session_id=${encodeURIComponent(courseQaSessionId)}`);
+    await page.getByRole("heading", { name: "学习助手", exact: true }).waitFor({ state: "visible" });
+    assert.equal((await restoreResponse).status(), 200, "Learn must restore the same existing course_qa session");
+    await page.waitForFunction((count) => document.querySelectorAll(".learn-turn").length === count, existingTurnCount);
+    assert.equal(await page.locator(".learn-turn").count(), existingTurnCount,
+      "Learn must restore only the existing session before the single new Tutor turn");
+    await page.getByLabel("围绕教材提问").fill("variable example study time recall");
+    await page.getByRole("button", { name: "发送问题" }).click();
+    await page.waitForFunction(() => {
+      const turns = Array.from(document.querySelectorAll(".learn-turn.tutor"));
+      const composer = document.querySelector('input[aria-label="围绕教材提问"]');
+      return turns.length > 0
+        && (turns.at(-1)?.querySelector("p")?.textContent ?? "").startsWith("根据教材：")
+        && composer instanceof HTMLInputElement && !composer.disabled;
+    }, null, { timeout: 30_000 });
+    const presentationAnswer = (await page.locator(".learn-turn.tutor").last().locator("p").innerText()).trim();
+    assert.match(presentationAnswer, /^根据教材：For example,/,
+      "the next course-QA answer should visibly put the synthetic example first");
+    assert.equal(presentationAnswer.split(/(?<=[.!?])\s+/u).filter(Boolean).length, 1,
+      "CONCISE should render one synthetic evidence sentence");
+    await page.waitForFunction((count) => document.querySelectorAll(".learn-turn").length === count + 2,
+      existingTurnCount);
+    preferencePresentationVerified = true;
   } finally {
     if (savedBaseline) {
       try {
@@ -186,9 +229,15 @@ async function main() {
     await browser.close();
   }
 
-  assert.deepEqual(businessWrites.filter((item) => !(item.method === "PATCH" && item.path === "/api/v1/me/preferences")), [],
-    "only preference PATCH writes are allowed after login");
-  assert.equal(businessWrites.length, 2, "only one preference update and one finally restoration PATCH are allowed");
+  assert.deepEqual(businessWrites.filter((item) => !(
+    item.method === "PATCH" && item.path === "/api/v1/me/preferences"
+    || item.method === "POST" && item.path === `/api/v1/chat/sessions/${courseQaSessionId}/turns`
+  )), [], "only preference PATCH and one turn on the existing course_qa session are allowed after login");
+  assert.equal(businessWrites.filter((item) => item.method === "PATCH" && item.path === "/api/v1/me/preferences").length, 2,
+    "only one preference update and one finally restoration PATCH are allowed");
+  assert.equal(businessWrites.filter((item) => item.method === "POST" && item.path === `/api/v1/chat/sessions/${courseQaSessionId}/turns`).length, 1,
+    "exactly one Tutor turn may be submitted to the existing course_qa session");
+  assert.equal(businessWrites.length, 3, "the flow permits only two preference PATCHes and one Tutor turn POST");
   assert.deepEqual(pageErrors, [], "Growth/Preference should not produce browser errors");
   if (restoreError) throw new Error(`偏好基线恢复失败：${restoreError.message}`);
   console.log(JSON.stringify({
@@ -196,6 +245,7 @@ async function main() {
     growth_review_count: true,
     cross_course_reviews_hidden: true,
     preference_refresh_persisted: true,
+    preference_changed_next_tutor_presentation: preferencePresentationVerified,
     preference_baseline_restored: true,
     preference_writes: businessWrites.length,
     out_of_scope_personal_reads_blocked: blockedPersonalReads.length,

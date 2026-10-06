@@ -85,7 +85,27 @@ test("the browser flow restores the complete original preference snapshot in fin
   assert.match(browser, /UI-006 cross-course review guard/);
   assert.match(browser, /await route\.abort\(\)/);
   assert.doesNotMatch(browser, /\/me\/privacy\/delete-request/);
-  assert.match(browser, /businessWrites\.length, 2/);
+  assert.match(browser, /businessWrites\.filter\(\(item\) => item\.method === "PATCH" && item\.path === "\/api\/v1\/me\/preferences"\)\.length, 2/);
+  assert.match(browser, /businessWrites\.length, 3/);
   assert.match(browser, /UI006_STUDENT_PASSWORD/);
   assert.doesNotMatch(browser, /student-demo-local-only-20261005/);
+});
+
+test("the synthetic browser proves saved preference changes the next existing course-QA Tutor turn", () => {
+  assert.match(browser, /UI006_COURSEQA_SESSION_ID/);
+  assert.match(browser, /savedSession\.body\.data\.course_id, courseId/);
+  assert.match(browser, /savedSession\.body\.data\.mode, "course_qa"/);
+  assert.match(browser, /savedSession\.body\.data\.status, "active"/);
+  assert.match(browser, /\/student\/courses\/\$\{courseId\}\/learn\?session_id=/);
+  assert.match(browser, /targetResponseLength = "CONCISE"/);
+  assert.match(browser, /targetExampleOrder = "EXAMPLE_FIRST"/);
+  assert.match(browser, /baselinePreferences\.response_length !== targetResponseLength \|\| baselinePreferences\.example_order !== targetExampleOrder/);
+  assert.match(browser, /variable example study time recall/);
+  assert.match(browser, /assert\.match\(presentationAnswer, \/\^根据教材：For example,/);
+  assert.match(browser, /presentationAnswer\.split\(\/\(\?<\=\[.!\?\]\)\\s\+\/u\)\.filter\(Boolean\)\.length, 1/);
+  assert.match(browser, /method\(\) === "GET"/);
+  assert.match(browser, /\/api\/v1\/chat\/sessions\/\$\{courseQaSessionId\}\/turns/);
+  assert.match(browser, /item\.method === "POST" && item\.path === `\/api\/v1\/chat\/sessions\/\$\{courseQaSessionId\}\/turns`/);
+  assert.match(browser, /businessWrites\.length, 3/);
+  assert.match(browser, /preference_changed_next_tutor_presentation: preferencePresentationVerified/);
 });
