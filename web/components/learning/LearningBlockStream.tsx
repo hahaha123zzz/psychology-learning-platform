@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { LearningBlock } from "../../lib/learning-blocks";
 import {
   getTeachingAssetFallbackReason,
@@ -52,6 +53,7 @@ function TeachingAssetBlock({ block }: { block: LearningBlock }) {
 }
 
 export default function LearningBlockStream({ blocks }: { blocks: LearningBlock[] }) {
+  const questionHeadingId = useId();
   return (
     <div className="learning-block-stream" data-block-count={blocks.length}>
       {blocks.map((block, index) => {
@@ -71,7 +73,7 @@ export default function LearningBlockStream({ blocks }: { blocks: LearningBlock[
           );
         }
         if (block.type === "Question") {
-          const headingId = `learning-question-heading-${index}`;
+          const headingId = `${questionHeadingId}-question-${index}`;
           return (
             <section aria-labelledby={headingId} className="learning-block question-block" key={block.id}>
               <h3 id={headingId}>学习问题</h3>

@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { createRequire } from "node:module";
+import Module from "node:module";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { normalizeLearningBlocks } from "../lib/learning-blocks.ts";
+
+const require = createRequire(import.meta.url);
+const ts = require("typescript");
+const React = require("react");
+const { renderToStaticMarkup } = require("react-dom/server");
 
 const renderer = fs.readFileSync(
   new URL("../components/learning/LearningBlockStream.tsx", import.meta.url),
@@ -74,6 +83,8 @@ test("Question blocks keep prompt content and render as a readable, non-interact
   assert.match(questionBranch[0], /<p>\{questionPrompt\(block\)\}<\/p>/);
   assert.doesNotMatch(questionBranch[0], /<input\b|<textarea\b|<button\b|<a\b|<form\b|onSubmit=|onClick=|api\(/);
   assert.match(renderer, /function questionPrompt\(block: LearningBlock\)[\s\S]*block\.prompt[\s\S]*block\.text/);
+  assert.match(renderer, /const questionHeadingId = useId\(\)/);
+  assert.match(renderer, /const headingId = `\$\{questionHeadingId\}-question-\$\{index\}`/);
   assert.match(guidedSession, /<form className="composer" onSubmit=\{respond\}>/);
   assert.match(guidedSession, /`\/student\/learning\/tasks\/\$\{learning\.id\}\/respond`/);
 });
@@ -84,6 +95,36 @@ test("ordinary TutorExplanation remains a separate readable explanation block", 
   assert.match(explanationBranch[0], /block\.type === "TutorExplanation" \? "AI 教师" : "学习提示"/);
   assert.match(explanationBranch[0], /\{blockText\(block\)\}/);
   assert.doesNotMatch(explanationBranch[0], /学习问题|questionPrompt/);
+});
+
+test("separate LearningBlockStream instances produce unique Question heading targets", () => {
+  const rendererPath = fileURLToPath(new URL("../components/learning/LearningBlockStream.tsx", import.meta.url));
+  const source = fs.readFileSync(rendererPath, "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      jsx: ts.JsxEmit.ReactJSX,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      esModuleInterop: true,
+    },
+  }).outputText.replace(
+    'require("../../lib/teaching-assets-api")',
+    '({ getTeachingAssetFallbackReason: () => null, TEACHING_ASSET_FALLBACK_NOTICE: "synthetic fallback" })',
+  );
+  const rendererModule = new Module(rendererPath);
+  rendererModule.filename = rendererPath;
+  rendererModule.paths = Module._nodeModulePaths(path.dirname(rendererPath));
+  rendererModule._compile(compiled, rendererPath);
+  const LearningBlockStream = rendererModule.exports.default;
+  const block = { id: "question-instance", type: "Question", prompt: "Synthetic prompt" };
+  const markup = renderToStaticMarkup(React.createElement("div", null,
+    React.createElement(LearningBlockStream, { blocks: [block] }),
+    React.createElement(LearningBlockStream, { blocks: [block] }),
+  ));
+  const ids = [...markup.matchAll(/<h3 id="([^"]+)">学习问题<\/h3>/g)].map((match) => match[1]);
+  assert.equal(ids.length, 2);
+  assert.notEqual(ids[0], ids[1]);
+  assert.ok(ids.every((id) => markup.includes(`aria-labelledby="${id}"`)));
 });
 
 test("unknown block rendering exposes text and inert reference count without actions or links", () => {
