@@ -296,6 +296,109 @@ def test_tutor_claim_persists_timeout_reason_and_single_attempt() -> None:
     asyncio.run(run())
 
 
+@pytest.mark.parametrize(
+    "learning_record",
+    [
+        {
+            "id": "learning-evidence-id",
+            "evidence_id": "must-not-be-a-content-citation",
+            "user_id": "student-id",
+            "knowledge_point": "synthetic point",
+            "question_version_id": "question-version-id",
+            "source_type": "practice",
+            "correct": False,
+        },
+        {
+            "id": "memory-item-id",
+            "evidence_id": "must-not-be-a-content-citation",
+            "layer": "L1",
+            "kind": "learning_difficulty",
+            "content": "synthetic learner note",
+            "source_type": "practice",
+            "provenance_level": "inferred",
+        },
+    ],
+)
+def test_learning_evidence_and_memory_cannot_support_content_claim(learning_record) -> None:
+    async def run() -> None:
+        scope = _claim_scope()
+        evaluate_calls = 0
+        retrieval_calls = 0
+
+        async def retrieve(_scope: dict) -> list[dict]:
+            nonlocal retrieval_calls
+            retrieval_calls += 1
+            return []
+
+        def evaluate(_claim: str, _evidence: list[dict]) -> dict:
+            nonlocal evaluate_calls
+            evaluate_calls += 1
+            return {"status": "supported", "supported_subclaims": ["claim"]}
+
+        record = await verify_domain_claim_for_tutor(
+            claim="synthetic textbook claim",
+            initial_evidence=[learning_record],
+            context=DomainClaimContext(
+                retrieval_scope=scope,
+                required_scope=scope,
+                evaluate=evaluate,
+                retrieve_once=retrieve,
+            ),
+        )
+
+        assert record["status"] == "unknown"
+        assert record["refusal_reason"] == "learning_evidence_cannot_support_content_claim"
+        assert record["initial_evidence_refs"] == []
+        assert record["supplemental_evidence_refs"] == []
+        assert evaluate_calls == 0
+        assert retrieval_calls == 0
+
+    asyncio.run(run())
+
+
+def test_supplemental_learning_evidence_cannot_upgrade_content_claim() -> None:
+    async def run() -> None:
+        scope = _claim_scope()
+        memory = {
+            "id": "memory-item-id",
+            "layer": "L1",
+            "kind": "learning_difficulty",
+            "content": "synthetic learner note",
+            "source_type": "practice",
+            "provenance_level": "inferred",
+        }
+
+        async def retrieve(_scope: dict) -> list[dict]:
+            return [memory]
+
+        def evaluate(_claim: str, evidence: list[dict]) -> dict:
+            if evidence:
+                return {
+                    "status": "supported",
+                    "supported_subclaims": ["claim"],
+                    "supplemental_evidence": evidence[1:],
+                }
+            return {"status": "unknown"}
+
+        record = await verify_domain_claim_for_tutor(
+            claim="synthetic textbook claim",
+            initial_evidence=[],
+            context=DomainClaimContext(
+                retrieval_scope=scope,
+                required_scope=scope,
+                evaluate=evaluate,
+                retrieve_once=retrieve,
+            ),
+        )
+
+        assert record["status"] == "unknown"
+        assert record["refusal_reason"] == "learning_evidence_cannot_support_content_claim"
+        assert record["supplemental_evidence_refs"] == []
+        assert record["supplemental_retrieval_attempts"] == 1
+
+    asyncio.run(run())
+
+
 def test_effective_policy_only_tightens_and_records_sources() -> None:
     policy = resolve_effective_policy(
         [

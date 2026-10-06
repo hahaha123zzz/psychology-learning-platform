@@ -260,12 +260,16 @@ def _evidence_reference_ids(evidence: list[Any]) -> list[str]:
     references: list[str] = []
     seen: set[str] = set()
     for item in evidence:
+        if _is_learning_evidence(item):
+            continue
         if isinstance(item, str):
             reference = item
         elif isinstance(item, Mapping):
-            reference = item.get("evidence_id") or item.get("id")
+            # `id` is deliberately not accepted: LearningEvidence and MemoryItem
+            # also have IDs, but they are not ContentEvidence citations.
+            reference = item.get("evidence_id")
         else:
-            reference = getattr(item, "evidence_id", None) or getattr(item, "id", None)
+            reference = getattr(item, "evidence_id", None)
         if not isinstance(reference, str) or not reference.strip():
             continue
         reference = reference.strip()
@@ -273,6 +277,22 @@ def _evidence_reference_ids(evidence: list[Any]) -> list[str]:
             seen.add(reference)
             references.append(reference)
     return references
+
+
+def _is_learning_evidence(item: Any) -> bool:
+    """识别误传入教材 Claim 的学习证据/记忆记录，避免其成为教材依据。"""
+    if isinstance(item, Mapping):
+        if {
+            "question_version_id",
+            "knowledge_point",
+            "correct",
+        }.issubset(item):
+            return True
+        if {"layer", "kind", "content", "provenance_level"}.issubset(item):
+            return True
+        return False
+    class_name = type(item).__name__
+    return class_name in {"LearningEvidence", "MemoryItem"}
 
 
 def _claim_verification_record(
@@ -344,6 +364,18 @@ async def verify_domain_claim_for_tutor(
     if not isinstance(initial_evidence, list):
         raise ValueError("Domain Claim 初始证据必须是数组")
 
+    if any(_is_learning_evidence(item) for item in initial_evidence):
+        return _claim_verification_record(
+            result={
+                "status": "unknown",
+                "refusal_reason": "learning_evidence_cannot_support_content_claim",
+            },
+            required_scope=required_scope,
+            retrieval_scope=retrieval_scope,
+            initial_evidence=initial_evidence,
+            attempts=0,
+        )
+
     retrieval_attempts = 0
 
     async def retrieve_once(scope: dict[str, Any]) -> list[Any]:
@@ -364,6 +396,15 @@ async def verify_domain_claim_for_tutor(
         result = {"status": "unknown", "refusal_reason": "claim_verification_timeout"}
     except Exception:  # noqa: BLE001 verification failure must fail closed without leaking exception text
         result = {"status": "unknown", "refusal_reason": "claim_verification_failed"}
+
+    supplemental_evidence = result.get("supplemental_evidence", [])
+    if isinstance(supplemental_evidence, list) and any(
+        _is_learning_evidence(item) for item in supplemental_evidence
+    ):
+        result = {
+            "status": "unknown",
+            "refusal_reason": "learning_evidence_cannot_support_content_claim",
+        }
 
     return _claim_verification_record(
         result=result,
