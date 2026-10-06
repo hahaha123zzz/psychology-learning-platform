@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ApiError
 from app.core.response import ok
-from app.db.models import CourseRelease, TeachingAssetVersion, User
+from app.db.models import CourseRelease, CourseReleaseAssignment, TeachingAssetVersion, User
 from app.db.session import get_db_session
 from app.modules.assessments.policy import ensure_ai_support_available
 from app.modules.auth.dependencies import get_current_user, require_course_role
@@ -218,9 +218,41 @@ async def get_published_asset(
         )
     await require_course_role(item.course_id, user, db, roles={"student"})
     await ensure_ai_support_available(db, user_id=user.id)
+
+    assigned = await course_service.resolve_active_student_course_release(
+        db, user_id=user.id, course_id=item.course_id
+    )
+    if assigned is not None:
+        _, assigned_release = assigned
+        if item.release_id != assigned_release.id:
+            raise ApiError(
+                status_code=404,
+                code="TEACHING_ASSET_NOT_FOUND",
+                message="教学资产当前版本不可用",
+            )
+        # A matching active assignment remains authoritative after publication rotation
+        # marks its pinned Release deprecated.
+        return ok(request, _out(item))
+
+    assignment_history = await db.scalar(
+        select(CourseReleaseAssignment.id)
+        .where(
+            CourseReleaseAssignment.course_id == item.course_id,
+        )
+        .limit(1)
+    )
+    if assignment_history is not None:
+        raise ApiError(
+            status_code=404,
+            code="TEACHING_ASSET_NOT_FOUND",
+            message="教学资产当前版本不可用",
+        )
+
+    # Keep legacy reads only until the course has any Release assignment history.
     if item.release_id is None or await db.scalar(
         select(CourseRelease.id).where(
             CourseRelease.id == item.release_id,
+            CourseRelease.course_id == item.course_id,
             CourseRelease.status == "published",
         )
     ) is None:

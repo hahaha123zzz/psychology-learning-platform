@@ -299,6 +299,296 @@ def test_teaching_asset_publish_requires_target_release_binding_and_legacy_read_
     assert revoked.status_code == 404
 
 
+def test_student_teaching_asset_requires_current_release_assignment_pin(client) -> None:
+    import asyncio
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from app.db.models import (
+        Assessment,
+        Attempt,
+        ClassMember,
+        CourseClass,
+        CourseMember,
+        CourseRelease,
+        CourseReleaseAssignment,
+        TeachingAssetVersion,
+    )
+    from app.db.session import session_factory
+
+    teacher_id = create_user_sync(email="asset-pin-teacher@uni.edu", is_teacher=True)
+    student_id = create_user_sync(email="asset-pin-student@uni.edu")
+    _login(client, "asset-pin-teacher@uni.edu")
+    course_id = client.post(
+        "/api/v1/courses",
+        json={"title": "TeachingAsset pin 课程", "term": "2026春", "timezone": "Asia/Shanghai"},
+    ).json()["data"]["id"]
+    membership = client.post(
+        f"/api/v1/courses/{course_id}/members",
+        json={"user_id": student_id, "role": "student"},
+    )
+    assert membership.status_code == 201, membership.text
+
+    async def seed() -> tuple[str, str, str, str, str, str, str]:
+        async with session_factory() as db:
+            release_old = CourseRelease(
+                course_id=course_id,
+                version_no=1,
+                name="合成旧 Release",
+                status="deprecated",
+                manifest={},
+                created_by=teacher_id,
+                published_by=teacher_id,
+                published_at=datetime.now(UTC),
+            )
+            release_current = CourseRelease(
+                course_id=course_id,
+                version_no=2,
+                name="合成当前 Release",
+                status="published",
+                manifest={},
+                created_by=teacher_id,
+                published_by=teacher_id,
+                published_at=datetime.now(UTC),
+            )
+            release_other = CourseRelease(
+                course_id=course_id,
+                version_no=3,
+                name="合成其他 Release",
+                status="published",
+                manifest={},
+                created_by=teacher_id,
+                published_by=teacher_id,
+                published_at=datetime.now(UTC),
+            )
+            class_primary = CourseClass(
+                course_id=course_id,
+                code="ASSET-PIN-A",
+                name="合成主班级",
+                created_by=teacher_id,
+            )
+            class_secondary = CourseClass(
+                course_id=course_id,
+                code="ASSET-PIN-B",
+                name="合成第二班级",
+                created_by=teacher_id,
+            )
+            db.add_all(
+                [release_old, release_current, release_other, class_primary, class_secondary]
+            )
+            await db.flush()
+            old_assignment = CourseReleaseAssignment(
+                course_id=course_id,
+                class_id=class_primary.id,
+                course_release_id=release_old.id,
+                status="active",
+                assigned_by=teacher_id,
+            )
+            old_asset = TeachingAssetVersion(
+                course_id=course_id,
+                release_id=release_old.id,
+                asset_key="synthetic:old-release",
+                version_no=1,
+                template="explanation",
+                status="published",
+                content={"title": "合成旧 pin", "text": "本地合成说明。"},
+                fallback_text="本地合成说明。",
+                evidence_refs=[],
+                allowed_actions=["SHOW"],
+                created_by=teacher_id,
+                published_by=teacher_id,
+                published_at=datetime.now(UTC),
+            )
+            current_asset = TeachingAssetVersion(
+                course_id=course_id,
+                release_id=release_current.id,
+                asset_key="synthetic:current-release",
+                version_no=1,
+                template="explanation",
+                status="published",
+                content={"title": "合成当前 pin", "text": "本地合成说明。"},
+                fallback_text="本地合成说明。",
+                evidence_refs=[],
+                allowed_actions=["SHOW"],
+                created_by=teacher_id,
+                published_by=teacher_id,
+                published_at=datetime.now(UTC),
+            )
+            other_asset = TeachingAssetVersion(
+                course_id=course_id,
+                release_id=release_other.id,
+                asset_key="synthetic:other-release",
+                version_no=1,
+                template="explanation",
+                status="published",
+                content={"title": "合成其他 pin", "text": "本地合成说明。"},
+                fallback_text="本地合成说明。",
+                evidence_refs=[],
+                allowed_actions=["SHOW"],
+                created_by=teacher_id,
+                published_by=teacher_id,
+                published_at=datetime.now(UTC),
+            )
+            db.add_all(
+                [
+                    old_assignment,
+                    ClassMember(class_id=class_primary.id, user_id=student_id),
+                    old_asset,
+                    current_asset,
+                    other_asset,
+                ]
+            )
+            await db.commit()
+            return (
+                old_assignment.id,
+                class_primary.id,
+                class_secondary.id,
+                release_current.id,
+                old_asset.id,
+                current_asset.id,
+                other_asset.id,
+            )
+
+    (
+        old_assignment_id,
+        primary_class_id,
+        secondary_class_id,
+        current_release_id,
+        old_asset_id,
+        current_asset_id,
+        other_asset_id,
+    ) = asyncio.run(seed())
+    _login(client, "asset-pin-student@uni.edu")
+
+    # The exact active pin is readable even after its Release was deprecated.
+    matched_deprecated = client.get(f"/api/v1/student/teaching-assets/{old_asset_id}")
+    assert matched_deprecated.status_code == 200, matched_deprecated.text
+    mismatch = client.get(f"/api/v1/student/teaching-assets/{current_asset_id}")
+    assert mismatch.status_code == 404
+    unrelated_release = client.get(f"/api/v1/student/teaching-assets/{other_asset_id}")
+    assert unrelated_release.status_code == 404
+
+    async def rotate_assignment() -> None:
+        async with session_factory() as db:
+            previous = await db.get(CourseReleaseAssignment, old_assignment_id)
+            assert previous is not None
+            previous.status = "closed"
+            previous.closed_at = datetime.now(UTC)
+            previous.close_reason = "合成 TeachingAsset Release 轮换"
+            replacement = CourseReleaseAssignment(
+                course_id=previous.course_id,
+                class_id=primary_class_id,
+                course_release_id=current_release_id,
+                status="active",
+                assigned_by=teacher_id,
+                supersedes_id=old_assignment_id,
+            )
+            db.add(replacement)
+            await db.commit()
+
+    asyncio.run(rotate_assignment())
+    rotated_old = client.get(f"/api/v1/student/teaching-assets/{old_asset_id}")
+    assert rotated_old.status_code == 404
+    rotated_current = client.get(f"/api/v1/student/teaching-assets/{current_asset_id}")
+    assert rotated_current.status_code == 200, rotated_current.text
+
+    async def create_formal_attempt() -> str:
+        async with session_factory() as db:
+            assessment = Assessment(
+                course_id=course_id,
+                title="TeachingAsset 测评隔离夹具",
+                ai_policy="disabled",
+                status="published",
+                purpose="formal",
+                result_visibility_policy="after_close",
+                created_by=teacher_id,
+            )
+            db.add(assessment)
+            await db.flush()
+            attempt = Attempt(
+                assessment_id=assessment.id,
+                user_id=student_id,
+                status="in_progress",
+            )
+            db.add(attempt)
+            await db.commit()
+            return attempt.id
+
+    attempt_id = asyncio.run(create_formal_attempt())
+    formal_assessment = client.get(
+        f"/api/v1/student/teaching-assets/{current_asset_id}"
+    )
+    assert formal_assessment.status_code == 403, formal_assessment.text
+    assert formal_assessment.json()["error"]["code"] == "EXAM_AI_SUPPORT_RESTRICTED"
+
+    async def submit_formal_attempt() -> None:
+        async with session_factory() as db:
+            attempt = await db.get(Attempt, attempt_id)
+            assert attempt is not None
+            attempt.status = "submitted"
+            await db.commit()
+
+    asyncio.run(submit_formal_attempt())
+
+    async def add_ambiguous_assignment() -> None:
+        async with session_factory() as db:
+            db.add_all(
+                [
+                    ClassMember(class_id=secondary_class_id, user_id=student_id),
+                    CourseReleaseAssignment(
+                        course_id=course_id,
+                        class_id=secondary_class_id,
+                        course_release_id=(await db.scalar(
+                            select(CourseRelease.id).where(
+                                CourseRelease.course_id == course_id,
+                                CourseRelease.version_no == 3,
+                            )
+                        )),
+                        status="active",
+                        assigned_by=teacher_id,
+                    ),
+                ]
+            )
+            await db.commit()
+
+    asyncio.run(add_ambiguous_assignment())
+    ambiguous = client.get(f"/api/v1/student/teaching-assets/{current_asset_id}")
+    assert ambiguous.status_code == 409, ambiguous.text
+    assert ambiguous.json()["error"]["code"] == "COURSE_RELEASE_ASSIGNMENT_AMBIGUOUS"
+
+    async def revoke_assignments_and_class_membership() -> None:
+        async with session_factory() as db:
+            assignments = (
+                await db.scalars(
+                    select(CourseReleaseAssignment).where(
+                        CourseReleaseAssignment.course_id == course_id
+                    )
+                )
+            ).all()
+            for assignment in assignments:
+                assignment.status = "revoked"
+            members = (
+                await db.scalars(
+                    select(ClassMember).where(ClassMember.user_id == student_id)
+                )
+            ).all()
+            for member in members:
+                await db.delete(member)
+            course_member = await db.scalar(
+                select(CourseMember).where(
+                    CourseMember.course_id == course_id,
+                    CourseMember.user_id == student_id,
+                )
+            )
+            assert course_member is not None and course_member.status == "active"
+            await db.commit()
+
+    asyncio.run(revoke_assignments_and_class_membership())
+    revoked_history = client.get(f"/api/v1/student/teaching-assets/{current_asset_id}")
+    assert revoked_history.status_code == 404
+
+
 def test_asset_evidence_refs_resolve_only_to_target_domain_pack_keys() -> None:
     import pytest
 
