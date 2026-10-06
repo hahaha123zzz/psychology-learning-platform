@@ -275,6 +275,12 @@ async def invalidate_learning_evidence(
         )
     evidence.quality_status = "invalidated"
     evidence.invalidated_reason = body.reason
+    await memory_service.invalidate_memories_for_evidence(
+        db,
+        user_id=evidence.user_id,
+        course_id=course_id,
+        evidence_id=evidence.id,
+    )
     await memory_service.recompute_mastery(db, user_id=evidence.user_id, course_id=course_id)
     await course_service.write_audit(
         db,

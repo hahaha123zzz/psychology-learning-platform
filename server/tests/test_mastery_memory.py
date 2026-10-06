@@ -71,7 +71,13 @@ def test_mastery_state_derived_from_graded_attempt(client) -> None:
     assert growth.json()["data"][0]["algorithm_version"] == "mastery-v2-independent-context"
     assert growth.json()["data"][0]["state_reason"]
 
-    from app.db.models import LearningEvent, LearningQualification
+    from app.db.models import (
+        AuditLog,
+        LearningEvent,
+        LearningEvidence,
+        LearningQualification,
+        MemoryItem,
+    )
     from app.db.session import session_factory
 
     async def _qualification_rows():
@@ -92,8 +98,6 @@ def test_mastery_state_derived_from_graded_attempt(client) -> None:
     assert qualification.evidence_ids
 
     async def _evidence_row():
-        from app.db.models import LearningEvidence
-
         async with session_factory() as session:
             return await session.scalar(
                 select(LearningEvidence).where(LearningEvidence.user_id == student_id)
@@ -105,6 +109,74 @@ def test_mastery_state_derived_from_graded_attempt(client) -> None:
     assert evidence.quality_status == "valid"
     assert evidence.context_key.startswith("assessment:")
 
+    from app.db.base import new_ulid
+
+    dependent_memory_id = new_ulid()
+    unrelated_memory_id = new_ulid()
+    unrelated_evidence_id = new_ulid()
+
+    async def _seed_evidence_linked_memories() -> None:
+        async with session_factory() as session:
+            session.add_all(
+                [
+                    LearningEvidence(
+                        id=unrelated_evidence_id,
+                        user_id=student_id,
+                        course_id=course_id,
+                        knowledge_point="synthetic-unrelated-kp",
+                        question_version_id=qv_id,
+                        attempt_id=None,
+                        source_type="practice",
+                        dimension="apply",
+                        independence_status="independent",
+                        quality_status="valid",
+                        hints_used=0,
+                        correct=True,
+                        weight=0.5,
+                    ),
+                    MemoryItem(
+                        id=dependent_memory_id,
+                        user_id=student_id,
+                        course_id=course_id,
+                        layer="L1",
+                        kind="weakness",
+                        content="对“依赖失效目标”的合成掌握仍不稳定，待复核。",
+                        source_type="practice",
+                        source_ref="synthetic:dependent",
+                        provenance_level="inferred",
+                        evidence_refs=[evidence.id],
+                        confidence=0.7,
+                    ),
+                    MemoryItem(
+                        id=unrelated_memory_id,
+                        user_id=student_id,
+                        course_id=course_id,
+                        layer="L1",
+                        kind="weakness",
+                        content="对“无关有效目标”的合成掌握仍不稳定，待复核。",
+                        source_type="practice",
+                        source_ref="synthetic:unrelated",
+                        provenance_level="inferred",
+                        evidence_refs=[unrelated_evidence_id],
+                        confidence=0.7,
+                    ),
+                ]
+            )
+            await session.commit()
+
+    asyncio.run(_seed_evidence_linked_memories())
+    before = client.get(f"/api/v1/student/growth/tabs?course_id={course_id}")
+    assert before.status_code == 200
+    before_explanations = [
+        item["explanation"] for item in before.json()["data"]["misconceptions"]
+    ]
+    assert any("依赖失效目标" in item for item in before_explanations)
+    assert any("无关有效目标" in item for item in before_explanations)
+    before_memories = client.get("/api/v1/me/memory/items?layer=L1")
+    assert before_memories.status_code == 200
+    before_memory_ids = {item["id"] for item in before_memories.json()["data"]}
+    assert {dependent_memory_id, unrelated_memory_id}.issubset(before_memory_ids)
+
     _login(client, "mt@uni.edu")
     invalidated = client.post(
         f"/api/v1/courses/{course_id}/learning-evidence/{evidence.id}/invalidate",
@@ -112,12 +184,62 @@ def test_mastery_state_derived_from_graded_attempt(client) -> None:
     )
     assert invalidated.status_code == 200
     assert invalidated.json()["data"]["quality_status"] == "invalidated"
+
+    _login(client, "ms@uni.edu")
+    after = client.get(f"/api/v1/student/growth/tabs?course_id={course_id}")
+    assert after.status_code == 200
+    after_explanations = [
+        item["explanation"] for item in after.json()["data"]["misconceptions"]
+    ]
+    assert not any("依赖失效目标" in item for item in after_explanations)
+    assert any("无关有效目标" in item for item in after_explanations)
+    after_memories = client.get("/api/v1/me/memory/items?layer=L1")
+    assert after_memories.status_code == 200
+    after_memory_ids = {item["id"] for item in after_memories.json()["data"]}
+    assert dependent_memory_id not in after_memory_ids
+    assert unrelated_memory_id in after_memory_ids
+
+    async def _memory_rows():
+        async with session_factory() as session:
+            return list(
+                (
+                    await session.execute(
+                        select(MemoryItem).where(
+                            MemoryItem.id.in_((dependent_memory_id, unrelated_memory_id))
+                        )
+                    )
+                ).scalars()
+            )
+
+    memory_by_id = {row.id: row for row in asyncio.run(_memory_rows())}
+    assert memory_by_id[dependent_memory_id].stale is True
+    assert "依赖失效目标" in memory_by_id[dependent_memory_id].content
+    assert memory_by_id[unrelated_memory_id].stale is False
+    assert "无关有效目标" in memory_by_id[unrelated_memory_id].content
+
+    _login(client, "mt@uni.edu")
     replay = client.post(
         f"/api/v1/courses/{course_id}/learning-evidence/{evidence.id}/invalidate",
         json={"reason": "重复提交"},
     )
     assert replay.status_code == 200
     assert replay.json()["meta"]["idempotent_replay"] is True
+
+    async def _invalidation_audit_rows():
+        async with session_factory() as session:
+            return list(
+                (
+                    await session.execute(
+                        select(AuditLog).where(
+                            AuditLog.resource_type == "learning_evidence",
+                            AuditLog.resource_id == evidence.id,
+                            AuditLog.action == "learning_evidence.invalidated",
+                        )
+                    )
+                ).scalars()
+            )
+
+    assert len(asyncio.run(_invalidation_audit_rows())) == 1
 
 
 def test_memory_summary_and_weakness_candidates(client) -> None:

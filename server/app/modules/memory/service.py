@@ -175,6 +175,32 @@ async def record_evidence(
     return evidence_ids
 
 
+async def invalidate_memories_for_evidence(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    course_id: str,
+    evidence_id: str,
+) -> int:
+    """引用已失效学习证据的同 Scope 记忆转为 stale，正文保留供审计。"""
+    rows = (
+        await db.execute(
+            select(MemoryItem).where(
+                MemoryItem.user_id == user_id,
+                MemoryItem.course_id == course_id,
+                MemoryItem.stale.is_(False),
+            )
+        )
+    ).scalars()
+    invalidated_count = 0
+    for item in rows:
+        refs = item.evidence_refs if isinstance(item.evidence_refs, list) else []
+        if evidence_id in refs:
+            item.stale = True
+            invalidated_count += 1
+    return invalidated_count
+
+
 async def recompute_mastery(
     db: AsyncSession, *, user_id: str, course_id: str
 ) -> None:
