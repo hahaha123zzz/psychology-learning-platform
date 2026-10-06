@@ -33,6 +33,9 @@ test("the browser script requires and restores an existing synthetic course_qa s
   assert.match(browser, /persistedWrites\.filter\(\(item\) => item\.path === "\/api\/v1\/chat\/sessions"\)\.length, 0/);
   assert.match(browser, /persistedWrites\.filter\(\(item\) => item\.path\.endsWith\("\/turns"\)\)\.length, 1/);
   assert.match(browser, /writes\.filter\(\(item\) => item\.path === "\/api\/v1\/knowledge\/search"\)\.length, 1/);
+  assert.match(browser, /publication_snapshot_id/);
+  assert.match(browser, /index_job_id/);
+  assert.match(browser, /domain_release_id/);
 });
 
 test("Tutor request transmits at most one pointer ID and binds retries to pointer selection", () => {

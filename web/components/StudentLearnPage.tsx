@@ -168,6 +168,11 @@ function StudentLearnContent({ courseId }: { courseId: string }) {
       setSelectedTablePointer({
         evidence_pointer_id: pointer.evidence_pointer_id,
         material_title: pointer.material_title,
+        material_id: pointer.material_id,
+        material_version_id: pointer.material_version_id,
+        publication_snapshot_id: pointer.publication_snapshot_id,
+        index_job_id: pointer.index_job_id,
+        domain_release_id: pointer.domain_release_id,
         chapter_path: pointer.chapter_path,
         physical_page: pointer.physical_page,
         object_type: pointer.object_type,

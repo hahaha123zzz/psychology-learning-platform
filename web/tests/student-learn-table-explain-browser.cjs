@@ -93,8 +93,12 @@ async function main() {
     await page.getByText("表格解释 · 来自已核验的表格引用", { exact: true }).waitFor({ state: "visible", timeout: 60_000 });
     assert.equal(turnBodies.length, 1, "exactly one synthetic Tutor turn may be sent");
     assert.equal(pointerReads.length >= 2, true, "Reader and Learn must reload pointer metadata from the server");
-    const selectedPointerId = pointerReads.find((item) => item.object_type === "table" && item.excerpt?.trim())?.evidence_pointer_id;
+    const selectedPointer = pointerReads.find((item) => item.object_type === "table" && item.excerpt?.trim());
+    const selectedPointerId = selectedPointer?.evidence_pointer_id;
     assert.ok(selectedPointerId, "selected pointer must be an authorized non-empty native table");
+    for (const pin of ["publication_snapshot_id", "index_job_id", "domain_release_id"]) {
+      assert.match(selectedPointer[pin] ?? "", /^[0-9A-HJKMNP-TV-Z]{26}$/, `Reader pointer must restore exact ${pin}`);
+    }
 
     const turnBody = turnBodies[0];
     assert.deepEqual(Object.keys(turnBody).sort(), ["client_turn_id", "content", "selected_evidence_pointer_ids"].sort());
