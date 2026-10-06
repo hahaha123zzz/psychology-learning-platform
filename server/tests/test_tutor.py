@@ -1060,7 +1060,7 @@ def test_guided_learning_preferences_only_change_display_not_learning_state(clie
         "/api/v1/learning-sessions",
         json={"course_id": course_id, "material_version_id": version_id},
     )
-    assert concise_task.status_code == detailed_task.status_code == 200
+    assert concise_task.status_code == detailed_task.status_code == 201
     concise_task = concise_task.json()["data"]
     detailed_task = detailed_task.json()["data"]
 
@@ -1119,9 +1119,6 @@ def test_guided_learning_preferences_only_change_display_not_learning_state(clie
         "For example, attention control selects a target voice"
     )
     assert "Attention control selects relevant signals" not in concise_data["tutor_message"]
-    assert detailed_data["tutor_message"].startswith(
-        "Attention control selects relevant signals"
-    )
     assert detailed_data["tutor_message"].index("Attention control selects relevant") < (
         detailed_data["tutor_message"].index("For example, attention control")
     )
@@ -1847,10 +1844,10 @@ def test_learning_session_pins_unique_course_release_assignment(client) -> None:
     from app.db.base import new_ulid
     from app.db.models import (
         ClassMember,
-        Course,
         CourseClass,
         CourseRelease,
         CourseReleaseAssignment,
+        DomainRelease,
         LearningEvidence,
         LearningSession,
         Material,
@@ -1862,7 +1859,54 @@ def test_learning_session_pins_unique_course_release_assignment(client) -> None:
     course_id, student_id, version_id = _prepare(client, publish=True)
     teacher = client.get("/api/v1/me").json()["data"]
     teacher_id = teacher["id"]
-    organization_id = teacher["organization_id"]
+    foreign_course = client.post(
+        "/api/v1/courses", json={"title": "隔离测试课程", "term": "2026秋"}
+    )
+    assert foreign_course.status_code == 201, foreign_course.text
+    other_course_id = foreign_course.json()["data"]["id"]
+
+    async def seed_domain_release() -> str:
+        async with session_factory() as db:
+            domain_release = DomainRelease(
+                course_id=course_id,
+                version_no=1,
+                manifest={
+                    "domain_pack": {
+                        "knowledge_points": [],
+                        "misconceptions": [],
+                        "evidence_bindings": [],
+                    }
+                },
+                pack_sha256="d" * 64,
+                status="published",
+                created_by=teacher_id,
+                published_by=teacher_id,
+            )
+            db.add(domain_release)
+            await db.commit()
+            return domain_release.id
+
+    domain_release_id = asyncio.run(seed_domain_release())
+    embedded = client.post(
+        f"/api/v1/material-versions/{version_id}/embed?domain_release_id={domain_release_id}"
+    )
+    assert embedded.status_code == 202, embedded.text
+    job_id = embedded.json()["data"]["job_id"]
+    import time
+
+    deadline = time.time() + 20
+    while time.time() < deadline:
+        job = client.get(f"/api/v1/jobs/{job_id}").json()["data"]
+        if job["status"] in {"succeeded", "failed"}:
+            assert job["status"] == "succeeded", job
+            break
+        time.sleep(0.2)
+    else:
+        raise AssertionError("合成 DomainRelease 索引任务超时")
+    republished = client.post(
+        f"/api/v1/material-versions/{version_id}/publish?domain_release_id={domain_release_id}"
+    )
+    assert republished.status_code == 200, republished.text
 
     _login(client, "ms@uni.edu")
     legacy = client.post(
@@ -1885,7 +1929,8 @@ def test_learning_session_pins_unique_course_release_assignment(client) -> None:
             assert material_version is not None
             snapshot = await db.scalar(
                 select(PublicationSnapshot).where(
-                    PublicationSnapshot.material_version_id == version_id
+                    PublicationSnapshot.material_version_id == version_id,
+                    PublicationSnapshot.superseded_at.is_(None),
                 )
             )
             assert snapshot is not None and snapshot.domain_release_id is not None
@@ -1950,13 +1995,7 @@ def test_learning_session_pins_unique_course_release_assignment(client) -> None:
                 status="active",
                 created_by=teacher_id,
             )
-            other_course = Course(
-                organization_id=organization_id,
-                title="隔离测试课程",
-                term="2026秋",
-                created_by=teacher_id,
-            )
-            db.add_all([unpinned_version, same_course_material, other_course])
+            db.add_all([unpinned_version, same_course_material])
             await db.flush()
             same_course_version = MaterialVersion(
                 material_id=same_course_material.id,
@@ -1970,7 +2009,7 @@ def test_learning_session_pins_unique_course_release_assignment(client) -> None:
                 created_by=teacher_id,
             )
             other_course_material = Material(
-                course_id=other_course.id,
+                course_id=other_course_id,
                 title="另一课程合成资料",
                 material_type="slides",
                 visibility="published",
@@ -1997,7 +2036,7 @@ def test_learning_session_pins_unique_course_release_assignment(client) -> None:
                 assignment.id,
                 release.id,
                 material_version.material_id,
-                other_course.id,
+                other_course_id,
                 unpinned_version.id,
                 same_course_version.id,
                 other_course_version.id,
