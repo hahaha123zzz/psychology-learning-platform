@@ -15,12 +15,17 @@ type Citation = { pointerId?: string; label: string };
 type Turn = { role: "student" | "tutor"; content: string; citations: Citation[]; status?: string; explanation?: "table"; pendingExplanation?: "table" };
 type TablePointerResponse = {
   evidence_pointer_id: string;
-  course_id: string;
+  course_id: string | null;
   material_title: string;
   chapter_path: string | null;
   physical_page: number | null;
   object_type: string;
   excerpt: string;
+  material_id: string;
+  material_version_id: string;
+  publication_snapshot_id: string | null;
+  index_job_id: string | null;
+  domain_release_id: string | null;
 };
 type SelectedTablePointer = Omit<TablePointerResponse, "course_id" | "excerpt">;
 type SavedChatSession = {

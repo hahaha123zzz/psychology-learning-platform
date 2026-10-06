@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.db.base import new_ulid
 from app.db.models import (
     DomainRelease,
+    EvidencePointer,
     EvidenceTicket,
     KnowledgeObject,
     Material,
@@ -467,6 +468,67 @@ def test_domain_release_search_uses_only_its_bound_index_job(client) -> None:
     student_snapshots_a = student_data_a["domain_release"]["publication_snapshots"]
     assert len(student_snapshots_a) == 1
     assert student_snapshots_a[0]["publication_snapshot_id"] == current_snapshot_id
+    pointer_id = student_data_a["items"][0]["evidence_pointer_id"]
+    assert pointer_id
+    restored = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
+    assert restored.status_code == 200
+    restored_data = restored.json()["data"]
+    assert restored_data["course_id"] == course_id
+    assert restored_data["material_version_id"] == version_id
+    assert restored_data["publication_snapshot_id"] == current_snapshot_id
+    assert restored_data["index_job_id"] == index_job_id
+    assert restored_data["domain_release_id"] == release_a_id
+    assert restored.json()["meta"]["request_id"]
+
+    replacement_snapshot_id = new_ulid()
+
+    async def supersede_pointer_snapshot() -> None:
+        async with session_factory() as db:
+            previous = await db.get(PublicationSnapshot, current_snapshot_id)
+            assert previous is not None
+            previous.superseded_at = datetime.now(UTC)
+            db.add(
+                PublicationSnapshot(
+                    id=replacement_snapshot_id,
+                    material_id=previous.material_id,
+                    material_version_id=previous.material_version_id,
+                    parse_job_id=previous.parse_job_id,
+                    index_job_id=previous.index_job_id,
+                    domain_release_id=previous.domain_release_id,
+                    embedding_version=previous.embedding_version,
+                    published_by=previous.published_by,
+                    published_at=datetime.now(UTC) + timedelta(seconds=1),
+                )
+            )
+            await db.commit()
+
+    asyncio.run(supersede_pointer_snapshot())
+    historical_reader = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
+    assert historical_reader.status_code == 200
+    assert historical_reader.json()["data"]["publication_snapshot_id"] == current_snapshot_id
+    historical_page = client.get(
+        f"/api/v1/evidence-pointers/{pointer_id}/page-image",
+        params={"physical_page": restored_data["physical_page"]},
+    )
+    assert historical_page.status_code == 200
+
+    async def mismatch_pointer_index_pin() -> None:
+        async with session_factory() as db:
+            pointer = await db.get(EvidencePointer, pointer_id)
+            assert pointer is not None
+            pointer.index_job_id = unbound_index_job_id
+            await db.commit()
+
+    asyncio.run(mismatch_pointer_index_pin())
+    mismatch_reader = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
+    assert mismatch_reader.status_code == 404
+    assert mismatch_reader.json()["error"]["code"] == "EVIDENCE_NOT_FOUND"
+    mismatch_page = client.get(
+        f"/api/v1/evidence-pointers/{pointer_id}/page-image",
+        params={"physical_page": restored_data["physical_page"]},
+    )
+    assert mismatch_page.status_code == 404
+    assert mismatch_page.json()["error"]["code"] == "EVIDENCE_NOT_FOUND"
 
     search_b = client.post(
         "/api/v1/knowledge/search",
@@ -602,6 +664,56 @@ def test_native_pdf_table_search_pins_table_and_adjacent_figure(client, monkeypa
     assert all(unit.bbox == table.bbox for unit in units)
     assert all(table_text not in embedded for embedded in embedded_texts)
 
+    _login(client, "mt@uni.edu")
+    teacher_id = client.get("/api/v1/me").json()["data"]["id"]
+    domain_release_id = new_ulid()
+    async def create_domain_release() -> None:
+        async with session_factory() as db:
+            db.add(
+                DomainRelease(
+                    id=domain_release_id,
+                    course_id=course_id,
+                    version_no=1,
+                    manifest={"domain_pack": {}},
+                    pack_sha256="d" * 64,
+                    status="published",
+                    version=1,
+                    created_by=teacher_id,
+                    published_by=teacher_id,
+                    published_at=datetime.now(UTC),
+                )
+            )
+            await db.commit()
+
+    asyncio.run(create_domain_release())
+    domain_embed = client.post(
+        f"/api/v1/material-versions/{version_id}/embed?domain_release_id={domain_release_id}"
+    )
+    assert domain_embed.status_code == 202, domain_embed.text
+    domain_job_id = domain_embed.json()["data"]["job_id"]
+    deadline = time.time() + 20
+    while time.time() < deadline:
+        domain_job = client.get(f"/api/v1/jobs/{domain_job_id}").json()["data"]
+        if domain_job["status"] in ("succeeded", "failed"):
+            break
+        time.sleep(0.3)
+    assert domain_job["status"] == "succeeded", domain_job
+
+    async def bind_domain_publication() -> str:
+        async with session_factory() as db:
+            snapshot = await db.scalar(
+                select(PublicationSnapshot)
+                .where(PublicationSnapshot.material_version_id == version_id)
+                .order_by(PublicationSnapshot.published_at.desc())
+                .limit(1)
+            )
+            assert snapshot is not None
+            snapshot.domain_release_id = domain_release_id
+            snapshot.index_job_id = domain_job_id
+            await db.commit()
+            return snapshot.id
+
+    domain_snapshot_id = asyncio.run(bind_domain_publication())
     _login(client, "ms@uni.edu")
     response = client.post(
         "/api/v1/knowledge/search",
@@ -609,6 +721,7 @@ def test_native_pdf_table_search_pins_table_and_adjacent_figure(client, monkeypa
             "course_id": course_id,
             "query": "measure score recall",
             "object_types": ["table"],
+            "domain_release_id": domain_release_id,
         },
     )
     assert response.status_code == 200, response.text
@@ -619,6 +732,7 @@ def test_native_pdf_table_search_pins_table_and_adjacent_figure(client, monkeypa
     assert item["physical_page"] == 1
     assert item["bbox"] == table.bbox
     assert item["text"]
+    assert item["evidence_pointer_id"]
 
     figure_closure = next(
         neighbor
@@ -636,6 +750,12 @@ def test_native_pdf_table_search_pins_table_and_adjacent_figure(client, monkeypa
     )
     assert table_pointer.status_code == 200
     assert figure_pointer.status_code == 200
+    for response_pointer in (table_pointer, figure_pointer):
+        restored_pointer = response_pointer.json()["data"]
+        assert restored_pointer["course_id"] == course_id
+        assert restored_pointer["publication_snapshot_id"] == domain_snapshot_id
+        assert restored_pointer["index_job_id"] == domain_job_id
+        assert restored_pointer["domain_release_id"] == domain_release_id
     assert figure_pointer.json()["data"]["excerpt"] == ""
     assert figure_pointer.json()["data"]["source_object_id"] == figure_closure["object_id"]
     assert figure_pointer.json()["data"]["physical_page"] == 1
@@ -723,6 +843,7 @@ def test_native_pdf_table_search_pins_table_and_adjacent_figure(client, monkeypa
             "query": "measure score recall",
             "object_types": ["table"],
             "material_version_ids": [version_id, cross_version_id],
+            "domain_release_id": domain_release_id,
         },
     )
     assert cross_version_search.status_code == 200, cross_version_search.text

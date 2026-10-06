@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from app.core.errors import ApiError
 from app.db.models import (
     ChatTurn,
+    DomainRelease,
     Material,
     MaterialVersion,
     PublicationSnapshot,
@@ -51,13 +52,19 @@ class _PointerDb:
 
 
 def _release_pointer_fixture(
-    *, object_type: str = "table", excerpt: str = "组别 | 均值\n实验组 | 4"
+    *,
+    object_type: str = "table",
+    excerpt: str = "组别 | 均值\n实验组 | 4",
+    pointer_is_pinned: bool = False,
 ):
     pointer = SimpleNamespace(
         id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
         course_id="course-1",
         material_id="material-1",
         material_version_id="version-1",
+        publication_snapshot_id="snapshot-1" if pointer_is_pinned else None,
+        index_job_id="index-job-1" if pointer_is_pinned else None,
+        domain_release_id="domain-1" if pointer_is_pinned else None,
         source_object_id="object-1",
         retrieval_unit_id="unit-1" if object_type == "table" else None,
         object_type=object_type,
@@ -71,7 +78,7 @@ def _release_pointer_fixture(
         "publication_snapshot_id": "snapshot-1",
         "index_job_id": "index-job-1",
         "embedding_version": "hash-v1",
-        "domain_release_id": None,
+        "domain_release_id": "domain-1" if pointer_is_pinned else None,
     }
     binding = SimpleNamespace(
         manifest={
@@ -79,7 +86,7 @@ def _release_pointer_fixture(
             "material_version_ids": [pointer.material_version_id],
             "publication_snapshots": [pin],
         },
-        domain_release_id=None,
+        domain_release_id=pin["domain_release_id"],
     )
     snapshot = SimpleNamespace(
         id=pin["publication_snapshot_id"],
@@ -87,7 +94,7 @@ def _release_pointer_fixture(
         material_version_id=pointer.material_version_id,
         index_job_id=pin["index_job_id"],
         embedding_version=pin["embedding_version"],
-        domain_release_id=None,
+        domain_release_id=pin["domain_release_id"],
     )
     material = SimpleNamespace(
         id=pointer.material_id,
@@ -105,7 +112,7 @@ def _release_pointer_fixture(
         status="ready",
         material_version_id=pointer.material_version_id,
         source_object_id=pointer.source_object_id,
-        domain_release_id=None,
+        domain_release_id=pin["domain_release_id"],
         build_version="v1-index-job-1",
     )
     rows = {
@@ -115,6 +122,8 @@ def _release_pointer_fixture(
         (MaterialVersion, pointer.material_version_id): version,
         (RetrievalUnit, "unit-1"): retrieval_unit,
     }
+    if pointer_is_pinned:
+        rows[(DomainRelease, "domain-1")] = SimpleNamespace(course_id=pointer.course_id)
     return pointer, binding, material, rows
 
 
@@ -198,6 +207,63 @@ def test_selected_pointer_requires_exact_release_pin_and_current_access(monkeypa
     with pytest.raises(ApiError) as revoked_error:
         asyncio.run(resolve())
     assert revoked_error.value.status_code == 404
+
+
+def test_pinned_table_and_figure_pointer_must_match_exact_release_snapshot(monkeypatch) -> None:
+    session_row = SimpleNamespace(mode="course_qa", status="active", course_id="course-1")
+
+    async def authorized_scope(db, *, session_row, user_id):
+        return binding
+
+    monkeypatch.setattr(tutor_service, "authorize_chat_session_release_scope", authorized_scope)
+
+    pointer, binding, _, rows = _release_pointer_fixture(pointer_is_pinned=True)
+
+    async def resolve(candidate_rows=rows):
+        return await tutor_service.authorize_selected_table_pointer(
+            _PointerDb(candidate_rows),
+            session_row=session_row,
+            user_id="student-1",
+            pointer_id=pointer.id,
+        )
+
+    assert asyncio.run(resolve()).publication_snapshot_id == "snapshot-1"
+
+    for changed_field, changed_value in (
+        ("publication_snapshot_id", "another-snapshot"),
+        ("index_job_id", "another-index-job"),
+        ("domain_release_id", "another-domain-release"),
+        ("index_job_id", None),
+    ):
+        mismatched = SimpleNamespace(**vars(pointer))
+        setattr(mismatched, changed_field, changed_value)
+        candidate_rows = dict(rows)
+        candidate_rows[(tutor_service.EvidencePointer, pointer.id)] = mismatched
+        with pytest.raises(ApiError) as error:
+            asyncio.run(resolve(candidate_rows))
+        assert error.value.status_code == 404
+
+    figure, figure_binding, _, figure_rows = _release_pointer_fixture(
+        object_type="figure", excerpt="", pointer_is_pinned=True
+    )
+    binding = figure_binding
+
+    async def resolve_figure(candidate_rows=figure_rows):
+        return await tutor_service.authorize_selected_table_pointer(
+            _PointerDb(candidate_rows),
+            session_row=session_row,
+            user_id="student-1",
+            pointer_id=figure.id,
+        )
+
+    assert asyncio.run(resolve_figure()).publication_snapshot_id == "snapshot-1"
+    mismatched_figure = SimpleNamespace(**vars(figure))
+    mismatched_figure.publication_snapshot_id = "another-snapshot"
+    candidate_figure_rows = dict(figure_rows)
+    candidate_figure_rows[(tutor_service.EvidencePointer, figure.id)] = mismatched_figure
+    with pytest.raises(ApiError) as figure_error:
+        asyncio.run(resolve_figure(candidate_figure_rows))
+    assert figure_error.value.status_code == 404
 
 
 def test_empty_figure_pointer_is_authorized_only_as_location(monkeypatch) -> None:

@@ -18,6 +18,7 @@ from app.db.models import (
     KnowledgeObject,
     Material,
     MaterialVersion,
+    PublicationSnapshot,
     RetrievalUnit,
 )
 from app.db.session import session_factory
@@ -504,6 +505,7 @@ async def hybrid_search(
     channel_priors: dict[str, float] | None = None,
     domain_release_id: str | None = None,
     domain_index_job_ids: dict[str, str] | None = None,
+    domain_publication_pins: dict[str, dict[str, str]] | None = None,
 ) -> tuple[list[dict], list[str]]:
     warnings: list[str] = []
     if not version_ids:
@@ -677,10 +679,45 @@ async def hybrid_search(
 
     now = datetime.now(UTC)
     expires = now + timedelta(seconds=600)
+    exact_domain_pins: dict[str, dict[str, str]] = {}
+    if domain_release_id is not None:
+        for material_version_id, pin in (domain_publication_pins or {}).items():
+            if (
+                material_version_id not in version_ids
+                or not isinstance(pin, dict)
+                or set(pin)
+                != {"publication_snapshot_id", "index_job_id", "domain_release_id"}
+                or any(not isinstance(value, str) or not value for value in pin.values())
+                or pin["index_job_id"] != (domain_index_job_ids or {}).get(material_version_id)
+                or pin["domain_release_id"] != domain_release_id
+            ):
+                continue
+            snapshot = await db.get(PublicationSnapshot, pin["publication_snapshot_id"])
+            index_job = await db.get(Job, pin["index_job_id"])
+            domain_release = await db.get(DomainRelease, pin["domain_release_id"])
+            payload = index_job.payload if index_job and isinstance(index_job.payload, dict) else {}
+            if (
+                snapshot is not None
+                and snapshot.material_version_id == material_version_id
+                and snapshot.index_job_id == pin["index_job_id"]
+                and snapshot.domain_release_id == domain_release_id
+                and index_job is not None
+                and index_job.kind == "material_embed"
+                and index_job.status == "succeeded"
+                and payload.get("material_version_id") == material_version_id
+                and payload.get("domain_release_id") == domain_release_id
+                and domain_release is not None
+                and domain_release.course_id == course_id
+                and domain_release.status in {"published", "deprecated"}
+            ):
+                exact_domain_pins[material_version_id] = pin
+
     for chunk_id, score, sources in fused:
         info = meta.get(chunk_id)
         if info is None:
             continue
+        publication_pin = exact_domain_pins.get(info["material_version_id"])
+        can_persist_pointer = domain_release_id is None or publication_pin is not None
         page_is_unavailable = info["parser"] == "docx-xml" and info["bbox"] is None
         physical_page = None if page_is_unavailable else info["physical_page"]
         bbox = None if page_is_unavailable else info["bbox"]
@@ -698,23 +735,34 @@ async def hybrid_search(
             else []
         )
         excerpt = info["text"]
-        pointer = EvidencePointer(
-            id=new_ulid(),
-            course_id=course_id,
-            material_id=info["material_id"],
-            material_version_id=info["material_version_id"],
-            source_object_id=info["source_object_id"],
-            retrieval_unit_id=info["retrieval_unit_id"],
-            material_title=info["material_title"],
-            excerpt=excerpt,
-            excerpt_sha256=hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
-            chapter_path=info["chapter_path"],
-            physical_page=physical_page,
-            reading_order=info["reading_order"],
-            object_type=info["object_type"],
-            coordinate_space=coordinate_space,
-            bbox=bbox,
-            anchors=anchors,
+        pointer = (
+            EvidencePointer(
+                id=new_ulid(),
+                course_id=course_id,
+                material_id=info["material_id"],
+                material_version_id=info["material_version_id"],
+                publication_snapshot_id=(
+                    publication_pin["publication_snapshot_id"]
+                    if publication_pin is not None
+                    else None
+                ),
+                index_job_id=publication_pin["index_job_id"] if publication_pin else None,
+                domain_release_id=publication_pin["domain_release_id"] if publication_pin else None,
+                source_object_id=info["source_object_id"],
+                retrieval_unit_id=info["retrieval_unit_id"],
+                material_title=info["material_title"],
+                excerpt=excerpt,
+                excerpt_sha256=hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
+                chapter_path=info["chapter_path"],
+                physical_page=physical_page,
+                reading_order=info["reading_order"],
+                object_type=info["object_type"],
+                coordinate_space=coordinate_space,
+                bbox=bbox,
+                anchors=anchors,
+            )
+            if can_persist_pointer
+            else None
         )
         ticket = EvidenceTicket(
             id=new_ulid(),
@@ -722,7 +770,7 @@ async def hybrid_search(
             user_id=user_id,
             course_id=course_id,
             material_version_id=info["material_version_id"],
-            pointer_id=pointer.id,
+            pointer_id=pointer.id if pointer is not None else None,
             expires_at=expires,
         )
         closure_items = [
@@ -737,7 +785,8 @@ async def hybrid_search(
             neighbor_bbox = neighbor["bbox"]
             neighbor_page = neighbor["physical_page"]
             if not (
-                neighbor["object_type"] == "figure"
+                pointer is not None
+                and neighbor["object_type"] == "figure"
                 and neighbor["relation_type"] in {"previous", "next"}
                 and source_neighbor["_parser"] == "stub-pdf"
                 and type(neighbor_page) is int
@@ -757,6 +806,13 @@ async def hybrid_search(
                 course_id=course_id,
                 material_id=info["material_id"],
                 material_version_id=info["material_version_id"],
+                publication_snapshot_id=(
+                    publication_pin["publication_snapshot_id"]
+                    if publication_pin is not None
+                    else None
+                ),
+                index_job_id=publication_pin["index_job_id"] if publication_pin else None,
+                domain_release_id=publication_pin["domain_release_id"] if publication_pin else None,
                 source_object_id=neighbor["object_id"],
                 retrieval_unit_id=None,
                 material_title=info["material_title"],
@@ -781,7 +837,7 @@ async def hybrid_search(
             neighbor["evidence_pointer_id"] = figure_pointer.id
         item = {
             "evidence_id": ticket.id,
-            "evidence_pointer_id": pointer.id,
+            "evidence_pointer_id": pointer.id if pointer is not None else None,
             "material_id": info["material_id"],
             "material_version_id": info["material_version_id"],
             "source_object_id": info["source_object_id"],
@@ -806,7 +862,8 @@ async def hybrid_search(
         if staff:
             item["score"] = round(score, 6)
         items.append(item)
-        db.add(pointer)
+        if pointer is not None:
+            db.add(pointer)
         db.add(ticket)
     await db.flush()
     return items, warnings

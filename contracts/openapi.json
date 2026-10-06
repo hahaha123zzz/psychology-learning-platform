@@ -3918,7 +3918,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePointerEnvelope"
+                }
               }
             }
           },
@@ -10229,6 +10231,219 @@
         ],
         "title": "EvidenceInvalidationRequest"
       },
+      "EvidencePointerEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EvidencePointerRead"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "EvidencePointerEnvelope"
+      },
+      "EvidencePointerRead": {
+        "properties": {
+          "evidence_pointer_id": {
+            "type": "string",
+            "title": "Evidence Pointer Id"
+          },
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          },
+          "material_title": {
+            "type": "string",
+            "title": "Material Title"
+          },
+          "material_id": {
+            "type": "string",
+            "title": "Material Id"
+          },
+          "material_version_id": {
+            "type": "string",
+            "title": "Material Version Id"
+          },
+          "publication_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Snapshot Id"
+          },
+          "index_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Job Id"
+          },
+          "domain_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Release Id"
+          },
+          "source_object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Object Id"
+          },
+          "retrieval_unit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Unit Id"
+          },
+          "chapter_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chapter Path"
+          },
+          "physical_page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physical Page"
+          },
+          "reading_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reading Order"
+          },
+          "anchor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor"
+          },
+          "object_type": {
+            "type": "string",
+            "title": "Object Type"
+          },
+          "coordinate_space": {
+            "type": "string",
+            "title": "Coordinate Space"
+          },
+          "bbox": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "anchors": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Anchors"
+          },
+          "excerpt": {
+            "type": "string",
+            "title": "Excerpt"
+          },
+          "excerpt_sha256": {
+            "type": "string",
+            "title": "Excerpt Sha256"
+          },
+          "restored": {
+            "type": "boolean",
+            "title": "Restored"
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_pointer_id",
+          "course_id",
+          "material_title",
+          "material_id",
+          "material_version_id",
+          "publication_snapshot_id",
+          "index_job_id",
+          "domain_release_id",
+          "source_object_id",
+          "retrieval_unit_id",
+          "chapter_path",
+          "physical_page",
+          "reading_order",
+          "anchor",
+          "object_type",
+          "coordinate_space",
+          "bbox",
+          "anchors",
+          "excerpt",
+          "excerpt_sha256",
+          "restored"
+        ],
+        "title": "EvidencePointerRead"
+      },
       "GenerationJobCreate": {
         "properties": {
           "chapter_ids": {
@@ -12570,6 +12785,32 @@
           "version"
         ],
         "title": "ReleaseUpdate"
+      },
+      "ResponseMeta": {
+        "properties": {
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "server_time": {
+            "type": "string",
+            "title": "Server Time"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "request_id",
+          "server_time"
+        ],
+        "title": "ResponseMeta"
       },
       "ReviewTaskVerify": {
         "properties": {

@@ -636,6 +636,19 @@ async def authorize_selected_table_pointer(
     ):
         raise unavailable()
 
+    pointer_publication_pin = (
+        pointer.publication_snapshot_id,
+        pointer.index_job_id,
+        pointer.domain_release_id,
+    )
+    if any(value is not None for value in pointer_publication_pin) and (
+        any(not isinstance(value, str) or not value for value in pointer_publication_pin)
+        or pointer.publication_snapshot_id != snapshot.id
+        or pointer.index_job_id != snapshot.index_job_id
+        or pointer.domain_release_id != snapshot.domain_release_id
+    ):
+        raise unavailable()
+
     # 图像在 V0.9 只有固定位置，没有可验证语义；允许安全拒答以保留 Reader 入口。
     if pointer.object_type == "figure" and not pointer.excerpt.strip():
         return AuthorizedEvidencePointer(
@@ -880,6 +893,14 @@ async def prepare_bound_chat_retrieval(
         item["material_version_id"]: item["index_job_id"]
         for item in publication_snapshots
     }
+    publication_pins = {
+        item["material_version_id"]: {
+            "publication_snapshot_id": item["publication_snapshot_id"],
+            "index_job_id": item["index_job_id"],
+            "domain_release_id": item["domain_release_id"],
+        }
+        for item in publication_snapshots
+    }
     query_plan = analyze_query(query)
 
     async def retrieve(scoped_scope: dict[str, Any]) -> list[dict[str, Any]]:
@@ -897,6 +918,7 @@ async def prepare_bound_chat_retrieval(
             channel_priors=query_plan.channel_priors,
             domain_release_id=binding.domain_release_id,
             domain_index_job_ids=index_job_ids,
+            domain_publication_pins=publication_pins,
         )
         return items
 

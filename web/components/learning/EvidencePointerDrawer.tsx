@@ -15,9 +15,13 @@ type EvidenceAnchor = {
 
 type EvidencePointerView = {
   evidence_pointer_id: string;
+  course_id: string | null;
   material_title: string;
   material_id: string;
   material_version_id: string;
+  publication_snapshot_id: string | null;
+  index_job_id: string | null;
+  domain_release_id: string | null;
   chapter_path: string | null;
   physical_page: number | null;
   object_type: string;

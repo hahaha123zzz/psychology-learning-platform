@@ -89,6 +89,24 @@ class EvidencePointer(Base, ULIDPrimaryKeyMixin):
     material_version_id: Mapped[str] = mapped_column(
         String(26), ForeignKey("material_versions.id"), nullable=False
     )
+    publication_snapshot_id: Mapped[str | None] = mapped_column(
+        String(26),
+        ForeignKey(
+            "publication_snapshots.id",
+            name="fk_evidence_pointers_publication_snapshot",
+            ondelete="RESTRICT",
+        ),
+    )
+    index_job_id: Mapped[str | None] = mapped_column(
+        String(26),
+        ForeignKey("jobs.id", name="fk_evidence_pointers_index_job", ondelete="RESTRICT"),
+    )
+    domain_release_id: Mapped[str | None] = mapped_column(
+        String(26),
+        ForeignKey(
+            "domain_releases.id", name="fk_evidence_pointers_domain_release", ondelete="RESTRICT"
+        ),
+    )
     # 这是来源身份快照，不设 FK：重解析删除旧 KnowledgeObject 时不得破坏历史引用。
     source_object_id: Mapped[str | None] = mapped_column(String(26))
     retrieval_unit_id: Mapped[str | None] = mapped_column(String(26))
@@ -110,6 +128,13 @@ class EvidencePointer(Base, ULIDPrimaryKeyMixin):
     )
 
     __table_args__ = (
+        CheckConstraint(
+            "(publication_snapshot_id IS NULL AND index_job_id IS NULL "
+            "AND domain_release_id IS NULL) OR "
+            "(publication_snapshot_id IS NOT NULL AND index_job_id IS NOT NULL "
+            "AND domain_release_id IS NOT NULL)",
+            name="ck_evidence_pointers_publication_pin",
+        ),
         CheckConstraint(
             "physical_page IS NULL OR physical_page >= 1", name="ck_evidence_pointer_page"
         ),

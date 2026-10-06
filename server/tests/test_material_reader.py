@@ -5,8 +5,10 @@ import json
 import zipfile
 
 import pymupdf
+import pytest
 from sqlalchemy import select
 
+from app.core.errors import ApiError
 from app.core.storage import get_object_bytes, put_object
 from app.db.base import new_ulid
 from app.db.models import (
@@ -17,6 +19,7 @@ from app.db.models import (
     PublicationSnapshot,
 )
 from app.db.session import session_factory
+from app.modules.knowledge.router import _validate_pointer_publication_pin
 from app.modules.materials.artifacts import page_image_object_key
 from app.modules.materials.parsers.stub_pdf import StubPdfParser
 from app.modules.materials.renderers.pymupdf_pdf import RENDERER_VERSION, render_pdf_page
@@ -38,6 +41,37 @@ def _search_pointer(client, course_id: str) -> dict:
         if item.get("evidence_pointer_id") and item.get("bbox")
     )
     return item
+
+
+def test_reader_pointer_pin_validation_keeps_legacy_and_rejects_partial() -> None:
+    class NoDb:
+        async def get(self, model, row_id):
+            raise AssertionError("legacy or partial pin must be handled before DB access")
+
+    legacy = type(
+        "Pointer",
+        (),
+        {
+            "publication_snapshot_id": None,
+            "index_job_id": None,
+            "domain_release_id": None,
+        },
+    )()
+    assert asyncio.run(_validate_pointer_publication_pin(NoDb(), legacy)) is None
+
+    partial = type(
+        "Pointer",
+        (),
+        {
+            "publication_snapshot_id": "snapshot-1",
+            "index_job_id": None,
+            "domain_release_id": None,
+        },
+    )()
+    with pytest.raises(ApiError) as error:
+        asyncio.run(_validate_pointer_publication_pin(NoDb(), partial))
+    assert error.value.status_code == 404
+    assert error.value.code == "EVIDENCE_NOT_FOUND"
 
 
 def _valid_docx() -> bytes:
@@ -89,14 +123,18 @@ def test_reader_page_image_is_versioned_cached_and_keeps_historical_pointer(clie
 
     pointer_view = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
     assert pointer_view.status_code == 200
-    assert pointer_view.json()["data"]["course_id"] == course_id
-    assert pointer_view.json()["data"]["material_version_id"] == version_id
-    assert pointer_view.json()["data"]["physical_page"] == pointer["physical_page"]
+    pointer_data = pointer_view.json()["data"]
+    assert pointer_data["course_id"] == course_id
+    assert pointer_data["material_version_id"] == version_id
+    assert pointer_data["publication_snapshot_id"] is None
+    assert pointer_data["index_job_id"] is None
+    assert pointer_data["domain_release_id"] is None
+    assert pointer_data["physical_page"] == pointer["physical_page"]
     assert any(
         anchor["physical_page"] == pointer["physical_page"]
         and anchor["bbox"] == pointer["bbox"]
         and anchor["coordinate_space"] == "pdf_user_bottom_left"
-        for anchor in pointer_view.json()["data"]["anchors"]
+        for anchor in pointer_data["anchors"]
     )
 
     page_image = client.get(f"/api/v1/evidence-pointers/{pointer_id}/page-image")

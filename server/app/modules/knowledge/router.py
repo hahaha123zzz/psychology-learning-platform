@@ -3,7 +3,7 @@ import math
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from minio.error import S3Error
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,6 +52,47 @@ def _pointer_anchors(pointer: EvidencePointer) -> list[dict]:
     return []
 
 
+async def _validate_pointer_publication_pin(
+    db: AsyncSession, pointer: EvidencePointer
+) -> dict[str, str] | None:
+    """精确复验 domain Pointer 的发布固定点；legacy 全空三元组保持兼容。"""
+    pin_values = (
+        pointer.publication_snapshot_id,
+        pointer.index_job_id,
+        pointer.domain_release_id,
+    )
+    if all(value is None for value in pin_values):
+        return None
+    if any(not isinstance(value, str) or not value for value in pin_values):
+        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
+
+    snapshot = await db.get(PublicationSnapshot, pointer.publication_snapshot_id)
+    index_job = await db.get(Job, pointer.index_job_id)
+    domain_release = await db.get(DomainRelease, pointer.domain_release_id)
+    payload = index_job.payload if index_job and isinstance(index_job.payload, dict) else {}
+    if (
+        snapshot is None
+        or snapshot.material_id != pointer.material_id
+        or snapshot.material_version_id != pointer.material_version_id
+        or snapshot.index_job_id != pointer.index_job_id
+        or snapshot.domain_release_id != pointer.domain_release_id
+        or index_job is None
+        or index_job.kind != "material_embed"
+        or index_job.status != "succeeded"
+        or payload.get("material_version_id") != pointer.material_version_id
+        or payload.get("domain_release_id") != pointer.domain_release_id
+        or domain_release is None
+        or domain_release.course_id != pointer.course_id
+        or domain_release.status not in {"published", "deprecated"}
+    ):
+        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
+    return {
+        "publication_snapshot_id": pointer.publication_snapshot_id,
+        "index_job_id": pointer.index_job_id,
+        "domain_release_id": pointer.domain_release_id,
+    }
+
+
 EMBED_ENDPOINT = "POST:/api/v1/material-versions/embed"
 
 
@@ -65,6 +106,42 @@ class SearchRequest(BaseModel):
     top_k: int = Field(default=8, ge=1, le=50)
     include_neighbors: bool = True
     purpose: str = Field(default="course_qa", max_length=50)
+
+
+class EvidencePointerRead(BaseModel):
+    evidence_pointer_id: str
+    course_id: str | None
+    material_title: str
+    material_id: str
+    material_version_id: str
+    publication_snapshot_id: str | None
+    index_job_id: str | None
+    domain_release_id: str | None
+    source_object_id: str | None
+    retrieval_unit_id: str | None
+    chapter_path: str | None
+    physical_page: int | None
+    reading_order: int | None
+    anchor: str | None
+    object_type: str
+    coordinate_space: str
+    bbox: list[float] | None
+    anchors: list[dict]
+    excerpt: str
+    excerpt_sha256: str
+    restored: bool
+
+
+class ResponseMeta(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    request_id: str | None
+    server_time: str
+
+
+class EvidencePointerEnvelope(BaseModel):
+    data: EvidencePointerRead
+    meta: ResponseMeta
 
 
 @router.post("/material-versions/{version_id}/embed", response_model=None)
@@ -180,6 +257,7 @@ async def search_knowledge(
     )
     domain_release = None
     domain_index_job_ids: dict[str, str] | None = None
+    domain_publication_pins: dict[str, dict[str, str]] | None = None
     if body.domain_release_id:
         domain_release = await db.scalar(
             select(DomainRelease).where(
@@ -238,6 +316,15 @@ async def search_knowledge(
             snapshot["material_version_id"]: snapshot["index_job_id"]
             for snapshot in publication_snapshots
         }
+        domain_publication_pins = {
+            snapshot["material_version_id"]: {
+                "publication_snapshot_id": snapshot["publication_snapshot_id"],
+                "index_job_id": snapshot["index_job_id"],
+                "domain_release_id": snapshot["domain_release_id"],
+            }
+            for snapshot in publication_snapshots
+            if snapshot["domain_release_id"] == domain_release.id
+        }
         if role != "student":
             jobs = await db.execute(
                 select(Job)
@@ -277,6 +364,7 @@ async def search_knowledge(
         channel_priors=plan.channel_priors,
         domain_release_id=body.domain_release_id,
         domain_index_job_ids=domain_index_job_ids,
+        domain_publication_pins=domain_publication_pins,
     )
     await db.commit()
     return ok(
@@ -391,7 +479,7 @@ async def get_evidence(
     )
 
 
-@router.get("/evidence-pointers/{pointer_id}", response_model=None)
+@router.get("/evidence-pointers/{pointer_id}", response_model=EvidencePointerEnvelope)
 async def get_evidence_pointer(
     pointer_id: str,
     request: Request,
@@ -405,8 +493,29 @@ async def get_evidence_pointer(
     role = await require_course_role(
         pointer.course_id, user, db, roles={"teacher", "assistant", "student"}
     )
+    publication_pin = await _validate_pointer_publication_pin(db, pointer)
     if role == "student":
         await ensure_ai_support_available(db, user_id=user.id)
+    if publication_pin is not None:
+        material_state = (
+            await db.execute(
+                select(Material.course_id, Material.status, Material.visibility)
+                .join(MaterialVersion, MaterialVersion.material_id == Material.id)
+                .where(
+                    Material.id == pointer.material_id,
+                    MaterialVersion.id == pointer.material_version_id,
+                )
+                .limit(1)
+            )
+        ).first()
+        if (
+            material_state is None
+            or material_state[0] != pointer.course_id
+            or material_state[1] != "active"
+            or material_state[2] != "published"
+        ):
+            raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
+    elif role == "student":
         material_state = (
             await db.execute(
                 select(Material.course_id, Material.status, Material.visibility)
@@ -438,6 +547,9 @@ async def get_evidence_pointer(
             "material_title": pointer.material_title,
             "material_id": pointer.material_id,
             "material_version_id": pointer.material_version_id,
+            "publication_snapshot_id": pointer.publication_snapshot_id,
+            "index_job_id": pointer.index_job_id,
+            "domain_release_id": pointer.domain_release_id,
             "source_object_id": pointer.source_object_id,
             "retrieval_unit_id": pointer.retrieval_unit_id,
             "chapter_path": pointer.chapter_path,
@@ -474,6 +586,7 @@ async def get_evidence_pointer_page_image(
     role = await require_course_role(
         pointer.course_id, user, db, roles={"teacher", "assistant", "student"}
     )
+    publication_pin = await _validate_pointer_publication_pin(db, pointer)
     if role == "student":
         await ensure_ai_support_available(db, user_id=user.id)
 
@@ -494,10 +607,11 @@ async def get_evidence_pointer_page_image(
         or version is None
         or material_state[0] != pointer.course_id
         or material_state[1] != "active"
+        or (publication_pin is not None and material_state[2] != "published")
     ):
         raise ApiError(status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已撤回")
 
-    if role == "student":
+    if role == "student" and publication_pin is None:
         published_snapshot = await db.scalar(
             select(PublicationSnapshot.id)
             .where(
