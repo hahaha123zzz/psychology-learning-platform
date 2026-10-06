@@ -40,6 +40,26 @@ test("Growth evidence browser audit uses synthetic metadata and proves read-only
   assert.match(browser, /assert\.deepEqual\(writes, \[\]/);
 });
 
+test("Growth shows mutually exclusive hint-support raw counts and fails closed without scoring or adaptation", () => {
+  const evidenceBrowser = fs.readFileSync(new URL("./student-growth-evidence-browser.cjs", import.meta.url), "utf8");
+  assert.match(support, /hint_support_summary\?: \{ attempt_count: number; supported_attempt_count: number; independent_attempt_count: number; other_attempt_count: number \} \| null/);
+  assert.match(support, /Number\.isFinite\(count\) && Number\.isInteger\(count\) && count >= 0/);
+  for (const field of ["attempt_count", "supported_attempt_count", "independent_attempt_count", "other_attempt_count"]) {
+    assert.match(support, new RegExp(`summary\\.${field}`));
+  }
+  assert.match(support, /summary\.attempt_count === 0[\s\S]*暂无足够记录/);
+  assert.match(support, /summary == null[\s\S]*暂无足够记录/);
+  assert.match(support, /次数统计不可用/);
+  assert.match(growth, /GrowthHintSupportCard summary=\{tabs\?\.hint_support_summary\}/);
+  assert.doesNotMatch(support, /hint_support_summary[^\n]*(?:percent|percentage|%|适配|建议)/i);
+  assert.match(evidenceBrowser, /attempt_count: 3,[\s\S]*supported_attempt_count: 1,[\s\S]*independent_attempt_count: 1,[\s\S]*other_attempt_count: 1/);
+  assert.match(evidenceBrowser, /attempt_count: 0, supported_attempt_count: 0, independent_attempt_count: 0, other_attempt_count: 0/);
+  assert.match(evidenceBrowser, /hintSummary = null/);
+  assert.match(evidenceBrowser, /independent_attempt_count: 0 \}/);
+  assert.match(evidenceBrowser, /Number\.POSITIVE_INFINITY/);
+  assert.match(evidenceBrowser, /supported_attempt_count: -1/);
+});
+
 test("Preference loads the current values and saves with the server version", () => {
   assert.match(preferences, /api<Preferences>\("\/me\/preferences"\)/);
   assert.match(preferences, /api<Preferences>\("\/me\/preferences", \{ method: "PATCH"/);

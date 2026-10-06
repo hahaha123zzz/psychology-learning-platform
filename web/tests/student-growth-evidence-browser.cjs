@@ -15,6 +15,12 @@ const metadata = {
   dimension: "apply",
   independence_status: "independent",
 };
+let hintSummary = {
+  attempt_count: 3,
+  supported_attempt_count: 1,
+  independent_attempt_count: 1,
+  other_attempt_count: 1,
+};
 const envelope = (data) => ({ data, meta: { request_id: "growth-evidence-mock", server_time: "2026-10-06T08:31:00Z" } });
 
 async function main() {
@@ -59,6 +65,7 @@ async function main() {
         skills: [],
         misconceptions: [],
         trajectory: [],
+        hint_support_summary: hintSummary,
       })) });
     } else if (path === "/api/v1/review-tasks" && request.method() === "GET") {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(envelope([])) });
@@ -79,6 +86,30 @@ async function main() {
     await page.getByText("来源：practice", { exact: true }).first().waitFor({ state: "visible" });
     await page.getByText("维度：apply", { exact: true }).first().waitFor({ state: "visible" });
     await page.getByText("独立性：independent", { exact: true }).first().waitFor({ state: "visible" });
+    const hintCard = page.locator(".growth-hint-support");
+    await hintCard.getByText("尝试总数：3", { exact: true }).waitFor({ state: "visible" });
+    await hintCard.getByText("有支持尝试：1", { exact: true }).waitFor({ state: "visible" });
+    await hintCard.getByText("独立尝试：1", { exact: true }).waitFor({ state: "visible" });
+    await hintCard.getByText("其他尝试：1", { exact: true }).waitFor({ state: "visible" });
+    hintSummary = { attempt_count: 0, supported_attempt_count: 0, independent_attempt_count: 0, other_attempt_count: 0 };
+    await page.reload();
+    await hintCard.getByText("尝试总数：0", { exact: true }).waitFor({ state: "visible" });
+    await hintCard.getByText("暂无足够记录。", { exact: true }).waitFor({ state: "visible" });
+    hintSummary = null;
+    await page.reload();
+    await hintCard.getByText("暂无足够记录。", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await hintCard.locator("li").count(), 0, "empty summary shows no fabricated counts");
+    hintSummary = { attempt_count: 1, supported_attempt_count: 1, independent_attempt_count: 0 };
+    await page.reload();
+    await hintCard.getByText("次数统计不可用。", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await hintCard.locator("li").count(), 0, "missing counters fail closed");
+    hintSummary = { attempt_count: 2, supported_attempt_count: 1, independent_attempt_count: 1, other_attempt_count: Number.POSITIVE_INFINITY };
+    await page.reload();
+    await hintCard.getByText("次数统计不可用。", { exact: true }).waitFor({ state: "visible" });
+    hintSummary = { attempt_count: 2, supported_attempt_count: -1, independent_attempt_count: 1, other_attempt_count: 2 };
+    await page.reload();
+    await hintCard.getByText("次数统计不可用。", { exact: true }).waitFor({ state: "visible" });
+    assert.equal(await hintCard.locator("li").count(), 0, "malformed counts fail closed");
     const unavailable = page.getByText("最近依据：不可用或已过期（原因未提供）", { exact: true });
     assert.ok(await unavailable.count() >= 1, "missing evidence metadata renders an explicit unavailable state");
     assert.equal(await page.getByText(/student answer|private tutor|correctness secret/i).count(), 0);
