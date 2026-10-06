@@ -81,6 +81,14 @@ export default function LearningBlockStream({ blocks }: { blocks: LearningBlock[
             </section>
           );
         }
+        if (block.type === "Correction") {
+          return (
+            <article className="learning-block correction-block" key={block.id}>
+              <h3>概念核对</h3>
+              <p>{blockText(block)}</p>
+            </article>
+          );
+        }
         if (block.type === "Unknown") {
           const evidenceRefCount = block.evidence_refs?.length ?? 0;
           return (

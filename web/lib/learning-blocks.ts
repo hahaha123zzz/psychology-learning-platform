@@ -8,6 +8,7 @@ export type LearningBlockType =
   | "TeachingAsset"
   | "EvidencePrompt"
   | "Feedback"
+  | "Correction"
   | "Transition"
   | "TaskCompletion"
   | "Unknown";
@@ -35,6 +36,7 @@ const KNOWN_TYPES = new Set<LearningBlockType>([
   "TeachingAsset",
   "EvidencePrompt",
   "Feedback",
+  "Correction",
   "Transition",
   "TaskCompletion",
 ]);

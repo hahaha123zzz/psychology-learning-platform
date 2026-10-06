@@ -66,6 +66,48 @@ test("known blocks retain their existing schema and content", () => {
   assert.deepEqual(normalizeLearningBlocks([known]), [known]);
 });
 
+test("Correction is normalized as a known block and renders inert text under an accessible heading", () => {
+  const correctionInput = {
+    id: "correction-1",
+    type: "Correction",
+    text: "合成概念核对文本。",
+    evidence_refs: [],
+  };
+  const [correction] = normalizeLearningBlocks([correctionInput]);
+  assert.deepEqual(correction, correctionInput);
+
+  const correctionBranch = renderer.match(/if \(block\.type === "Correction"\)[\s\S]*?\n        }/);
+  assert.ok(correctionBranch, "renderer has a dedicated Correction branch");
+  assert.match(correctionBranch[0], /<article className="learning-block correction-block"/);
+  assert.match(correctionBranch[0], /<h3>概念核对<\/h3>/);
+  assert.match(correctionBranch[0], /<p>\{blockText\(block\)\}<\/p>/);
+  assert.doesNotMatch(correctionBranch[0], /<input\b|<textarea\b|<button\b|<a\b|<form\b|href=|onClick=|api\(/);
+  assert.match(renderer, /if \(block\.type === "Unknown"\)/, "unknown fallback branch remains available");
+
+  const rendererPath = fileURLToPath(new URL("../components/learning/LearningBlockStream.tsx", import.meta.url));
+  const compiled = ts.transpileModule(renderer, {
+    compilerOptions: {
+      jsx: ts.JsxEmit.ReactJSX,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      esModuleInterop: true,
+    },
+  }).outputText.replace(
+    'require("../../lib/teaching-assets-api")',
+    '({ getTeachingAssetFallbackReason: () => null, TEACHING_ASSET_FALLBACK_NOTICE: "synthetic fallback" })',
+  );
+  const rendererModule = new Module(rendererPath);
+  rendererModule.filename = rendererPath;
+  rendererModule.paths = Module._nodeModulePaths(path.dirname(rendererPath));
+  rendererModule._compile(compiled, rendererPath);
+  const markup = renderToStaticMarkup(React.createElement(rendererModule.exports.default, {
+    blocks: [{ ...correctionInput, text: "概念核对 <script>作为普通文本</script>" }],
+  }));
+  assert.match(markup, /<h3>概念核对<\/h3>/);
+  assert.match(markup, /概念核对 &lt;script&gt;作为普通文本&lt;\/script&gt;/);
+  assert.doesNotMatch(markup, /<script>|<a\b|<button\b|<input\b/);
+});
+
 test("Question blocks keep prompt content and render as a readable, non-interactive question section", () => {
   const [question] = normalizeLearningBlocks([{
     id: "question-1",
