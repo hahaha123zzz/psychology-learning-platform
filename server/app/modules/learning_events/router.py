@@ -27,12 +27,6 @@ async def append_learning_event(
             code="LEARNING_EVENT_SERVER_OWNED",
             message="Tutor 回合事件由服务端在状态转换时记录",
         )
-    if body.event_type == "tutor_responded":
-        raise ApiError(
-            status_code=403,
-            code="LEARNING_EVENT_SERVER_OWNED",
-            message="Tutor 响应事件只能由服务端学习状态机记录",
-        )
     event, replay = await service.append_event(
         db,
         user_id=user.id,

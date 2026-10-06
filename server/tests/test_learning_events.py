@@ -398,6 +398,7 @@ def test_client_cannot_forge_tutor_event_or_bypass_formal_assessment(client) -> 
     assert out_of_scope.status_code == 404
     assert out_of_scope.json()["error"]["code"] == "COURSE_NOT_FOUND"
 
+
 def test_pending_learning_event_worker_rejects_non_evidence_event(client) -> None:
     create_user_sync(email="worker-teacher@uni.edu", is_teacher=True)
     student_id = create_user_sync(email="worker-student@uni.edu")
