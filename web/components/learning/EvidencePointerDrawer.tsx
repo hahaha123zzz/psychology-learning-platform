@@ -393,7 +393,10 @@ export default function EvidencePointerDrawer({
             )}
             {view.object_type === "table" && view.excerpt.trim() && onAskTutor && (
               <Button
-                onClick={() => onAskTutor(view.evidence_pointer_id)}
+                onClick={() => {
+                  onAskTutor(view.evidence_pointer_id);
+                  setOpen(false);
+                }}
                 type="button"
                 variant="secondary"
               >

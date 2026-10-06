@@ -9,7 +9,10 @@ const source = fs.readFileSync(
 
 test("Reader handoff callback accepts only the server-loaded persistent pointer ID", () => {
   assert.match(source, /onAskTutor\?: \(evidencePointerId: string\) => void/);
-  assert.match(source, /onClick=\{\(\) => onAskTutor\(view\.evidence_pointer_id\)\}/);
+  assert.match(
+    source,
+    /onClick=\{\(\) => \{\s*onAskTutor\(view\.evidence_pointer_id\);\s*setOpen\(false\);\s*\}\}/,
+  );
   assert.doesNotMatch(source, /onAskTutor\([^)]*,/);
 });
 
