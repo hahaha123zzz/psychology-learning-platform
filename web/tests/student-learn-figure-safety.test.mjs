@@ -15,7 +15,7 @@ test("Figure Reader exposes only location and unresolved semantics for an empty 
 test("Figure has no Tutor handoff while Tutor CTA stays limited to non-empty native tables", () => {
   assert.match(reader, /view\.object_type === "table" && view\.excerpt\.trim\(\) && onAskTutor/);
   assert.doesNotMatch(reader, /view\.object_type === "figure"[^\n]*onAskTutor|view\.object_type === "figure"[^\n]*向 Tutor 提问/);
-  assert.match(learn, /neighbor\.object_type === "figure" && neighbor\.evidence_pointer_id/);
+  assert.match(learn, /neighbor\.object_type === "figure" && \(neighbor\.relation_type === "previous" \|\| neighbor\.relation_type === "next"\) && neighbor\.evidence_pointer_id/);
   assert.match(learn, /阅读顺序相邻图像 · 仅定位，图像语义暂不可解释/);
   assert.match(learn, /EvidencePointerDrawer label="定位相邻图像"/);
   assert.doesNotMatch(learn, /onAskTutor=\{[^}]*figure/);

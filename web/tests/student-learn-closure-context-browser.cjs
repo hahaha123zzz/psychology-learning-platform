@@ -120,6 +120,7 @@ async function main() {
     assert.equal(session.body.data.course_id, courseId);
     assert.equal(session.body.data.mode, "course_qa");
     assert.equal(session.body.data.status, "active");
+    const expectedSavedTurnCount = Array.isArray(session.body.data.turns) ? session.body.data.turns.length : 0;
 
     await page.route("**/api/v1/knowledge/search", async (route) => {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(envelope({ items: searchItems(noPinnedPointers) })) });
@@ -135,9 +136,10 @@ async function main() {
 
     await page.goto(`${webOrigin}/student/courses/${encodeURIComponent(courseId)}/learn?session_id=${encodeURIComponent(sessionId)}`);
     await page.getByRole("heading", { name: "学习助手", exact: true }).waitFor({ state: "visible" });
+    await page.waitForFunction((expected) => document.querySelectorAll(".learn-turn").length === expected, expectedSavedTurnCount);
     await page.getByLabel("搜索教材").fill(query);
     await page.getByRole("button", { name: "搜索", exact: true }).click();
-    const resultCards = page.locator(".evidence-list article");
+    const resultCards = page.locator(".evidence-list > article");
     await resultCards.first().waitFor({ state: "visible", timeout: 20_000 });
     assert.equal(await resultCards.count(), 1, "context pointers must stay under the single search hit");
     assert.equal(await page.getByRole("button", { name: "查看图注来源", exact: true }).count(), 1);
@@ -191,14 +193,14 @@ async function main() {
     noPinnedPointers = true;
     await page.getByLabel("搜索教材").fill(`${query} no-pin synthetic fixture`);
     await page.getByRole("button", { name: "搜索", exact: true }).click();
-    await page.getByText("合成表格结果", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("合成表格结果", { exact: false }).waitFor({ state: "visible" });
     assert.equal(await resultCards.count(), 1);
     assert.equal(await page.getByRole("button", { name: "查看图注来源", exact: true }).count(), 0,
       "a no-pin caption with no pointer ID must not render");
     assert.equal(await page.getByRole("button", { name: "查看相邻段落来源", exact: true }).count(), 0,
       "an explains paragraph with no pointer ID must not render");
-    assert.equal(await page.getByRole("button", { name: /定位相邻图像/ }).count(), 0,
-      "wrong object type with a stray pointer ID must not render a context action");
+    assert.equal(await page.getByRole("button", { name: "定位相邻图像", exact: true }).count(), 0,
+      "Figure with an invalid relation must not render a location-only action");
 
     const tutorWrites = writes.filter(({ path }) => path === "/api/v1/chat/sessions" || path.endsWith("/turns"));
     assert.deepEqual(tutorWrites, [], "no Tutor session creation or turn writes are permitted");

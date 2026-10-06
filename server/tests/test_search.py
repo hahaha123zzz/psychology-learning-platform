@@ -8,6 +8,10 @@ from sqlalchemy import select
 
 from app.db.base import new_ulid
 from app.db.models import (
+    ClassMember,
+    CourseClass,
+    CourseRelease,
+    CourseReleaseAssignment,
     DomainRelease,
     EvidencePointer,
     EvidenceTicket,
@@ -546,6 +550,184 @@ def test_domain_release_search_uses_only_its_bound_index_job(client) -> None:
     assert search_b.json()["data"]["domain_release"]["index_job_ids"] == {}
     assert search_b.json()["data"]["domain_release"]["publication_snapshots"] == []
     assert search_b.json()["data"]["items"] == []
+
+
+def test_student_search_defaults_to_assigned_release_snapshot_and_legacy_without_assignment(
+    client,
+) -> None:
+    from app.db.session import session_factory
+
+    course_id, student_id, version_id = _prepare(client, publish=True)
+    _login(client, "mt@uni.edu")
+    teacher_id = client.get("/api/v1/me").json()["data"]["id"]
+    domain_release_id = new_ulid()
+    _create_student_search_release(
+        client,
+        course_id=course_id,
+        student_id=student_id,
+        teacher_id=teacher_id,
+        version_id=version_id,
+        domain_release_id=domain_release_id,
+    )
+
+    _login(client, "ms@uni.edu")
+    default_search = client.post(
+        "/api/v1/knowledge/search",
+        json={"course_id": course_id, "query": "independent variable validity"},
+    )
+    assert default_search.status_code == 200, default_search.text
+    default_data = default_search.json()["data"]
+    assert default_data["domain_release"]["id"] == domain_release_id
+    assert default_data["items"]
+    pointer = default_data["items"][0]
+    async def load_pointer(pointer_id: str) -> EvidencePointer:
+        async with session_factory() as db:
+            return await db.get(EvidencePointer, pointer_id)
+
+    pinned_pointer = asyncio.run(load_pointer(pointer["evidence_pointer_id"]))
+    assert pinned_pointer.publication_snapshot_id
+    assert pinned_pointer.domain_release_id == domain_release_id
+
+    mismatch = client.post(
+        "/api/v1/knowledge/search",
+        json={
+            "course_id": course_id,
+            "query": "independent variable validity",
+            "domain_release_id": new_ulid(),
+        },
+    )
+    assert mismatch.status_code == 404
+    assert mismatch.json()["error"]["code"] == "DOMAIN_RELEASE_NOT_FOUND"
+
+    async def remove_release_assignment() -> None:
+        async with session_factory() as db:
+            assignment = await db.scalar(
+                select(CourseReleaseAssignment).where(
+                    CourseReleaseAssignment.course_id == course_id,
+                    CourseReleaseAssignment.status == "active",
+                )
+            )
+            assert assignment is not None
+            assignment.status = "closed"
+            await db.commit()
+
+    asyncio.run(remove_release_assignment())
+    legacy = client.post(
+        "/api/v1/knowledge/search",
+        json={"course_id": course_id, "query": "independent variable validity"},
+    )
+    assert legacy.status_code == 200, legacy.text
+    assert legacy.json()["data"]["items"]
+    legacy_pointer = asyncio.run(
+        load_pointer(legacy.json()["data"]["items"][0]["evidence_pointer_id"])
+    )
+    assert legacy_pointer.publication_snapshot_id is None
+    assert legacy_pointer.index_job_id is None
+    assert legacy_pointer.domain_release_id is None
+
+
+def _create_student_search_release(
+    client,
+    *,
+    course_id: str,
+    student_id: str,
+    teacher_id: str,
+    version_id: str,
+    domain_release_id: str,
+) -> None:
+    from app.db.session import session_factory
+
+    async def create_domain_release() -> None:
+        async with session_factory() as db:
+            db.add(
+                DomainRelease(
+                    id=domain_release_id,
+                    course_id=course_id,
+                    version_no=1,
+                    manifest={"domain_pack": {}},
+                    pack_sha256="d" * 64,
+                    status="published",
+                    version=1,
+                    created_by=teacher_id,
+                    published_by=teacher_id,
+                    published_at=datetime.now(UTC),
+                )
+            )
+            await db.commit()
+
+    asyncio.run(create_domain_release())
+
+    embed = client.post(
+        f"/api/v1/material-versions/{version_id}/embed?domain_release_id={domain_release_id}"
+    )
+    assert embed.status_code == 202, embed.text
+    job_id = embed.json()["data"]["job_id"]
+    deadline = time.time() + 20
+    while time.time() < deadline:
+        job = client.get(f"/api/v1/jobs/{job_id}").json()["data"]
+        if job["status"] in ("succeeded", "failed"):
+            break
+        time.sleep(0.3)
+    assert job["status"] == "succeeded", job
+
+    async def create_release_assignment() -> None:
+        async with session_factory() as db:
+            snapshot = await db.scalar(
+                select(PublicationSnapshot).where(
+                    PublicationSnapshot.material_version_id == version_id,
+                    PublicationSnapshot.superseded_at.is_(None),
+                )
+            )
+            assert snapshot is not None
+            snapshot.domain_release_id = domain_release_id
+            snapshot.index_job_id = job_id
+            material_id = snapshot.material_id
+            pin = {
+                "material_id": material_id,
+                "material_version_id": version_id,
+                "publication_snapshot_id": snapshot.id,
+                "index_job_id": job_id,
+                "embedding_version": snapshot.embedding_version,
+                "domain_release_id": domain_release_id,
+            }
+            release = CourseRelease(
+                course_id=course_id,
+                version_no=1,
+                name="合成学生搜索 Release",
+                status="published",
+                manifest={
+                    "materials": [material_id],
+                    "material_version_ids": [version_id],
+                    "publication_snapshots": [pin],
+                },
+                domain_release_id=domain_release_id,
+                created_by=teacher_id,
+                published_by=teacher_id,
+                published_at=datetime.now(UTC),
+            )
+            course_class = CourseClass(
+                course_id=course_id,
+                code=f"SRC-{new_ulid()[:10]}",
+                name="合成学生搜索班级",
+                created_by=teacher_id,
+            )
+            db.add_all([release, course_class])
+            await db.flush()
+            db.add_all(
+                [
+                    CourseReleaseAssignment(
+                        course_id=course_id,
+                        class_id=course_class.id,
+                        course_release_id=release.id,
+                        status="active",
+                        assigned_by=teacher_id,
+                    ),
+                    ClassMember(class_id=course_class.id, user_id=student_id),
+                ]
+            )
+            await db.commit()
+
+    asyncio.run(create_release_assignment())
 
 
 def test_hash_embedding_rejects_question_without_textbook_keyword_anchor(client) -> None:

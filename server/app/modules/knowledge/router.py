@@ -249,19 +249,100 @@ async def search_knowledge(
     if role == "student":
         await ensure_ai_support_available(db, user_id=user.id)
     staff = role in ("teacher", "assistant")
-    version_ids = await knowledge_service.resolve_searchable_versions(
-        db,
-        course_id=body.course_id,
-        requested_version_ids=body.material_version_ids or [],
-        staff=staff,
-    )
+    effective_domain_release_id = body.domain_release_id
+    release_publication_pins: list[dict[str, str]] | None = None
+    student_release_binding = None
+    if role == "student":
+        student_release_binding = await course_service.resolve_active_student_course_release(
+            db, user_id=user.id, course_id=body.course_id
+        )
+    if student_release_binding is not None:
+        _, assigned_release = student_release_binding
+        manifest = assigned_release.manifest if isinstance(assigned_release.manifest, dict) else {}
+        assigned_versions = manifest.get("material_version_ids")
+        raw_pins = manifest.get("publication_snapshots")
+        if (
+            not isinstance(assigned_versions, list)
+            or not assigned_versions
+            or any(not isinstance(value, str) or not value for value in assigned_versions)
+            or not isinstance(raw_pins, list)
+            or assigned_release.domain_release_id is None
+        ):
+            raise ApiError(
+                409,
+                "COURSE_RELEASE_ASSIGNMENT_INVALID",
+                "当前班级课程版本缺少可验证的教材发布快照。",
+            )
+        if (
+            body.domain_release_id is not None
+            and body.domain_release_id != assigned_release.domain_release_id
+        ):
+            raise ApiError(404, "DOMAIN_RELEASE_NOT_FOUND", "已发布领域版本不存在或无权访问")
+        effective_domain_release_id = assigned_release.domain_release_id
+        requested_versions = body.material_version_ids or assigned_versions
+        if any(value not in assigned_versions for value in requested_versions):
+            raise ApiError(404, "MATERIAL_VERSION_NOT_FOUND", "资料不存在或无权访问")
+        versions_result = await db.execute(
+            select(MaterialVersion.id)
+            .join(Material, Material.id == MaterialVersion.material_id)
+            .where(
+                Material.course_id == body.course_id,
+                Material.status == "active",
+                Material.visibility == "published",
+                MaterialVersion.status == "parsed",
+                MaterialVersion.id.in_(requested_versions or [""]),
+            )
+        )
+        version_ids = [row[0] for row in versions_result.all()]
+        if len(version_ids) != len(set(requested_versions)):
+            raise ApiError(404, "MATERIAL_VERSION_NOT_FOUND", "资料不存在或无权访问")
+        release_publication_pins = []
+        for pin in raw_pins:
+            if not isinstance(pin, dict):
+                continue
+            material_id = pin.get("material_id")
+            version_id = pin.get("material_version_id")
+            snapshot_id = pin.get("publication_snapshot_id")
+            index_job_id = pin.get("index_job_id")
+            domain_id = pin.get("domain_release_id")
+            if (
+                all(isinstance(value, str) and value for value in (
+                    material_id, version_id, snapshot_id, index_job_id, domain_id
+                ))
+                and version_id in version_ids
+                and domain_id == effective_domain_release_id
+            ):
+                release_publication_pins.append(
+                    {
+                        "material_id": material_id,
+                        "material_version_id": version_id,
+                        "publication_snapshot_id": snapshot_id,
+                        "index_job_id": index_job_id,
+                        "domain_release_id": domain_id,
+                    }
+                )
+        if not release_publication_pins or {
+            pin["material_version_id"] for pin in release_publication_pins
+        } != set(version_ids):
+            raise ApiError(
+                409,
+                "COURSE_RELEASE_ASSIGNMENT_INVALID",
+                "当前班级课程版本缺少可验证的教材发布快照。",
+            )
+    else:
+        version_ids = await knowledge_service.resolve_searchable_versions(
+            db,
+            course_id=body.course_id,
+            requested_version_ids=body.material_version_ids or [],
+            staff=staff,
+        )
     domain_release = None
     domain_index_job_ids: dict[str, str] | None = None
     domain_publication_pins: dict[str, dict[str, str]] | None = None
-    if body.domain_release_id:
+    if effective_domain_release_id:
         domain_release = await db.scalar(
             select(DomainRelease).where(
-                DomainRelease.id == body.domain_release_id,
+                DomainRelease.id == effective_domain_release_id,
                 DomainRelease.course_id == body.course_id,
                 DomainRelease.status.in_(("published", "deprecated")),
             )
@@ -278,13 +359,24 @@ async def search_knowledge(
                 PublicationSnapshot.domain_release_id,
             )
             .join(Material, Material.id == PublicationSnapshot.material_id)
-            .where(
+        )
+        if release_publication_pins is not None:
+            expected_by_id = {
+                pin["publication_snapshot_id"]: pin for pin in release_publication_pins
+            }
+            snapshot_query = snapshot_query.where(
+                PublicationSnapshot.id.in_(list(expected_by_id) or [""]),
+                Material.course_id == body.course_id,
+                PublicationSnapshot.material_version_id.in_(version_ids or [""]),
+                PublicationSnapshot.domain_release_id == domain_release.id,
+            )
+        else:
+            snapshot_query = snapshot_query.where(
                 Material.course_id == body.course_id,
                 PublicationSnapshot.domain_release_id == domain_release.id,
                 PublicationSnapshot.material_version_id.in_(version_ids or [""]),
             )
-        )
-        if role == "student":
+        if role == "student" and release_publication_pins is None:
             snapshot_query = snapshot_query.where(
                 Material.status == "active",
                 Material.visibility == "published",
@@ -294,6 +386,26 @@ async def search_knowledge(
         snapshot_rows = (
             await db.execute(snapshot_query.order_by(PublicationSnapshot.published_at.asc()))
         ).all()
+        if release_publication_pins is not None:
+            expected_by_id = {
+                pin["publication_snapshot_id"]: pin for pin in release_publication_pins
+            }
+            snapshot_rows = [
+                row
+                for row in snapshot_rows
+                if (
+                    row[0] == expected_by_id.get(row[2], {}).get("material_id")
+                    and row[1] == expected_by_id.get(row[2], {}).get("material_version_id")
+                    and row[3] == expected_by_id.get(row[2], {}).get("index_job_id")
+                    and row[5] == expected_by_id.get(row[2], {}).get("domain_release_id")
+                )
+            ]
+            if {row[1] for row in snapshot_rows} != set(version_ids):
+                raise ApiError(
+                    409,
+                    "COURSE_RELEASE_ASSIGNMENT_INVALID",
+                    "当前班级课程版本的教材发布快照不可用。",
+                )
         publication_snapshots = [
             {
                 "material_id": material_id,
@@ -362,7 +474,7 @@ async def search_knowledge(
         chapter_scope=body.chapter_scope,
         object_types=body.object_types,
         channel_priors=plan.channel_priors,
-        domain_release_id=body.domain_release_id,
+        domain_release_id=effective_domain_release_id,
         domain_index_job_ids=domain_index_job_ids,
         domain_publication_pins=domain_publication_pins,
     )

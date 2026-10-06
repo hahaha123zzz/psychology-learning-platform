@@ -63,7 +63,7 @@ test("student Learn can search native tables and open adjacent image pointers wi
   const reader = read("../components/learning/EvidencePointerDrawer.tsx");
   assert.match(learn, /object_types: tableOnly \? \["table"\]/);
   assert.match(learn, /只看表格/);
-  assert.match(learn, /neighbor\.object_type === "figure" && neighbor\.evidence_pointer_id/);
+  assert.match(learn, /neighbor\.object_type === "figure" && \(neighbor\.relation_type === "previous" \|\| neighbor\.relation_type === "next"\) && neighbor\.evidence_pointer_id/);
   assert.match(learn, /阅读顺序相邻图像 · 仅定位/);
   assert.match(learn, /EvidencePointerDrawer label="定位相邻图像"/);
   assert.match(reader, /系统未解析图像含义/);

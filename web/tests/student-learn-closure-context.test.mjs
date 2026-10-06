@@ -23,7 +23,7 @@ test("missing pointer IDs stay hidden while Figure retains its location-only ent
   const predicate = learn.slice(learn.indexOf("function isPinnedParagraphContext"), learn.indexOf("function StudentLearnContent"));
   assert.match(predicate, /typeof neighbor\.evidence_pointer_id === "string"/);
   assert.match(predicate, /neighbor\.evidence_pointer_id\.trim\(\)\.length > 0/);
-  assert.match(learn, /neighbor\.object_type === "figure" && neighbor\.evidence_pointer_id/);
+  assert.match(learn, /neighbor\.object_type === "figure" && \(neighbor\.relation_type === "previous" \|\| neighbor\.relation_type === "next"\) && neighbor\.evidence_pointer_id/);
   assert.match(learn, /阅读顺序相邻图像 · 仅定位，图像语义暂不可解释/);
   assert.match(learn, /EvidencePointerDrawer label="定位相邻图像"/);
 });
