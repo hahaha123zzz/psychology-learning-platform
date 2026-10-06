@@ -36,7 +36,7 @@ test("Learn fails closed on invalid session restore and does not auto-create a r
   assert.match(source, /const restoreBlocked = sessionLoading \|\| Boolean\(restoreErrorForRoute\)/);
   assert.match(source, /const visibleTurns = sessionId && \(loadedSession\?\.id !== sessionId \|\| loadedSession\.courseId !== courseId\)\s*\? \[\]\s*:\s*restoreRequested && !sessionMatchesRoute \? \[\] : turns/);
   assert.match(source, /const activeSessionForRoute = restoreRequested\s*\? \(sessionMatchesRoute \? sessionId : ""\)\s*: loadedSession\?\.id === sessionId && loadedSession\.courseId === courseId\s*\? sessionId\s*: ""/);
-  assert.match(source, /disabled=\{!materials\.length \|\| sending \|\| restoreBlocked\}/);
+  assert.match(source, /disabled=\{!materials\.length \|\| sending \|\| restoreBlocked(?: \|\| loadingTablePointer)?\}/);
   const send = source.slice(source.indexOf("async function send"), source.indexOf("return <div className=\"student-learn-page\""));
   assert.match(send, /if \(!activeSession\)\s*\{\s*const created = await api<\{ id: string \}>\("\/chat\/sessions"/);
   assert.match(send, /let activeSession = activeSessionForRoute/);
@@ -54,7 +54,7 @@ test("Learn remounts course-scoped state so prior turns, citations, and pending 
   assert.match(source, /const \{ courseId \} = useParams/);
   assert.match(source, /<StudentLearnContent key=\{courseId\} courseId=\{courseId\} \/>/);
   assert.match(source, /const \[turns, setTurns\] = useState<Turn\[]>\(\[\]\)/);
-  assert.match(source, /const pendingTurn = useRef<\{ sessionId: string; content: string; clientTurnId: string \} \| null>\(null\)/);
+  assert.match(source, /const pendingTurn = useRef<\{ sessionId: string; content: string; selectedPointerId\?: string; clientTurnId: string \} \| null>\(null\)/);
   assert.match(source, /const \[results, setResults\] = useState<SearchItem\[]>\(\[\]\)/);
 });
 

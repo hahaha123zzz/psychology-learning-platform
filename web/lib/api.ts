@@ -132,10 +132,18 @@ export async function streamChatTurn(
   content: string,
   onEvent: (event: ChatEvent) => void,
   clientTurnId = crypto.randomUUID(),
+  selectedEvidencePointerIds?: string[],
 ): Promise<void> {
+  if (selectedEvidencePointerIds && selectedEvidencePointerIds.length > 1) {
+    throw new RangeError("A Tutor turn can select at most one evidence pointer.");
+  }
   const response = await fetch(`/api/v1/chat/sessions/${sessionId}/turns`, {
     method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, client_turn_id: clientTurnId }),
+    body: JSON.stringify({
+      content,
+      client_turn_id: clientTurnId,
+      ...(selectedEvidencePointerIds?.length ? { selected_evidence_pointer_ids: selectedEvidencePointerIds } : {}),
+    }),
   });
   if (!response.ok || !response.body) await unwrap(response);
   let completed = false;
