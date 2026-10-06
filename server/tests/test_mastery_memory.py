@@ -719,9 +719,9 @@ def test_student_growth_tabs_hint_support_summary_uses_valid_scoped_attempts(cli
     assert empty.status_code == 200
     assert empty.json()["data"]["hint_support_summary"] == {
         "attempt_count": 0,
-        "supported": 0,
-        "independent": 0,
-        "other": 0,
+        "supported_attempt_count": 0,
+        "independent_attempt_count": 0,
+        "other_attempt_count": 0,
     }
 
     rows = [
@@ -781,12 +781,14 @@ def test_student_growth_tabs_hint_support_summary_uses_valid_scoped_attempts(cli
     summary = response.json()["data"]["hint_support_summary"]
     assert summary == {
         "attempt_count": 5,
-        "supported": 2,
-        "independent": 1,
-        "other": 2,
+        "supported_attempt_count": 2,
+        "independent_attempt_count": 1,
+        "other_attempt_count": 2,
     }
     assert summary["attempt_count"] == (
-        summary["supported"] + summary["independent"] + summary["other"]
+        summary["supported_attempt_count"]
+        + summary["independent_attempt_count"]
+        + summary["other_attempt_count"]
     )
 
 

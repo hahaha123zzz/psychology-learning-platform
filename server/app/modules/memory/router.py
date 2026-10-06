@@ -406,14 +406,19 @@ async def _growth_hint_support_summary(
             .group_by(LearningEvidence.attempt_id)
         )
     ).all()
-    summary = {"attempt_count": len(rows), "supported": 0, "independent": 0, "other": 0}
+    summary = {
+        "attempt_count": len(rows),
+        "supported_attempt_count": 0,
+        "independent_attempt_count": 0,
+        "other_attempt_count": 0,
+    }
     for row in rows:
         if row.supported_attempt:
-            summary["supported"] += 1
+            summary["supported_attempt_count"] += 1
         elif row.independent_attempt:
-            summary["independent"] += 1
+            summary["independent_attempt_count"] += 1
         else:
-            summary["other"] += 1
+            summary["other_attempt_count"] += 1
     return summary
 
 
