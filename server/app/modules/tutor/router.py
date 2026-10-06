@@ -201,6 +201,7 @@ def _learning_workspace(
     *,
     action_override: str | None = None,
     runtime: dict | None = None,
+    display_message: str | None = None,
 ) -> dict:
     allowed_actions = _learning_allowed_actions(
         state=learning.state, status=learning.status
@@ -222,7 +223,9 @@ def _learning_workspace(
         "status": learning.status,
         "state_version": learning.version,
         "task_version": learning.version,
-        "tutor_message": learning.tutor_message,
+        "tutor_message": (
+            learning.tutor_message if display_message is None else display_message
+        ),
         "action": action,
         "hint_level": learning.hint_level,
         "allowed_actions": allowed_actions,
@@ -240,7 +243,9 @@ def _learning_workspace(
             session_id=learning.id,
             state=learning.state,
             state_version=learning.version,
-            message=learning.tutor_message,
+            message=(
+                learning.tutor_message if display_message is None else display_message
+            ),
             action=action,
             hint_level=learning.hint_level,
         ),
@@ -883,6 +888,18 @@ async def respond_learning_session(
     result = await tutor_service.respond_learning_session(
         db, learning, body.content, effective_policy=effective_policy
     )
+    preference_row = await db.scalar(
+        select(UserPreference).where(UserPreference.user_id == user.id)
+    )
+    preferences = (preference_row.preferences or {}) if preference_row else {}
+    display_message = tutor_service.apply_presentation_preferences(
+        result["message"],
+        response_length=preferences.get("response_length", "BALANCED"),
+        example_order=preferences.get("example_order", "CONCEPT_FIRST"),
+        query=body.content,
+        include_evidence_prefix=False,
+    )
+    result["message"] = display_message
     await _sync_runtime_aggregates(db, learning)
     db.add(
         LearningEvent(
@@ -914,6 +931,7 @@ async def respond_learning_session(
                 learning,
                 action_override=result.get("action"),
                 runtime=await _runtime_view(db, learning),
+                display_message=display_message,
             ),
             **result,
         },

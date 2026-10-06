@@ -94,6 +94,38 @@ def test_adaptive_example_order_responds_to_example_question() -> None:
     assert concept_question.startswith("根据教材：概念定义。")
 
 
+def test_guided_learning_preferences_format_display_without_claiming_evidence() -> None:
+    same_response = (
+        "Attention control selects relevant signals. "
+        "For example, attention control selects a target voice. "
+        "Attention control reduces distraction from irrelevant signals."
+    )
+
+    concise_example_first = apply_presentation_preferences(
+        same_response,
+        response_length="CONCISE",
+        example_order="EXAMPLE_FIRST",
+        include_evidence_prefix=False,
+    )
+    detailed_concept_first = apply_presentation_preferences(
+        same_response,
+        response_length="DETAILED",
+        example_order="CONCEPT_FIRST",
+        include_evidence_prefix=False,
+    )
+
+    assert concise_example_first == (
+        "For example, attention control selects a target voice"
+    )
+    assert detailed_concept_first.startswith(
+        "Attention control selects relevant signals"
+    )
+    assert "For example, attention control" in detailed_concept_first
+    assert len(detailed_concept_first) > len(concise_example_first)
+    assert "根据教材：" not in concise_example_first
+    assert "根据教材：" not in detailed_concept_first
+
+
 def test_internal_grounded_answer_applies_preferences_before_joining_sentences(
     monkeypatch,
 ) -> None:

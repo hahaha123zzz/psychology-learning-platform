@@ -1026,6 +1026,143 @@ def test_saved_presentation_preferences_shape_tutor_answer_only(client, monkeypa
     assert asyncio.run(learning_state_counts()) == state_before
 
 
+def test_guided_learning_preferences_only_change_display_not_learning_state(client) -> None:
+    import asyncio
+
+    from sqlalchemy import func, select
+
+    from app.db.models import LearningEvidence, LearningSession, MasteryState
+    from app.db.session import session_factory
+    from tests.conftest import make_pdf
+
+    synthetic_pdf = make_pdf(
+        [
+            [
+                "Chapter Attention",
+                "Attention control selects relevant signals.",
+                "For example, attention control selects a target voice.",
+                "Attention control reduces distraction from irrelevant signals.",
+            ]
+        ]
+    )
+    course_id, student_id, version_id = _prepare(
+        client, publish=True, content=synthetic_pdf
+    )
+    _login(client, "ms@uni.edu")
+
+    concise_task = client.post(
+        "/api/v1/learning-sessions",
+        json={"course_id": course_id, "material_version_id": version_id},
+    )
+    detailed_task = client.post(
+        "/api/v1/learning-sessions",
+        json={"course_id": course_id, "material_version_id": version_id},
+    )
+    assert concise_task.status_code == detailed_task.status_code == 200
+    concise_task = concise_task.json()["data"]
+    detailed_task = detailed_task.json()["data"]
+
+    async def learning_state_counts() -> tuple[int, int]:
+        async with session_factory() as db:
+            evidence_count = await db.scalar(
+                select(func.count()).select_from(LearningEvidence).where(
+                    LearningEvidence.user_id == student_id,
+                    LearningEvidence.course_id == course_id,
+                )
+            )
+            mastery_count = await db.scalar(
+                select(func.count()).select_from(MasteryState).where(
+                    MasteryState.user_id == student_id,
+                    MasteryState.course_id == course_id,
+                )
+            )
+            return evidence_count or 0, mastery_count or 0
+
+    state_before = asyncio.run(learning_state_counts())
+    preferences = client.get("/api/v1/me/preferences").json()["data"]
+    concise_preferences = client.patch(
+        "/api/v1/me/preferences",
+        json={
+            "version": preferences["version"],
+            "response_length": "CONCISE",
+            "example_order": "EXAMPLE_FIRST",
+        },
+    )
+    assert concise_preferences.status_code == 200, concise_preferences.text
+    concise_response = client.post(
+        f"/api/v1/student/learning/tasks/{concise_task['id']}/respond",
+        json={"state_version": concise_task["state_version"], "content": "从零开始"},
+    )
+    assert concise_response.status_code == 200, concise_response.text
+    concise_data = concise_response.json()["data"]
+
+    current_preferences = concise_preferences.json()["data"]
+    detailed_preferences = client.patch(
+        "/api/v1/me/preferences",
+        json={
+            "version": current_preferences["version"],
+            "response_length": "DETAILED",
+            "example_order": "CONCEPT_FIRST",
+        },
+    )
+    assert detailed_preferences.status_code == 200, detailed_preferences.text
+    detailed_response = client.post(
+        f"/api/v1/student/learning/tasks/{detailed_task['id']}/respond",
+        json={"state_version": detailed_task["state_version"], "content": "从零开始"},
+    )
+    assert detailed_response.status_code == 200, detailed_response.text
+    detailed_data = detailed_response.json()["data"]
+
+    assert concise_data["tutor_message"].startswith(
+        "For example, attention control selects a target voice"
+    )
+    assert "Attention control selects relevant signals" not in concise_data["tutor_message"]
+    assert detailed_data["tutor_message"].startswith(
+        "Attention control selects relevant signals"
+    )
+    assert detailed_data["tutor_message"].index("Attention control selects relevant") < (
+        detailed_data["tutor_message"].index("For example, attention control")
+    )
+    assert len(detailed_data["tutor_message"]) > len(concise_data["tutor_message"])
+    assert "根据教材：" not in concise_data["tutor_message"]
+    assert "根据教材：" not in detailed_data["tutor_message"]
+    assert concise_data["blocks"][0]["text"] == concise_data["tutor_message"]
+    assert detailed_data["blocks"][0]["text"] == detailed_data["tutor_message"]
+    assert concise_data["blocks"][0]["evidence_refs"] == []
+    assert detailed_data["blocks"][0]["evidence_refs"] == []
+
+    unchanged_fields = (
+        "state",
+        "status",
+        "state_version",
+        "task_version",
+        "hint_level",
+        "action",
+        "correct",
+        "teaching_action",
+        "support_gradient",
+    )
+    assert {key: concise_data[key] for key in unchanged_fields} == {
+        key: detailed_data[key] for key in unchanged_fields
+    }
+
+    async def stored_messages() -> list[str]:
+        async with session_factory() as db:
+            rows = (
+                await db.execute(
+                    select(LearningSession.tutor_message)
+                    .where(LearningSession.id.in_([concise_task["id"], detailed_task["id"]]))
+                    .order_by(LearningSession.id)
+                )
+            ).scalars().all()
+            return list(rows)
+
+    raw_messages = asyncio.run(stored_messages())
+    assert len(raw_messages) == 2
+    assert raw_messages[0] == raw_messages[1]
+    assert asyncio.run(learning_state_counts()) == state_before
+
+
 def test_turn_stream_answers_with_citations_and_persists(client) -> None:
     course_id, _, _ = _prepare(client, publish=True)
     session = client.post(

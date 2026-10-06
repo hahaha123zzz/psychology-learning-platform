@@ -1072,7 +1072,12 @@ def generate_answer(
 
 
 def apply_presentation_preferences(
-    answer: str, *, response_length: str, example_order: str, query: str = ""
+    answer: str,
+    *,
+    response_length: str,
+    example_order: str,
+    query: str = "",
+    include_evidence_prefix: bool = True,
 ) -> str:
     """只重排或截短已生成内容，不增加教材外事实。"""
     prefix = "根据教材："
@@ -1094,7 +1099,10 @@ def apply_presentation_preferences(
         sentences = sentences[:3]
     else:
         sentences = sentences[:5]
-    return prefix + " ".join(sentences) if sentences else answer
+    if not sentences:
+        return answer
+    formatted = " ".join(sentences)
+    return prefix + formatted if include_evidence_prefix else formatted
 
 
 async def generate_grounded_answer(
