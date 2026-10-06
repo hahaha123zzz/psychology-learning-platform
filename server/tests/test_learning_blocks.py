@@ -74,6 +74,114 @@ def test_learning_blocks_mark_only_standalone_practice_question_as_question() ->
     assert mixed_without_action_marker[0]["type"] == "TutorExplanation"
 
 
+@pytest.mark.parametrize("state", ["teach", "hint"])
+def test_canonical_hint_repair_emits_ordered_inert_blocks(state: str) -> None:
+    session_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    focus = ["内部效度", "实验控制"]
+    message = (
+        hint_message(2, focus)
+        + "\n"
+        + misconception_repair_message(["合成教材段落"], focus)
+    )
+
+    blocks = build_learning_blocks(
+        session_id=session_id,
+        state=state,
+        state_version=9,
+        message=message,
+        action="wait_for_student",
+        hint_level=2,
+    )
+
+    assert [block["type"] for block in blocks] == [
+        "Hint",
+        "Correction",
+        "Transition",
+    ]
+    assert [block["id"] for block in blocks[:2]] == [
+        f"{session_id}:9:hint",
+        f"{session_id}:9:correction",
+    ]
+    assert "\n".join(block["text"] for block in blocks[:2]) == message
+    assert all(block["evidence_refs"] == [] for block in blocks[:2])
+    assert all(block["allowed_actions"] == [] for block in blocks[:2])
+    assert all(block["schema_version"] == "learning-block.v1" for block in blocks[:2])
+
+
+@pytest.mark.parametrize(
+    ("state", "action", "hint_level", "message_transform", "expected_type"),
+    [
+        (
+            "teach",
+            "wait_for_student",
+            2,
+            lambda message: "偏好改写：" + message,
+            "TutorExplanation",
+        ),
+        ("hint", "wait_for_student", 2, lambda message: message[:-1], "TutorExplanation"),
+        ("hint", "wait_for_student", 1, lambda message: message, "TutorExplanation"),
+        (
+            "hint",
+            "wait_for_student",
+            2,
+            lambda message: message.replace("\n", " "),
+            "TutorExplanation",
+        ),
+        (
+            "hint",
+            "wait_for_student",
+            2,
+            lambda message: message + "\n额外文字",
+            "TutorExplanation",
+        ),
+        ("check", "wait_for_student", 2, lambda message: message, "Question"),
+        ("teach", "show_example", 2, lambda message: message, "TutorExplanation"),
+    ],
+)
+def test_noncanonical_hint_repair_fails_closed_to_existing_block_mapping(
+    state: str, action: str, hint_level: int, message_transform, expected_type: str
+) -> None:
+    original = (
+        hint_message(2, ["内部效度", "实验控制"])
+        + "\n"
+        + misconception_repair_message(["合成教材段落"], ["内部效度", "实验控制"])
+    )
+    message = message_transform(original)
+
+    blocks = build_learning_blocks(
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        state=state,
+        state_version=10,
+        message=message,
+        action=action,
+        hint_level=hint_level,
+    )
+
+    assert blocks[0]["type"] == expected_type
+    assert blocks[0].get("text", blocks[0].get("prompt")) == message
+    if expected_type == "TutorExplanation":
+        assert blocks[0]["allowed_actions"] == ["OPEN_EVIDENCE"]
+
+
+def test_terminal_show_example_keeps_legacy_explanation_block() -> None:
+    message = (
+        hint_message(3, ["内部效度"])
+        + "\n"
+        + misconception_repair_message(["合成教材段落"], ["内部效度"])
+    )
+    blocks = build_learning_blocks(
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        state="practice",
+        state_version=11,
+        message=message,
+        action="show_example",
+        hint_level=3,
+    )
+
+    assert blocks[0]["type"] == "TutorExplanation"
+    assert blocks[0]["text"] == message
+
+
 def test_completed_learning_block_does_not_claim_mastery() -> None:
     blocks = build_learning_blocks(
         session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",

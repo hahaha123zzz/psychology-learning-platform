@@ -84,6 +84,41 @@ def _citation_label(index: int, title: str, physical_page: int | None) -> str:
     return f"[{index}] {title}{page_label}"
 
 
+def _canonical_hint_repair_parts(
+    message: str, *, hint_level: int
+) -> tuple[str, str] | None:
+    """只拆分状态机按固定模板生成、且未被展示策略改写的提示/修复文本。"""
+    if type(hint_level) is not int or not 1 <= hint_level <= MAX_HINT_LEVEL:
+        return None
+    parts = message.split("\n")
+    if len(parts) != 2:
+        return None
+    hint_text, correction_text = parts
+    focus_pattern = r"([\u4e00-\u9fffA-Za-z0-9、]+)"
+    hint_templates = (
+        rf"提示{hint_level}：先回到教材，找出与“{focus_pattern}”有关的定义或关键句。",
+        rf"提示{hint_level}：把“{focus_pattern}”分别用一句话解释，再比较它们的联系或区别。",
+        rf"提示{hint_level}：请对照教材中关于“{focus_pattern}”的段落，先复述依据，再回答检查题。",
+    )
+    focus = next(
+        (
+            match.group(1)
+            for template in hint_templates
+            if (match := re.fullmatch(template, hint_text)) is not None
+        ),
+        None,
+    )
+    if focus is None:
+        return None
+    expected_correction = (
+        f"我们先回到教材核对“{focus}”，不急着判断对错。请分别复述相关概念，"
+        "指出你刚才的回答和教材依据哪里相同或不同，再用自己的话重答。"
+    )
+    if correction_text != expected_correction:
+        return None
+    return hint_text, correction_text
+
+
 def build_learning_blocks(
     *, session_id: str, state: str, state_version: int, message: str,
     action: str, hint_level: int,
@@ -125,7 +160,37 @@ def build_learning_blocks(
             "state": state,
             "hint_level": hint_level,
         }
-    blocks: list[dict] = [content_block]
+    canonical_hint_repair = (
+        _canonical_hint_repair_parts(message, hint_level=hint_level)
+        if state in {"teach", "hint"} and hint_level > 0 and action != "show_example"
+        else None
+    )
+    if canonical_hint_repair is not None:
+        hint_text, correction_text = canonical_hint_repair
+        blocks = [
+            {
+                "id": f"{session_id}:{state_version}:hint",
+                "schema_version": LEARNING_BLOCK_SCHEMA_VERSION,
+                "type": "Hint",
+                "text": hint_text,
+                "evidence_refs": [],
+                "allowed_actions": [],
+                "state": state,
+                "hint_level": hint_level,
+            },
+            {
+                "id": f"{session_id}:{state_version}:correction",
+                "schema_version": LEARNING_BLOCK_SCHEMA_VERSION,
+                "type": "Correction",
+                "text": correction_text,
+                "evidence_refs": [],
+                "allowed_actions": [],
+                "state": state,
+                "hint_level": hint_level,
+            },
+        ]
+    else:
+        blocks = [content_block]
     if action == "complete" or state == "completed":
         blocks.append(
             {
