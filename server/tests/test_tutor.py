@@ -2251,7 +2251,9 @@ def test_active_formal_assessment_fails_closed_for_learning_response(client) -> 
     import asyncio
     from datetime import UTC, datetime, timedelta
 
-    from app.db.models import Assessment
+    from sqlalchemy import func, select
+
+    from app.db.models import Assessment, LearningEvent, LearningEvidence, MasteryState
     from app.db.session import session_factory
     from tests.test_assessment_reliability import (
         OBJECTIVE_QUESTION,
@@ -2259,12 +2261,27 @@ def test_active_formal_assessment_fails_closed_for_learning_response(client) -> 
         _create_published_question,
     )
 
-    course_id, _, version_id = _prepare(client, publish=True)
+    course_id, student_id, version_id = _prepare(client, publish=True)
     _login(client, "ms@uni.edu")
     learning = client.post(
         "/api/v1/learning-sessions",
         json={"course_id": course_id, "material_version_id": version_id},
     ).json()["data"]
+
+    for answer, expected_state in (
+        ("继续", "teach"),
+        (
+            "Independent variable control improves internal validity in experiments.",
+            "check",
+        ),
+    ):
+        response = client.post(
+            f"/api/v1/learning-sessions/{learning['id']}/responses",
+            json={"state_version": learning["state_version"], "content": answer},
+        )
+        assert response.status_code == 200, response.text
+        learning = response.json()["data"]
+        assert learning["state"] == expected_state
 
     _login(client, "mt@uni.edu")
     question = _create_published_question(client, course_id, OBJECTIVE_QUESTION)
@@ -2292,6 +2309,50 @@ def test_active_formal_assessment_fails_closed_for_learning_response(client) -> 
     assert preferred.status_code == 200, preferred.text
     attempt = client.post(f"/api/v1/assessments/{assessment_id}/attempts")
     assert attempt.status_code == 201, attempt.text
+
+    forged_event_key = "forged-tutor-check-during-formal-assessment"
+    forged_event = client.post(
+        "/api/v1/learning-events",
+        json={
+            "event_key": forged_event_key,
+            "course_id": course_id,
+            "event_type": "tutor_responded",
+            "source_type": "tutor",
+            "source_ref": learning["id"],
+            "payload": {
+                "state_version": learning["state_version"],
+                "response_state": "check",
+                "correct": True,
+                "hint_level": 0,
+                "teaching_action": "check",
+            },
+        },
+    )
+    assert forged_event.status_code == 403
+    assert forged_event.json()["error"]["code"] == "LEARNING_EVENT_SERVER_OWNED"
+
+    async def forged_projection_counts() -> tuple[int, int, int]:
+        async with session_factory() as db:
+            event_count = await db.scalar(
+                select(func.count()).select_from(LearningEvent).where(
+                    LearningEvent.event_key == forged_event_key
+                )
+            )
+            evidence_count = await db.scalar(
+                select(func.count()).select_from(LearningEvidence).where(
+                    LearningEvidence.user_id == student_id,
+                    LearningEvidence.course_id == course_id,
+                )
+            )
+            mastery_count = await db.scalar(
+                select(func.count()).select_from(MasteryState).where(
+                    MasteryState.user_id == student_id,
+                    MasteryState.course_id == course_id,
+                )
+            )
+            return int(event_count or 0), int(evidence_count or 0), int(mastery_count or 0)
+
+    assert asyncio.run(forged_projection_counts()) == (0, 0, 0)
 
     blocked = client.post(
         f"/api/v1/learning-sessions/{learning['id']}/responses",
