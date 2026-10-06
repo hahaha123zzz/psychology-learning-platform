@@ -27,10 +27,51 @@ def test_learning_blocks_are_whitelisted_and_versioned() -> None:
         hint_level=1,
     )
 
-    assert [block["type"] for block in blocks] == ["TutorExplanation", "Transition"]
+    assert [block["type"] for block in blocks] == ["Question", "Transition"]
     assert all(block["schema_version"] == "learning-block.v1" for block in blocks)
-    assert blocks[0]["allowed_actions"] == ["OPEN_EVIDENCE"]
+    assert blocks[0]["prompt"] == "请解释自变量和因变量的区别。"
+    assert blocks[0]["evidence_refs"] == []
+    assert blocks[0]["allowed_actions"] == []
     assert blocks[1]["next_action"] == "wait_for_student"
+
+
+def test_learning_blocks_mark_only_standalone_practice_question_as_question() -> None:
+    standalone = build_learning_blocks(
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        state="practice",
+        state_version=4,
+        message="迁移练习：请举一个体现“内部效度”的新例子，并说明理由。",
+        action="wait_for_student",
+        hint_level=1,
+    )
+    terminal_example = build_learning_blocks(
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        state="practice",
+        state_version=5,
+        message=(
+            "教材中的例子：……\n完整讲解：……\n"
+            "迁移练习：请举一个体现“内部效度”的新例子，并说明理由。"
+        ),
+        action="show_example",
+        hint_level=3,
+    )
+    mixed_without_action_marker = build_learning_blocks(
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        state="practice",
+        state_version=6,
+        message=(
+            "请先看下面的解释。\n"
+            "迁移练习：请举一个体现“内部效度”的新例子，并说明理由。"
+        ),
+        action="wait_for_student",
+        hint_level=1,
+    )
+
+    assert standalone[0]["type"] == "Question"
+    assert standalone[0]["id"].endswith(":4:question")
+    assert standalone[0]["prompt"] == "迁移练习：请举一个体现“内部效度”的新例子，并说明理由。"
+    assert terminal_example[0]["type"] == "TutorExplanation"
+    assert mixed_without_action_marker[0]["type"] == "TutorExplanation"
 
 
 def test_completed_learning_block_does_not_claim_mastery() -> None:

@@ -93,18 +93,39 @@ def build_learning_blocks(
     Block 只描述可渲染内容和允许动作，不直接改变 Mastery、Memory 或成绩。
     结构参考 OpenTutor 的 block workspace，但字段和动作由本项目定义。
     """
-    blocks: list[dict] = [
-        {
-            "id": f"{session_id}:{state_version}:explanation",
+    is_waiting_for_check_answer = state == "check" and action == "wait_for_student"
+    is_standalone_practice_question = (
+        state == "practice"
+        and action != "show_example"
+        and re.fullmatch(
+            r'迁移练习：请举一个体现“[^“”\n]+”的新例子，并说明理由。',
+            message,
+        )
+        is not None
+    )
+    is_question = is_waiting_for_check_answer or is_standalone_practice_question
+    content_block = {
+        "id": f"{session_id}:{state_version}:explanation",
+        "schema_version": LEARNING_BLOCK_SCHEMA_VERSION,
+        "type": "TutorExplanation",
+        "text": message,
+        "evidence_refs": [],
+        "allowed_actions": ["OPEN_EVIDENCE"],
+        "state": state,
+        "hint_level": hint_level,
+    }
+    if is_question:
+        content_block = {
+            "id": f"{session_id}:{state_version}:question",
             "schema_version": LEARNING_BLOCK_SCHEMA_VERSION,
-            "type": "TutorExplanation",
-            "text": message,
+            "type": "Question",
+            "prompt": message,
             "evidence_refs": [],
-            "allowed_actions": ["OPEN_EVIDENCE"],
+            "allowed_actions": [],
             "state": state,
             "hint_level": hint_level,
         }
-    ]
+    blocks: list[dict] = [content_block]
     if action == "complete" or state == "completed":
         blocks.append(
             {

@@ -1737,6 +1737,8 @@ def test_learning_microcycle_repairs_misconceptions_and_uses_grounded_example_fa
     assert corrected["state"] == "check"
     assert corrected["teaching_action"] == "check"
     assert corrected["hint_level"] == 1
+    assert corrected["blocks"][0]["type"] == "Question"
+    assert corrected["blocks"][0]["prompt"] == corrected["message"]
     repair = respond("我不知道")
     assert repair["state"] == "hint"
     assert repair["teaching_action"] == "hint"
@@ -1745,8 +1747,40 @@ def test_learning_microcycle_repairs_misconceptions_and_uses_grounded_example_fa
     assert example["state"] == "practice"
     assert example["action"] == "show_example"
     assert example["teaching_action"] == "hint"
+    assert example["blocks"][0]["type"] == "TutorExplanation"
     assert "当前教材段落没有明确标记的例子" in example["message"]
     assert "研究者控制参与者" not in example["message"]
+
+    standalone_session = client.post(
+        "/api/v1/learning-sessions",
+        json={
+            "course_id": course_id,
+            "material_version_id": version_id,
+            "chapter_object_id": chapter_id,
+        },
+    ).json()["data"]
+
+    def respond_standalone(content: str) -> dict:
+        nonlocal standalone_session
+        response = client.post(
+            f"/api/v1/learning-sessions/{standalone_session['id']}/responses",
+            json={"state_version": standalone_session["state_version"], "content": content},
+        )
+        assert response.status_code == 200, response.text
+        standalone_session = response.json()["data"]
+        return standalone_session
+
+    assert respond_standalone("继续")["state"] == "teach"
+    assert respond_standalone(
+        "Independent variable control improves internal validity in experiments."
+    )["state"] == "check"
+    practice = respond_standalone(
+        "Independent variable control improves internal validity in experiments."
+    )
+    assert practice["state"] == "practice"
+    assert practice["action"] == "wait_for_student"
+    assert practice["blocks"][0]["type"] == "Question"
+    assert practice["blocks"][0]["prompt"] == practice["message"]
 
 
 def test_terminal_hint_requires_practice_policy_before_emitting_example(client) -> None:
