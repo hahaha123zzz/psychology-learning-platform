@@ -174,6 +174,10 @@ async def publish_asset(
             code="ASSET_RELEASE_NOT_PUBLISHED",
             message="必须绑定已发布课程版本",
         )
+    service.validate_evidence_refs_for_release(
+        evidence_refs=item.evidence_refs,
+        release_manifest=release.manifest if isinstance(release.manifest, dict) else {},
+    )
     item.release_id = release.id
     item.status = "published"
     item.published_by = user.id

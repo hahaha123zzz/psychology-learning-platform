@@ -129,3 +129,34 @@ def validate_asset_payload(
             code="TEACHING_ASSET_ACTION_NOT_ALLOWED",
             message="教学资产包含未注册动作",
         )
+
+
+def validate_evidence_refs_for_release(
+    *, evidence_refs: list[str], release_manifest: dict[str, Any]
+) -> None:
+    """新发布资产的 refs 必须精确引用目标 Release 的 DomainPack binding key。"""
+    if not evidence_refs:
+        raise ApiError(
+            status_code=409,
+            code="TEACHING_ASSET_EVIDENCE_REQUIRED",
+            message="发布教学资产前必须绑定目标课程版本的教材 Evidence",
+        )
+
+    domain_pack = release_manifest.get("domain_pack")
+    bindings = domain_pack.get("evidence_bindings", []) if isinstance(domain_pack, dict) else []
+    binding_keys = {
+        binding["key"]
+        for binding in bindings
+        if isinstance(binding, dict)
+        and isinstance(binding.get("key"), str)
+        and binding["key"].strip()
+        and binding["key"] == binding["key"].strip()
+    } if isinstance(bindings, list) else set()
+    unknown_refs = sorted(set(evidence_refs) - binding_keys)
+    if unknown_refs:
+        raise ApiError(
+            status_code=409,
+            code="TEACHING_ASSET_EVIDENCE_UNBOUND",
+            message="教学资产依据必须引用目标课程版本中已固定的 EvidenceBinding key",
+            details={"unbound_refs": unknown_refs},
+        )
