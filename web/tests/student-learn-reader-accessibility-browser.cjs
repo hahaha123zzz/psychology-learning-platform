@@ -18,6 +18,11 @@ async function main() {
   const browser = await chromium.launch({ headless: true, ...(browserPath ? { executablePath: browserPath } : {}) });
   const page = await browser.newPage({ viewport: { width: viewportWidths[0], height: 800 } });
   const pageErrors = [];
+  const apiRequests = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/v1/")) apiRequests.push(`${request.method()} ${url.pathname}`);
+  });
   let pointerReads = 0;
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("response", (response) => {
@@ -37,6 +42,11 @@ async function main() {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(envelope({})) });
     } else if (path === "/api/v1/me" && request.method() === "GET") {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(envelope({ display_name: "Synthetic learner", platform_roles: [] })) });
+    } else if (path === "/api/v1/courses" && request.method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(envelope([
+        { id: courseId, title: "Synthetic course A", term: "demo" },
+        { id: otherCourseId, title: "Synthetic course B", term: "demo" },
+      ])) });
     } else if ((path === `/api/v1/courses/${courseId}/materials` || path === `/api/v1/courses/${otherCourseId}/materials`) && request.method() === "GET") {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(envelope([])) });
     } else if (path === "/api/v1/student/intervention-runs" && request.method() === "GET") {
@@ -90,9 +100,15 @@ async function main() {
       await page.setViewportSize({ width, height: 800 });
       await page.goto(`${appOrigin}/student/courses/${courseId}/learn?session_id=${sessionId}`);
       const citationTrigger = page.getByRole("button", { name: "打开引用", exact: true });
-      await citationTrigger.waitFor({ state: "visible", timeout: 15_000 });
+      try {
+        await citationTrigger.waitFor({ state: "visible", timeout: 15_000 });
+      } catch (error) {
+        console.error(`Reader citation did not render at ${width}px; url=${page.url()} api=${JSON.stringify(apiRequests)} pageErrors=${JSON.stringify(pageErrors)}`);
+        throw error;
+      }
       await citationTrigger.click();
       await drawer.waitFor({ state: "visible" });
+      await drawer.getByText("Synthetic pointer excerpt", { exact: true }).waitFor({ state: "visible" });
       assert.equal(await drawer.getByText("Synthetic pointer excerpt", { exact: true }).count(), 1);
       const geometry = await drawer.evaluate((node) => ({
         drawerWidth: node.getBoundingClientRect().width,
