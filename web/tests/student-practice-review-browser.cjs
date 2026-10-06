@@ -32,14 +32,6 @@ async function main() {
   const browser = await chromium.launch({ executablePath: browserPath, headless: false, slowMo: 20 });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const pageErrors = [];
-  const businessWrites = [];
-  page.on("request", (request) => {
-    const pathname = new URL(request.url()).pathname;
-    if (!pathname.startsWith("/api/v1/") || ["GET", "HEAD", "OPTIONS"].includes(request.method())) return;
-    let body = null;
-    try { body = request.postDataJSON(); } catch { /* 无 JSON body 的写请求仍需计数。 */ }
-    businessWrites.push({ method: request.method(), pathname, body });
-  });
   page.on("pageerror", (error) => pageErrors.push(error.message));
   let formalGuardObserved = false;
 
@@ -78,6 +70,14 @@ async function main() {
       && Date.parse(item.due_at) <= Date.now());
 
     const practicePath = `/student/courses/${course.id}/practice`;
+    const businessWrites = [];
+    page.on("request", (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (!pathname.startsWith("/api/v1/") || ["GET", "HEAD", "OPTIONS"].includes(request.method())) return;
+      let body = null;
+      try { body = request.postDataJSON(); } catch { /* 无 JSON body 的写请求仍需计数。 */ }
+      businessWrites.push({ method: request.method(), pathname, body });
+    });
     await page.route(`**/api/v1/courses/${course.id}/assessments`, async (route) => {
       const response = await route.fetch();
       const envelope = await response.json();
