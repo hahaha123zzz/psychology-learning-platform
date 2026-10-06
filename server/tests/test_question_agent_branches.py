@@ -314,14 +314,91 @@ def test_branch_inherits_release_binding_and_keeps_it_after_assignment_rotation(
         CourseClass,
         CourseRelease,
         CourseReleaseAssignment,
+        DomainRelease,
+        EvidencePointer,
+        EvidenceTicket,
+        Job,
+        MaterialVersion,
+        PublicationSnapshot,
+        RetrievalUnit,
     )
     from app.db.session import session_factory
-    from tests.conftest import create_user_sync
+    from tests.conftest import create_user_sync, publish_course_release_for_test
 
-    course_id, student_id = _setup_course(client)
+    course_id, student_id, version_id = _prepare_indexed(client)
     teacher_id = client.get("/api/v1/me").json()["data"]["id"]
 
-    async def seed_release_assignment() -> tuple[str, str, str]:
+    async def read_material_id() -> str:
+        async with session_factory() as db:
+            version = await db.get(MaterialVersion, version_id)
+            assert version is not None
+            return version.material_id
+
+    material_id = asyncio.run(read_material_id())
+
+    async def seed_domain_release(version_no: int, previous_id: str | None = None) -> str:
+        async with session_factory() as db:
+            if previous_id:
+                previous = await db.get(DomainRelease, previous_id)
+                assert previous is not None
+                previous.status = "deprecated"
+            release = DomainRelease(
+                course_id=course_id,
+                version_no=version_no,
+                manifest={
+                    "domain_pack": {
+                        "knowledge_points": [],
+                        "misconceptions": [],
+                        "evidence_bindings": [],
+                    }
+                },
+                pack_sha256=f"{version_no:064x}",
+                status="published",
+                created_by=teacher_id,
+                published_by=teacher_id,
+            )
+            db.add(release)
+            await db.commit()
+            return release.id
+
+    def build_domain_index(domain_release_id: str) -> str:
+        response = client.post(
+            f"/api/v1/material-versions/{version_id}/embed?domain_release_id={domain_release_id}"
+        )
+        assert response.status_code == 202, response.text
+        job_id = response.json()["data"]["job_id"]
+        job = _wait_job(client, job_id)
+        assert job["status"] == "succeeded", job
+        return job_id
+
+    def publish_material(domain_release_id: str) -> dict:
+        response = client.post(
+            f"/api/v1/material-versions/{version_id}/publish?domain_release_id={domain_release_id}"
+        )
+        assert response.status_code == 200, response.text
+        return response.json()["data"]
+
+    old_domain_id = asyncio.run(seed_domain_release(1))
+    old_job_id = build_domain_index(old_domain_id)
+    old_snapshot = publish_material(old_domain_id)
+    old_snapshot_id = old_snapshot["publication_snapshot_id"]
+    release_response = client.post(
+        f"/api/v1/courses/{course_id}/releases",
+        json={
+            "name": "Branch parent pinned release",
+            "material_ids": [material_id],
+            "domain_release_id": old_domain_id,
+        },
+    )
+    assert release_response.status_code == 201, release_response.text
+    parent_release = release_response.json()["data"]
+    release_id = parent_release["id"]
+    pinned = parent_release["manifest"]["publication_snapshots"][0]
+    assert pinned["publication_snapshot_id"] == old_snapshot_id
+    assert pinned["index_job_id"] == old_job_id
+    publish_course_release_for_test(client, course_id, release_id)
+
+    async def seed_release_assignment() -> tuple[str, str]:
         async with session_factory() as db:
             course_class = CourseClass(
                 course_id=course_id,
@@ -332,42 +409,18 @@ def test_branch_inherits_release_binding_and_keeps_it_after_assignment_rotation(
             db.add(course_class)
             await db.flush()
             db.add(ClassMember(class_id=course_class.id, user_id=student_id))
-            release = CourseRelease(
-                course_id=course_id,
-                version_no=1,
-                name="Branch parent release",
-                status="published",
-                manifest={
-                    "materials": ["01ARZ3NDEKTSV4RRFFQ69G5FAV"],
-                    "material_version_ids": ["01ARZ3NDEKTSV4RRFFQ69G5FAW"],
-                    "publication_snapshots": [
-                        {
-                            "material_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-                            "material_version_id": "01ARZ3NDEKTSV4RRFFQ69G5FAW",
-                            "publication_snapshot_id": "01ARZ3NDEKTSV4RRFFQ69G5FAX",
-                            "index_job_id": "01ARZ3NDEKTSV4RRFFQ69G5FAY",
-                            "embedding_version": "hash-v1",
-                            "domain_release_id": "01ARZ3NDEKTSV4RRFFQ69G5FAZ",
-                        }
-                    ],
-                },
-                created_by=teacher_id,
-                published_by=teacher_id,
-            )
-            db.add(release)
-            await db.flush()
             assignment = CourseReleaseAssignment(
                 course_id=course_id,
                 class_id=course_class.id,
-                course_release_id=release.id,
+                course_release_id=release_id,
                 status="active",
                 assigned_by=teacher_id,
             )
             db.add(assignment)
             await db.commit()
-            return course_class.id, assignment.id, release.id
+            return course_class.id, assignment.id
 
-    class_id, assignment_id, release_id = asyncio.run(seed_release_assignment())
+    class_id, assignment_id = asyncio.run(seed_release_assignment())
     _login(client, "ms@uni.edu")
     parent = client.post(
         "/api/v1/chat/sessions",
@@ -402,6 +455,25 @@ def test_branch_inherits_release_binding_and_keeps_it_after_assignment_rotation(
     assert cross_user.json()["error"]["code"] == "CHAT_SESSION_NOT_FOUND"
     assert outsider_id != student_id
 
+    _login(client, "mt@uni.edu")
+    new_domain_id = asyncio.run(seed_domain_release(2, old_domain_id))
+    new_job_id = build_domain_index(new_domain_id)
+    new_snapshot = publish_material(new_domain_id)
+    assert new_snapshot["publication_snapshot_id"] != old_snapshot_id
+    assert new_snapshot["index_job_id"] == new_job_id
+    replacement_response = client.post(
+        f"/api/v1/courses/{course_id}/releases",
+        json={
+            "name": "Branch replacement pinned release",
+            "material_ids": [material_id],
+            "domain_release_id": new_domain_id,
+        },
+    )
+    assert replacement_response.status_code == 201, replacement_response.text
+    replacement_release = replacement_response.json()["data"]
+    replacement_release_id = replacement_release["id"]
+    publish_course_release_for_test(client, course_id, replacement_release_id)
+
     async def rotate_assignment() -> str:
         async with session_factory() as db:
             old_assignment = await db.get(CourseReleaseAssignment, assignment_id)
@@ -411,57 +483,131 @@ def test_branch_inherits_release_binding_and_keeps_it_after_assignment_rotation(
             old_assignment.closed_at = datetime.now(UTC)
             old_assignment.close_reason = "Branch child inheritance test"
             old_release.status = "deprecated"
-            replacement = CourseRelease(
-                course_id=course_id,
-                version_no=2,
-                name="Branch replacement release",
-                status="published",
-                manifest={
-                        "materials": ["01ARZ3NDEKTSV4RRFFQ69G5FAV"],
-                        "material_version_ids": ["01ARZ3NDEKTSV4RRFFQ69G5FAW"],
-                        "publication_snapshots": [
-                            {
-                                "material_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-                                "material_version_id": "01ARZ3NDEKTSV4RRFFQ69G5FAW",
-                                "publication_snapshot_id": "01ARZ3NDEKTSV4RRFFQ69G5FAX",
-                                "index_job_id": "01ARZ3NDEKTSV4RRFFQ69G5FAY",
-                                "embedding_version": "hash-v1",
-                                "domain_release_id": "01ARZ3NDEKTSV4RRFFQ69G5FAZ",
-                            }
-                        ],
-                },
-                created_by=teacher_id,
-                published_by=teacher_id,
-            )
-            db.add(replacement)
-            await db.flush()
             db.add(
                 CourseReleaseAssignment(
                     course_id=course_id,
                     class_id=class_id,
-                    course_release_id=replacement.id,
+                    course_release_id=replacement_release_id,
                     status="active",
                     assigned_by=teacher_id,
                     supersedes_id=assignment_id,
                 )
             )
             await db.commit()
-            return replacement.id
+            new_assignment = await db.scalar(
+                select(CourseReleaseAssignment).where(
+                    CourseReleaseAssignment.class_id == class_id,
+                    CourseReleaseAssignment.status == "active",
+                )
+            )
+            assert new_assignment is not None
+            return new_assignment.id
 
-    replacement_release_id = asyncio.run(rotate_assignment())
+    new_assignment_id = asyncio.run(rotate_assignment())
     _login(client, "ms@uni.edu")
     recovered = client.get(f"/api/v1/chat/sessions/{branch_id}")
     assert recovered.status_code == 200
     branch_turn = client.post(
         f"/api/v1/chat/sessions/{branch_id}/turns",
-        json={"content": "继续讨论", "client_turn_id": "branch-pin-child-turn"},
+        json={
+            "content": "Explain internal validity in experiments.",
+            "client_turn_id": "branch-pin-child-turn",
+        },
     )
     assert branch_turn.status_code == 200
     child_data = client.get(f"/api/v1/chat/sessions/{branch_id}").json()["data"]
     claim = child_data["turns"][-1]["verification"]["domain_claim"]
+    assert claim["status"] == "supported"
     assert claim["scope"]["course_release_assignment_id"] == assignment_id
     assert claim["scope"]["course_release_id"] == release_id
-    assert claim["refusal_reason"] == "release_domain_snapshot_missing"
+    assert claim["scope"]["domain_release_id"] == old_domain_id
+    assert claim["scope"]["publication_snapshots"] == [pinned]
+    assert claim["initial_evidence_refs"]
+
+    async def assert_child_claim_uses_exact_parent_pins() -> None:
+        async with session_factory() as db:
+            tickets = (
+                (
+                    await db.execute(
+                        select(EvidenceTicket).where(
+                            EvidenceTicket.id.in_(claim["initial_evidence_refs"])
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert tickets
+            assert all(ticket.pointer_id is not None for ticket in tickets)
+            pointer_ids = {ticket.pointer_id for ticket in tickets if ticket.pointer_id}
+            pointers = (
+                (
+                    await db.execute(
+                        select(EvidencePointer).where(EvidencePointer.id.in_(pointer_ids))
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert pointers
+            assert all(
+                pointer.material_version_id == version_id
+                and pointer.publication_snapshot_id == old_snapshot_id
+                and pointer.index_job_id == old_job_id
+                and pointer.domain_release_id == old_domain_id
+                for pointer in pointers
+            )
+            units = [await db.get(RetrievalUnit, pointer.retrieval_unit_id) for pointer in pointers]
+            assert units and all(unit is not None for unit in units)
+            assert all(
+                unit.material_version_id == version_id
+                and unit.domain_release_id == old_domain_id
+                and unit.build_version == f"v1-{old_job_id}"
+                and unit.status == "ready"
+                for unit in units
+            )
+            old_domain = await db.get(DomainRelease, old_domain_id)
+            old_snapshot_row = await db.get(PublicationSnapshot, old_snapshot_id)
+            old_job = await db.get(Job, old_job_id)
+            new_snapshot_row = await db.get(
+                PublicationSnapshot, new_snapshot["publication_snapshot_id"]
+            )
+            new_job = await db.get(Job, new_job_id)
+            parent_row = await db.get(ChatSession, parent_id)
+            child_row = await db.get(ChatSession, branch_id)
+            assert old_domain is not None and old_domain.status == "deprecated"
+            assert old_snapshot_row is not None
+            assert (
+                old_snapshot_row.material_id,
+                old_snapshot_row.material_version_id,
+                old_snapshot_row.index_job_id,
+                old_snapshot_row.domain_release_id,
+            ) == (material_id, version_id, old_job_id, old_domain_id)
+            assert old_snapshot_row.superseded_at is not None
+            assert old_job is not None and old_job.status == "succeeded"
+            assert old_job.kind == "material_embed"
+            assert old_job.payload["material_version_id"] == version_id
+            assert old_job.payload["domain_release_id"] == old_domain_id
+            assert new_snapshot_row is not None
+            assert new_snapshot_row.id != old_snapshot_id
+            assert new_snapshot_row.index_job_id == new_job_id
+            assert new_snapshot_row.domain_release_id == new_domain_id
+            assert new_job is not None and new_job.status == "succeeded"
+            assert new_job.payload["material_version_id"] == version_id
+            assert new_job.payload["domain_release_id"] == new_domain_id
+            assert parent_row is not None and child_row is not None
+            assert (
+                parent_row.course_release_assignment_id,
+                parent_row.course_release_id,
+            ) == (assignment_id, release_id)
+            assert (
+                child_row.course_release_assignment_id,
+                child_row.course_release_id,
+            ) == (assignment_id, release_id)
+            assert replacement_release_id != release_id
+            assert new_assignment_id != assignment_id
+
+    asyncio.run(assert_child_claim_uses_exact_parent_pins())
 
     async def read_child_binding() -> tuple[str | None, str | None]:
         async with session_factory() as db:
