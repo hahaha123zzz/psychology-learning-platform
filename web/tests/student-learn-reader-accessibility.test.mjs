@@ -44,5 +44,12 @@ test("Mock browser harness uses synthetic Reader data and forbids Tutor or busin
   assert.match(browser, /request\.method\(\) !== "GET"/);
   assert.match(browser, /assert\.deepEqual\(businessWrites, \[\],/);
   assert.match(browser, /page\.keyboard\.press\("Escape"\)/);
-  assert.match(browser, /viewport: \{ width: 360/);
+  assert.match(browser, /viewportWidths = \[360, 393, 768\]/);
+  assert.match(browser, /drawerContentWidth <= geometry\.drawerClientWidth/);
+  assert.match(browser, /page\.keyboard\.press\("Shift\+Tab"\)/);
+  assert.match(browser, /page\.keyboard\.press\("Tab"\)/);
+  assert.match(browser, /page\.reload\(\)/);
+  assert.match(browser, /Object\.keys\(JSON\.parse\(stored\)\)\.sort\(\), \["course_id", "evidence_pointer_id"\]/);
+  assert.match(browser, /reopening performs a fresh authorized pointer GET/);
+  assert.match(browser, /changing courses clears the previous pointer context/);
 });

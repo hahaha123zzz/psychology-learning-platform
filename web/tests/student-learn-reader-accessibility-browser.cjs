@@ -5,14 +5,18 @@ const { chromium } = require("playwright");
 const appOrigin = process.env.UI013_APP_ORIGIN ?? "http://127.0.0.1:3001";
 const browserPath = process.env.UI013_CHROME_PATH;
 const courseId = "01M00000000000000000000101";
+const otherCourseId = "01M00000000000000000000109";
 const sessionId = "01M00000000000000000000102";
+const otherSessionId = "01M00000000000000000000110";
 const pointerId = "01M00000000000000000000103";
+const selectionStorageKey = "student-learn-selection-context";
+const viewportWidths = [360, 393, 768];
 const envelope = (data) => ({ data, meta: { request_id: "ui013-mock", server_time: "2026-10-06T00:00:00Z" } });
 const businessWrites = [];
 
 async function main() {
   const browser = await chromium.launch({ headless: true, ...(browserPath ? { executablePath: browserPath } : {}) });
-  const page = await browser.newPage({ viewport: { width: 360, height: 800 } });
+  const page = await browser.newPage({ viewport: { width: viewportWidths[0], height: 800 } });
   const pageErrors = [];
   let pointerReads = 0;
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -33,16 +37,17 @@ async function main() {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(envelope({})) });
     } else if (path === "/api/v1/me" && request.method() === "GET") {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(envelope({ display_name: "Synthetic learner", platform_roles: [] })) });
-    } else if (path === `/api/v1/courses/${courseId}/materials` && request.method() === "GET") {
+    } else if ((path === `/api/v1/courses/${courseId}/materials` || path === `/api/v1/courses/${otherCourseId}/materials`) && request.method() === "GET") {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(envelope([])) });
     } else if (path === "/api/v1/student/intervention-runs" && request.method() === "GET") {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(envelope([])) });
-    } else if (path === `/api/v1/chat/sessions/${sessionId}` && request.method() === "GET") {
+    } else if ((path === `/api/v1/chat/sessions/${sessionId}` || path === `/api/v1/chat/sessions/${otherSessionId}`) && request.method() === "GET") {
+      const isCurrentCourse = path.endsWith(sessionId);
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(envelope({
-        id: sessionId,
-        course_id: courseId,
+        id: isCurrentCourse ? sessionId : otherSessionId,
+        course_id: isCurrentCourse ? courseId : otherCourseId,
         mode: "course_qa",
-        turns: [{ role: "tutor", content: "Synthetic saved answer.", citations: [{ evidence_pointer_id: pointerId, label: "Synthetic saved citation" }] }],
+        turns: isCurrentCourse ? [{ role: "tutor", content: "Synthetic saved answer.", citations: [{ evidence_pointer_id: pointerId, label: "Synthetic saved citation" }] }] : [],
       })) });
     } else if (path === `/api/v1/evidence-pointers/${pointerId}` && request.method() === "GET") {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(envelope({
@@ -73,48 +78,75 @@ async function main() {
     await page.getByLabel("邮箱").fill("synthetic@student.invalid");
     await page.getByLabel("密码").fill("synthetic-only");
     await page.getByRole("button", { name: "登录", exact: true }).click();
-    await page.waitForURL((url) => url.pathname === "/student", { timeout: 15_000 });
+    try {
+      await page.waitForURL((url) => url.pathname === "/student", { timeout: 15_000 });
+    } catch (error) {
+      console.error(`Mock login did not reach /student; current URL=${page.url()}, visible error=${await page.locator(".form-error").textContent().catch(() => "none")}`);
+      throw error;
+    }
 
-    await page.goto(`${appOrigin}/student/courses/${courseId}/learn?session_id=${sessionId}`);
-    const citationTrigger = page.getByRole("button", { name: "打开引用", exact: true });
-    await citationTrigger.waitFor({ state: "visible", timeout: 15_000 });
-    await citationTrigger.click();
     const drawer = page.getByRole("dialog", { name: "教材来源快照" });
-    await drawer.waitFor({ state: "visible" });
-    assert.equal(await drawer.getByText("Synthetic pointer excerpt", { exact: true }).count(), 1);
-    const narrowDrawer = await drawer.evaluate((node) => ({ width: node.getBoundingClientRect().width, viewport: window.innerWidth, document: document.documentElement.scrollWidth }));
-    assert.ok(narrowDrawer.width <= narrowDrawer.viewport && narrowDrawer.document <= narrowDrawer.viewport,
-      `360px Reader stays within the viewport: ${JSON.stringify(narrowDrawer)}`);
-    assert.equal(await drawer.getByRole("button", { name: "关闭上下文面板", exact: true }).evaluate((node) => node === document.activeElement), true,
-      "focus enters Reader at its close control");
-    await page.keyboard.press("Shift+Tab");
-    assert.equal(await drawer.getByRole("button", { name: "关闭上下文面板", exact: true }).evaluate((node) => node === document.activeElement), true,
-      "reverse traversal remains within the modal when close is the only control");
-    await page.keyboard.press("Tab");
-    assert.equal(await drawer.getByRole("button", { name: "关闭上下文面板", exact: true }).evaluate((node) => node === document.activeElement), true,
-      "forward traversal remains within the modal when close is the only control");
-    await page.keyboard.press("Escape");
-    await drawer.waitFor({ state: "hidden" });
-    assert.equal(await citationTrigger.evaluate((node) => node === document.activeElement), true,
-      "Reader close returns keyboard focus to the citation trigger in Learn");
-    await page.getByText("已将一个固定教材来源带回当前学习上下文。", { exact: true }).waitFor({ state: "visible" });
-    const selectionTrigger = page.getByRole("button", { name: "重新打开所选来源", exact: true });
-    await selectionTrigger.click();
-    await drawer.waitFor({ state: "visible" });
-    assert.equal(pointerReads, 2, "the selected context retains only its pointer ID and Reader GET reauthorizes it on reopening");
-    await page.keyboard.press("Escape");
-    await drawer.waitFor({ state: "hidden" });
-    assert.equal(await page.locator(".learn-turn").count(), 1, "return handoff creates no Tutor turn");
-    assert.deepEqual(businessWrites, [], "mocked return-to-Learn flow performs no business write");
+    for (const width of viewportWidths) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto(`${appOrigin}/student/courses/${courseId}/learn?session_id=${sessionId}`);
+      const citationTrigger = page.getByRole("button", { name: "打开引用", exact: true });
+      await citationTrigger.waitFor({ state: "visible", timeout: 15_000 });
+      await citationTrigger.click();
+      await drawer.waitFor({ state: "visible" });
+      assert.equal(await drawer.getByText("Synthetic pointer excerpt", { exact: true }).count(), 1);
+      const geometry = await drawer.evaluate((node) => ({
+        drawerWidth: node.getBoundingClientRect().width,
+        drawerContentWidth: node.scrollWidth,
+        drawerClientWidth: node.clientWidth,
+        viewport: window.innerWidth,
+        document: document.documentElement.scrollWidth,
+      }));
+      assert.ok(geometry.drawerWidth <= geometry.viewport && geometry.drawerContentWidth <= geometry.drawerClientWidth && geometry.document <= geometry.viewport,
+        `${width}px Reader has no horizontal overflow: ${JSON.stringify(geometry)}`);
+      const closeButton = drawer.getByRole("button", { name: "关闭上下文面板", exact: true });
+      assert.equal(await closeButton.evaluate((node) => node === document.activeElement), true,
+        `${width}px focus enters Reader at its close control`);
+      await page.keyboard.press("Shift+Tab");
+      assert.equal(await closeButton.evaluate((node) => node === document.activeElement), true,
+        `${width}px reverse traversal remains in the dialog`);
+      await page.keyboard.press("Tab");
+      assert.equal(await closeButton.evaluate((node) => node === document.activeElement), true,
+        `${width}px forward traversal remains in the dialog`);
+      await page.keyboard.press("Escape");
+      await drawer.waitFor({ state: "hidden" });
+      assert.equal(await citationTrigger.evaluate((node) => node === document.activeElement), true,
+        `${width}px close returns focus to the citation trigger`);
+      await page.getByText("已将一个固定教材来源带回当前学习上下文。", { exact: true }).waitFor({ state: "visible" });
 
-    const narrow = await page.evaluate(() => ({
-      viewportWidth: window.innerWidth,
-      documentWidth: document.documentElement.scrollWidth,
-      pageWidth: document.querySelector(".student-learn-page")?.scrollWidth,
-    }));
-    assert.ok(narrow.documentWidth <= narrow.viewportWidth, `no horizontal document overflow: ${JSON.stringify(narrow)}`);
+      const stored = await page.evaluate((key) => sessionStorage.getItem(key), selectionStorageKey);
+      assert.equal(stored, JSON.stringify({ course_id: courseId, evidence_pointer_id: pointerId }),
+        `${width}px storage contains only the route course and persistent pointer ID`);
+      assert.deepEqual(Object.keys(JSON.parse(stored)).sort(), ["course_id", "evidence_pointer_id"]);
+      const readsBeforeRefresh = pointerReads;
+      await page.reload();
+      await page.getByText("已将一个固定教材来源带回当前学习上下文。", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(await page.evaluate((key) => sessionStorage.getItem(key), selectionStorageKey), stored,
+        `${width}px refresh retains only the ID payload`);
+      assert.equal(pointerReads, readsBeforeRefresh, `${width}px refresh does not cache or eagerly reload pointer metadata`);
+
+      await page.getByRole("button", { name: "重新打开所选来源", exact: true }).click();
+      await drawer.waitFor({ state: "visible" });
+      await drawer.getByText("Synthetic pointer excerpt", { exact: true }).waitFor({ state: "visible" });
+      assert.equal(pointerReads, readsBeforeRefresh + 1, `${width}px reopening performs a fresh authorized pointer GET`);
+      await page.keyboard.press("Escape");
+      await drawer.waitFor({ state: "hidden" });
+      assert.equal(await page.locator(".learn-turn").count(), 1, `${width}px return handoff creates no Tutor turn`);
+
+      await page.goto(`${appOrigin}/student/courses/${otherCourseId}/learn?session_id=${otherSessionId}`);
+      await page.getByRole("heading", { name: "学习助手", exact: true }).waitFor({ state: "visible" });
+      assert.equal(await page.evaluate((key) => sessionStorage.getItem(key), selectionStorageKey), null,
+        `${width}px changing courses clears the previous pointer context`);
+      assert.equal(await page.getByText("已将一个固定教材来源带回当前学习上下文。", { exact: true }).count(), 0,
+        `${width}px another course never displays the previous pointer context`);
+    }
+    assert.deepEqual(businessWrites, [], "mocked Reader/refresh/course-switch flow performs no business write");
     assert.deepEqual(pageErrors, []);
-    console.log("PASS UI-013 mocked browser harness: Reader re-fetch, Escape/Shift+Tab, focus return, ID-only SelectionContext message, 360px no-overflow, zero business writes");
+    console.log(`PASS UI-017 mocked browser harness: ${viewportWidths.join("/")}px Reader geometry and keyboard, ID-only refresh/re-GET, course isolation, zero business writes`);
   } finally {
     await browser.close();
   }
