@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import distinct, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
@@ -10,6 +10,7 @@ from app.db.models import (
     AttemptAnswer,
     CaseSession,
     LearningEvent,
+    LearningEvidence,
     LearningQualification,
     LearningSession,
     MiniLabSession,
@@ -19,6 +20,13 @@ from app.db.models import (
 from app.modules.memory import service as memory_service
 
 ALGORITHM_VERSION = "qualification-v1"
+
+
+def tutor_response_can_recompute_mastery(
+    *, correct: bool, current_independent: bool, distinct_attempt_count: int
+) -> bool:
+    """单次错误只保留证据；正确回合或跨回合聚合后才重算掌握状态。"""
+    return correct or (current_independent and distinct_attempt_count >= 2)
 
 
 async def qualify_event(
@@ -138,6 +146,8 @@ async def _qualify_tutor_response(
     context = f"material:{session.material_version_id}"
     if session.chapter_object_id:
         context = f"{context}:chapter:{session.chapter_object_id}"
+    hints_used = int(event.payload.get("hint_level") or 0)
+    independence_status = "independent" if hints_used == 0 else "supported"
     evidence_ids = await memory_service.record_evidence(
         db,
         user_id=event.user_id,
@@ -146,17 +156,32 @@ async def _qualify_tutor_response(
         question_version_id=session.id,
         attempt_id=session.id,
         source_type="practice",
-        hints_used=int(event.payload.get("hint_level") or 0),
+        hints_used=hints_used,
         correct=correct,
         dimension="apply" if state == "practice" else "understand",
-        independence_status=(
-            "independent" if int(event.payload.get("hint_level") or 0) == 0 else "supported"
-        ),
+        independence_status=independence_status,
         context_key=context,
     )
-    await memory_service.recompute_mastery(
-        db, user_id=event.user_id, course_id=event.course_id
+    attempt_ids = await db.scalars(
+        select(distinct(LearningEvidence.attempt_id)).where(
+            LearningEvidence.user_id == event.user_id,
+            LearningEvidence.course_id == event.course_id,
+            LearningEvidence.knowledge_point
+            == f"tutor:{session.chapter_object_id or session.material_version_id}",
+            LearningEvidence.source_type == "practice",
+            LearningEvidence.quality_status == "valid",
+            LearningEvidence.attempt_id.is_not(None),
+        )
     )
+    distinct_attempt_count = len(attempt_ids.all())
+    if tutor_response_can_recompute_mastery(
+        correct=correct,
+        current_independent=independence_status == "independent",
+        distinct_attempt_count=distinct_attempt_count,
+    ):
+        await memory_service.recompute_mastery(
+            db, user_id=event.user_id, course_id=event.course_id
+        )
     return evidence_ids, "authoritative_tutor_state_machine"
 
 

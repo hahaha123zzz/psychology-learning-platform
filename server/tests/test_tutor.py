@@ -1745,6 +1745,116 @@ def test_learning_microcycle_repairs_misconceptions_and_uses_grounded_example_fa
     assert "研究者控制参与者" not in example["message"]
 
 
+def test_single_incorrect_guided_answer_is_evidence_without_mastery_or_profile_change(
+    client,
+) -> None:
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.db.models import (
+        LearningEvent,
+        LearningEvidence,
+        LearningQualification,
+        MasteryState,
+        MemoryItem,
+    )
+    from app.db.session import session_factory
+    from app.modules.learning_events.qualification import qualify_pending_events
+
+    course_id, student_id, version_id = _prepare(client, publish=True)
+    _login(client, "ms@uni.edu")
+    learning = client.post(
+        "/api/v1/learning-sessions",
+        json={"course_id": course_id, "material_version_id": version_id},
+    ).json()["data"]
+
+    def respond(content: str) -> dict:
+        nonlocal learning
+        response = client.post(
+            f"/api/v1/student/learning/tasks/{learning['id']}/respond",
+            json={"state_version": learning["state_version"], "content": content},
+        )
+        assert response.status_code == 200, response.text
+        learning = response.json()["data"]
+        return learning
+
+    assert respond("继续")["state"] == "teach"
+    assert respond("我不知道")["state"] == "teach"
+    assert respond("Independent variable control improves internal validity in experiments.")[
+        "state"
+    ] == "check"
+    assert respond("我不知道")["state"] == "hint"
+    assert respond("我不知道")["state"] == "practice"
+    wrong_answer = respond("我不知道")
+    assert wrong_answer["state"] == "summary"
+    assert wrong_answer["correct"] is False
+
+    async def qualify_and_read() -> tuple[dict, list, list, list]:
+        async with session_factory() as db:
+            counts = await qualify_pending_events(db, limit=100)
+            event = await db.scalar(
+                select(LearningEvent).where(
+                    LearningEvent.event_key
+                    == f"learning-session-response:{learning['id']}:{wrong_answer['state_version']}"
+                )
+            )
+            assert event is not None
+            qualification = await db.scalar(
+                select(LearningQualification).where(
+                    LearningQualification.event_id == event.id
+                )
+            )
+            assert qualification is not None
+            evidences = list(
+                (
+                    await db.scalars(
+                        select(LearningEvidence).where(
+                            LearningEvidence.id.in_(qualification.evidence_ids)
+                        )
+                    )
+                ).all()
+            )
+            mastery = list(
+                (
+                    await db.scalars(
+                        select(MasteryState).where(
+                            MasteryState.user_id == student_id,
+                            MasteryState.course_id == course_id,
+                        )
+                    )
+                ).all()
+            )
+            memory = list(
+                (
+                    await db.scalars(
+                        select(MemoryItem).where(
+                            MemoryItem.user_id == student_id,
+                            MemoryItem.course_id == course_id,
+                            MemoryItem.kind == "weakness",
+                        )
+                    )
+                ).all()
+            )
+            await db.commit()
+            return (
+                {"event": event, "qualification": qualification, "counts": counts},
+                evidences,
+                mastery,
+                memory,
+            )
+
+    records, evidences, mastery, memory = asyncio.run(qualify_and_read())
+    assert records["qualification"].status == "qualified"
+    assert records["qualification"].reason == "authoritative_tutor_state_machine"
+    assert len(evidences) == 1
+    assert evidences[0].attempt_id == learning["id"]
+    assert evidences[0].source_type == "practice"
+    assert evidences[0].correct is False
+    assert mastery == []
+    assert memory == []
+
+
 def test_active_formal_assessment_fails_closed_for_learning_response(client) -> None:
     import asyncio
     from datetime import UTC, datetime, timedelta
@@ -1778,6 +1888,16 @@ def test_active_formal_assessment_fails_closed_for_learning_response(client) -> 
 
     asyncio.run(mark_as_formal())
     _login(client, "ms@uni.edu")
+    preferences = client.get("/api/v1/me/preferences").json()["data"]
+    preferred = client.patch(
+        "/api/v1/me/preferences",
+        json={
+            "version": preferences["version"],
+            "response_length": "DETAILED",
+            "example_order": "EXAMPLE_FIRST",
+        },
+    )
+    assert preferred.status_code == 200, preferred.text
     attempt = client.post(f"/api/v1/assessments/{assessment_id}/attempts")
     assert attempt.status_code == 201, attempt.text
 

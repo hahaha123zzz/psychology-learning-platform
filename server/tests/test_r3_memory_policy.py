@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import select
 
+from app.modules.learning_events.qualification import tutor_response_can_recompute_mastery
 from app.modules.memory.service import (
     effective_memory_conditions,
     memory_items_detail,
@@ -319,6 +320,21 @@ def test_effective_policy_only_tightens_and_records_sources() -> None:
         "user_preference",
     ]
     assert len(policy["hash"]) == 64
+
+
+def test_single_incorrect_tutor_evidence_does_not_recompute_mastery() -> None:
+    assert not tutor_response_can_recompute_mastery(
+        correct=False, current_independent=True, distinct_attempt_count=1
+    )
+    assert tutor_response_can_recompute_mastery(
+        correct=False, current_independent=True, distinct_attempt_count=2
+    )
+    assert not tutor_response_can_recompute_mastery(
+        correct=False, current_independent=False, distinct_attempt_count=2
+    )
+    assert tutor_response_can_recompute_mastery(
+        correct=True, current_independent=False, distinct_attempt_count=1
+    )
 
 
 def test_unknown_policy_fails_closed() -> None:
