@@ -8,7 +8,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.core.outbox import append_event
-from app.db.models import AuditLog, Course, CourseMember, IdempotencyRecord, User
+from app.db.models import (
+    AuditLog,
+    ClassMember,
+    Course,
+    CourseClass,
+    CourseMember,
+    CourseRelease,
+    CourseReleaseAssignment,
+    IdempotencyRecord,
+    User,
+)
 from app.modules.courses.schemas import CourseOut
 
 _PACK_LIST_FIELDS: dict[str, tuple[str, ...]] = {
@@ -68,6 +78,51 @@ _DOMAIN_RELATION_ENDPOINT_TYPES: dict[str, tuple[str, str]] = {
     # 课程设计目前只定义了知识点先修关系；其他关系类型需先进入契约。
     "prerequisite": ("knowledge_points", "knowledge_points"),
 }
+
+
+async def resolve_active_student_course_release(
+    db: AsyncSession, *, user_id: str, course_id: str
+) -> tuple[CourseReleaseAssignment, CourseRelease] | None:
+    """解析学生在课程中的唯一活动 Release assignment。"""
+    rows = (
+        await db.execute(
+            select(CourseReleaseAssignment, CourseRelease)
+            .join(CourseClass, CourseClass.id == CourseReleaseAssignment.class_id)
+            .join(ClassMember, ClassMember.class_id == CourseClass.id)
+            .outerjoin(
+                CourseRelease, CourseRelease.id == CourseReleaseAssignment.course_release_id
+            )
+            .where(
+                CourseReleaseAssignment.course_id == course_id,
+                CourseReleaseAssignment.status == "active",
+                CourseClass.course_id == course_id,
+                CourseClass.status == "active",
+                ClassMember.user_id == user_id,
+                ClassMember.status == "active",
+            )
+            .order_by(CourseReleaseAssignment.id.asc())
+        )
+    ).all()
+    if not rows:
+        return None
+    if len(rows) != 1:
+        raise ApiError(
+            status_code=409,
+            code="COURSE_RELEASE_ASSIGNMENT_AMBIGUOUS",
+            message="当前学生属于多个已发布课程版本班级，请联系教师确认班级归属。",
+        )
+    assignment, release = rows[0]
+    if (
+        release is None
+        or release.course_id != course_id
+        or release.status not in {"published", "deprecated"}
+    ):
+        raise ApiError(
+            status_code=409,
+            code="COURSE_RELEASE_ASSIGNMENT_INVALID",
+            message="当前班级课程版本不可用，请联系教师检查课程指派。",
+        )
+    return assignment, release
 
 
 def _domain_graph_issues(

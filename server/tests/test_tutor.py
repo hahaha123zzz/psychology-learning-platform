@@ -2073,6 +2073,27 @@ def test_learning_session_pins_unique_course_release_assignment(client) -> None:
 
     asyncio.run(reject_mismatched_material())
 
+    async def reject_invalid_release_without_legacy_fallback() -> None:
+        from app.core.errors import ApiError
+        from app.db.models import CourseRelease
+        from app.modules.courses.service import resolve_active_student_course_release
+
+        async with session_factory() as db:
+            release = await db.get(CourseRelease, release_id)
+            assert release is not None
+            release.status = "draft"
+            await db.flush()
+            with pytest.raises(ApiError) as exc_info:
+                await resolve_active_student_course_release(
+                    db, user_id=student_id, course_id=course_id
+                )
+            assert exc_info.value.status_code == 409
+            assert exc_info.value.code == "COURSE_RELEASE_ASSIGNMENT_INVALID"
+            release.status = "published"
+            await db.commit()
+
+    asyncio.run(reject_invalid_release_without_legacy_fallback())
+
     from app.modules.memory.service import record_evidence
 
     async def record_and_load_evidence() -> tuple[str | None, str | None]:

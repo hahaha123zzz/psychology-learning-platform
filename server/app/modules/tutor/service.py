@@ -36,6 +36,7 @@ from app.db.models import (
     PublicationSnapshot,
     RetrievalUnit,
 )
+from app.modules.courses import service as courses_service
 from app.modules.knowledge import service as knowledge_service
 from app.modules.knowledge.context import GenerationUnit, assemble_generation_units
 from app.modules.knowledge.domain import classify_claim, verify_claim_with_bounded_retrieval
@@ -412,45 +413,12 @@ async def resolve_learning_release_binding(
     material_version_id: str,
 ) -> tuple[str | None, str | None]:
     """为新学习会话解析唯一活动 assignment 与请求版本的精确发布 pin。"""
-    rows = (
-        await db.execute(
-            select(CourseReleaseAssignment.id, CourseReleaseAssignment.course_release_id)
-            .join(ClassMember, ClassMember.class_id == CourseReleaseAssignment.class_id)
-            .join(CourseClass, CourseClass.id == CourseReleaseAssignment.class_id)
-            .where(
-                CourseReleaseAssignment.course_id == course_id,
-                CourseReleaseAssignment.status == "active",
-                ClassMember.user_id == user_id,
-                ClassMember.status == "active",
-                CourseClass.course_id == course_id,
-                CourseClass.status == "active",
-            )
-            .order_by(CourseReleaseAssignment.id.asc())
-        )
-    ).all()
-    if not rows:
-        return None, None
-    if len(rows) != 1:
-        raise ApiError(
-            status_code=409,
-            code="COURSE_RELEASE_ASSIGNMENT_AMBIGUOUS",
-            message="当前学生属于多个已发布课程版本班级，请联系教师确认班级归属。",
-        )
-
-    assignment_id, release_id = rows[0]
-    release = await db.scalar(
-        select(CourseRelease).where(
-            CourseRelease.id == release_id,
-            CourseRelease.course_id == course_id,
-            CourseRelease.status.in_(("published", "deprecated")),
-        )
+    binding = await courses_service.resolve_active_student_course_release(
+        db, user_id=user_id, course_id=course_id
     )
-    if release is None:
-        raise ApiError(
-            status_code=409,
-            code="COURSE_RELEASE_ASSIGNMENT_INVALID",
-            message="当前班级课程版本不可用，请联系教师检查课程指派。",
-        )
+    if binding is None:
+        return None, None
+    assignment, release = binding
     manifest = release.manifest if isinstance(release.manifest, dict) else {}
     materials = manifest.get("materials")
     material_version_ids = manifest.get("material_version_ids")
@@ -549,41 +517,20 @@ async def resolve_learning_release_binding(
             code="MATERIAL_VERSION_NOT_IN_ASSIGNED_RELEASE",
             message="资料不存在或不属于当前班级课程版本。",
         )
-    return assignment_id, release.id
+    return assignment.id, release.id
 
 
 async def resolve_chat_session_release_binding(
     db: AsyncSession, *, user_id: str, course_id: str
 ) -> tuple[str | None, str | None]:
     """为学生新 Tutor 会话解析唯一的活动班级与已发布课程版本。"""
-    rows = (
-        await db.execute(
-            select(CourseReleaseAssignment.id, CourseReleaseAssignment.course_release_id)
-            .join(ClassMember, ClassMember.class_id == CourseReleaseAssignment.class_id)
-            .join(CourseClass, CourseClass.id == CourseReleaseAssignment.class_id)
-            .join(CourseRelease, CourseRelease.id == CourseReleaseAssignment.course_release_id)
-            .where(
-                CourseReleaseAssignment.course_id == course_id,
-                CourseReleaseAssignment.status == "active",
-                ClassMember.user_id == user_id,
-                ClassMember.status == "active",
-                CourseClass.course_id == course_id,
-                CourseClass.status == "active",
-                CourseRelease.course_id == course_id,
-                CourseRelease.status == "published",
-            )
-            .order_by(CourseReleaseAssignment.id.asc())
-        )
-    ).all()
-    if not rows:
+    binding = await courses_service.resolve_active_student_course_release(
+        db, user_id=user_id, course_id=course_id
+    )
+    if binding is None:
         return None, None
-    if len(rows) != 1:
-        raise ApiError(
-            status_code=409,
-            code="COURSE_RELEASE_ASSIGNMENT_AMBIGUOUS",
-            message="当前学生属于多个已发布课程版本班级，请联系教师确认班级归属。",
-        )
-    return rows[0][0], rows[0][1]
+    assignment, release = binding
+    return assignment.id, release.id
 
 
 async def authorize_chat_session_release_scope(
