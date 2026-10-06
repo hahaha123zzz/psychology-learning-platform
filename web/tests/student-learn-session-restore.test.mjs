@@ -35,7 +35,7 @@ test("Learn fails closed on invalid session restore and does not auto-create a r
   assert.match(restoreEffect, /setRestoreError\(\{ id: requestedSessionId, courseId,/);
   assert.match(source, /const restoreBlocked = sessionLoading \|\| Boolean\(restoreErrorForRoute\)/);
   assert.match(source, /const visibleTurns = restoreRequested && !sessionMatchesRoute \? \[\] : turns/);
-  assert.match(source, /const activeSessionForRoute = restoreRequested \? \(sessionMatchesRoute \? sessionId : ""\) : sessionId/);
+  assert.match(source, /const activeSessionForRoute = restoreRequested\s*\? \(sessionMatchesRoute \? sessionId : ""\)\s*: loadedSession\?\.id === sessionId && loadedSession\.courseId === courseId\s*\? sessionId\s*: ""/);
   assert.match(source, /disabled=\{!materials\.length \|\| sending \|\| restoreBlocked\}/);
   const send = source.slice(source.indexOf("async function send"), source.indexOf("return <div className=\"student-learn-page\""));
   assert.match(send, /if \(!activeSession\)\s*\{\s*const created = await api<\{ id: string \}>\("\/chat\/sessions"/);

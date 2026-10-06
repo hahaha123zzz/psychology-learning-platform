@@ -43,7 +43,11 @@ function StudentLearnContent() {
   const sessionLoading = Boolean(restoreRequested && requestedSessionId && !sessionMatchesRoute && !restoreErrorForRoute);
   const restoreBlocked = sessionLoading || Boolean(restoreErrorForRoute);
   const visibleTurns = restoreRequested && !sessionMatchesRoute ? [] : turns;
-  const activeSessionForRoute = restoreRequested ? (sessionMatchesRoute ? sessionId : "") : sessionId;
+  const activeSessionForRoute = restoreRequested
+    ? (sessionMatchesRoute ? sessionId : "")
+    : loadedSession?.id === sessionId && loadedSession.courseId === courseId
+      ? sessionId
+      : "";
   const sessionRestoreRequested = useRef(false);
   const loadedSessionRef = useRef<{ id: string; courseId: string } | null>(null);
   const pendingTurn = useRef<{ sessionId: string; content: string; clientTurnId: string } | null>(null);
