@@ -4,9 +4,9 @@ from tests.test_materials import _login, _setup_course, _upload
 from tests.test_search import TWO_CHAPTER_PDF
 
 
-def _prepare(client, *, publish=True):
+def _prepare(client, *, publish=True, content=TWO_CHAPTER_PDF):
     course_id, student_id = _setup_course(client)
-    upload = _upload(client, course_id, content=TWO_CHAPTER_PDF)
+    upload = _upload(client, course_id, content=content)
     version_id = upload.json()["data"]["version_id"]
     for kind in ("parse", "embed"):
         response = client.post(f"/api/v1/material-versions/{version_id}/{kind}")
@@ -918,6 +918,112 @@ def test_student_chat_session_rejects_multiple_active_class_assignments(client) 
     )
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "COURSE_RELEASE_ASSIGNMENT_AMBIGUOUS"
+
+
+def test_saved_presentation_preferences_shape_tutor_answer_only(client, monkeypatch) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    from sqlalchemy import func, select
+
+    from app.db.models import LearningEvidence, MasteryState
+    from app.db.session import session_factory
+    from app.modules.tutor import service as tutor_service
+    from tests.conftest import make_pdf
+
+    synthetic_pdf = make_pdf(
+        [
+            [
+                "Chapter Attention",
+                "Attention control selects relevant signals.",
+                "For example, attention control selects a target voice.",
+                "Attention control reduces distraction from irrelevant signals.",
+            ]
+        ]
+    )
+    course_id, student_id, _ = _prepare(
+        client, publish=True, content=synthetic_pdf
+    )
+    _login(client, "ms@uni.edu")
+    monkeypatch.setattr(
+        tutor_service,
+        "get_settings",
+        lambda: SimpleNamespace(llm_provider="internal"),
+    )
+    session = client.post(
+        "/api/v1/chat/sessions",
+        json={"course_id": course_id, "mode": "course_qa"},
+    ).json()["data"]
+    endpoint = f"/api/v1/chat/sessions/{session['id']}/turns"
+
+    async def learning_state_counts() -> tuple[int, int]:
+        async with session_factory() as db:
+            evidence_count = await db.scalar(
+                select(func.count()).select_from(LearningEvidence).where(
+                    LearningEvidence.user_id == student_id,
+                    LearningEvidence.course_id == course_id,
+                )
+            )
+            mastery_count = await db.scalar(
+                select(func.count()).select_from(MasteryState).where(
+                    MasteryState.user_id == student_id,
+                    MasteryState.course_id == course_id,
+                )
+            )
+            return evidence_count or 0, mastery_count or 0
+
+    state_before = asyncio.run(learning_state_counts())
+    preferences = client.get("/api/v1/me/preferences").json()["data"]
+    concise_preferences = client.patch(
+        "/api/v1/me/preferences",
+        json={
+            "version": preferences["version"],
+            "response_length": "CONCISE",
+            "example_order": "EXAMPLE_FIRST",
+        },
+    )
+    assert concise_preferences.status_code == 200, concise_preferences.text
+    assert concise_preferences.json()["data"]["preferences"]["response_length"] == "CONCISE"
+    concise_turn = client.post(
+        endpoint,
+        json={"content": "attention control", "client_turn_id": "prefs-concise-0001"},
+    )
+    assert concise_turn.status_code == 200, concise_turn.text
+    concise_events = _parse_sse_events(concise_turn.content)
+    concise_answer = "".join(
+        data["text"] for name, data in concise_events if name == "delta"
+    )
+    assert concise_answer.startswith("根据教材：For example,")
+    assert "selects relevant signals" not in concise_answer
+    assert "reduces distraction" not in concise_answer
+    assert next(data for name, data in concise_events if name == "done")["saved"] is True
+
+    current_preferences = concise_preferences.json()["data"]
+    detailed_preferences = client.patch(
+        "/api/v1/me/preferences",
+        json={
+            "version": current_preferences["version"],
+            "response_length": "DETAILED",
+            "example_order": "CONCEPT_FIRST",
+        },
+    )
+    assert detailed_preferences.status_code == 200, detailed_preferences.text
+    detailed_turn = client.post(
+        endpoint,
+        json={"content": "attention control", "client_turn_id": "prefs-detailed-0001"},
+    )
+    assert detailed_turn.status_code == 200, detailed_turn.text
+    detailed_events = _parse_sse_events(detailed_turn.content)
+    detailed_answer = "".join(
+        data["text"] for name, data in detailed_events if name == "delta"
+    )
+    concept_position = detailed_answer.index("Attention control selects relevant signals")
+    example_position = detailed_answer.index("For example, attention control")
+    assert concept_position < example_position
+    assert "reduces distraction" in detailed_answer
+    assert len(detailed_answer) > len(concise_answer)
+    assert next(data for name, data in detailed_events if name == "done")["saved"] is True
+    assert asyncio.run(learning_state_counts()) == state_before
 
 
 def test_turn_stream_answers_with_citations_and_persists(client) -> None:
