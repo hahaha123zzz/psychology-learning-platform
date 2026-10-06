@@ -8,7 +8,8 @@
 - **键盘增量：** UI-002 对 Home、Growth、Preference 三页的 9 个“路由 × 视口”组合完成 Tab/Shift+Tab 全序遍历，正反顺序互逆、焦点指示可见且无溢出；Growth 标签改为单一 Tab 停靠点，并验证方向键循环及 Home/End。UI-003 又对 Learn、Practice 六个“路由 × 视口”组合完成相同正反向浏览器检查，均无溢出或页面异常；Reader Drawer 因 Learn 尚无已恢复的保存回合引用卡片，未在此项键盘检查中打开。
 - **自动化：** Web Node 58/58、TypeScript 通过、ESLint 0 errors/2 existing warnings、production build 24/24 routes。逐项记录见 [`学生核心页面本地可访问性复核`](student-core-local-accessibility-review-2026-10-06.md)。
 - **追踪状态：** Acceptance matrix 的 UI-04/UI-05 仅有学生核心 7 路由的布局、首焦点和 reduced-motion 子集证据；键盘全页正反向遍历、Drawer 焦点恢复、44px 触控、读屏器、缩放、颜色对比、其余 11 组代表页和目标稿视觉签收仍未验收。记为 **P0-04 partial**，不可外推为 WCAG 或 V1 完成。
-- **引用恢复缺口：** EVID-004 发现保存 Tutor turns/pointers 在后端可读取，但 Learn 页面没有按 `session_id` 恢复历史 turns，因此刷新后没有 Citation 卡可点击；仅 UI→Reader 点击链路记为 BLOCKED。CTRL 已批准 UI-004 使用现有鉴权 GET 实现显式 session 恢复，未做任何 Demo 写入。
+- **引用恢复进展：** UI-004 已通过集成提交 `496b6e0`（来源 `18037007f47a63149d15564f4bcd838b00772b2c`）。Learn 仅在 URL 显式包含 `session_id` 时调用现有 GET，校验会话 ID、课程与 `course_qa` 模式后恢复已保存 turns 和 EvidencePointer；无效/错课程会话失败关闭，不自动搜索或创建会话/回合。普通新会话创建后以 `history.replaceState` 保存会话 ID 并保留其他 query 参数。集成后 Web Node **62/62**、TypeScript 通过、ESLint **0 errors/2 existing warnings**；隔离 worktree production build **24 routes** 通过，浏览器脚本语法检查通过。
+- **浏览器验收阻塞：** UI-004 实际保存会话 → Citation → Reader 固定版本/页 → refresh/back 链路尚未复验：API `8001` refused，PostgreSQL `5432`、Redis `6379`、MinIO `9000` 均不可连，API 在 MinIO startup check 失败。没有 seed、迁移或创建新演示数据；EVID-005 保持等待环境恢复。不得将静态测试或已有 EVID-004 的直接 Reader GET 误记为 UI 点击链路通过。
 - **范围：** 使用本地合成学生数据；未读取或发送教材正文、图像、表格。此工程可用性抽查不代表真实课程、真实班级或生产验收。
 
 本报告只覆盖当前工作树已经编码并能在本机复现的结果。真实教材效果、外部模型质量和生产运行能力不在本报告中虚构。
