@@ -7,6 +7,10 @@ const renderer = fs.readFileSync(
   new URL("../components/learning/LearningBlockStream.tsx", import.meta.url),
   "utf8",
 );
+const guidedSession = fs.readFileSync(
+  new URL("../components/StudentLearningSession.tsx", import.meta.url),
+  "utf8",
+);
 
 test("unknown blocks become bounded local plain-text fallbacks with only string evidence IDs", () => {
   const input = {
@@ -51,6 +55,35 @@ test("malformed blocks use text, prompt, then completion and drop executable or 
 test("known blocks retain their existing schema and content", () => {
   const known = { id: "known-1", type: "TutorExplanation", text: "Synthetic known block", evidence_refs: ["pointer-1"], allowed_actions: ["OPEN_EVIDENCE"] };
   assert.deepEqual(normalizeLearningBlocks([known]), [known]);
+});
+
+test("Question blocks keep prompt content and render as a readable, non-interactive question section", () => {
+  const [question] = normalizeLearningBlocks([{
+    id: "question-1",
+    type: "Question",
+    prompt: "Synthetic question prompt",
+    text: "Secondary description",
+  }]);
+  assert.equal(question.type, "Question");
+  assert.equal(question.prompt, "Synthetic question prompt");
+
+  const questionBranch = renderer.match(/if \(block\.type === "Question"\)[\s\S]*?\n        }/);
+  assert.ok(questionBranch, "renderer has a dedicated Question branch");
+  assert.match(questionBranch[0], /<section aria-labelledby=\{headingId\}/);
+  assert.match(questionBranch[0], /<h3 id=\{headingId\}>学习问题<\/h3>/);
+  assert.match(questionBranch[0], /<p>\{questionPrompt\(block\)\}<\/p>/);
+  assert.doesNotMatch(questionBranch[0], /<input\b|<textarea\b|<button\b|<a\b|<form\b|onSubmit=|onClick=|api\(/);
+  assert.match(renderer, /function questionPrompt\(block: LearningBlock\)[\s\S]*block\.prompt[\s\S]*block\.text/);
+  assert.match(guidedSession, /<form className="composer" onSubmit=\{respond\}>/);
+  assert.match(guidedSession, /`\/student\/learning\/tasks\/\$\{learning\.id\}\/respond`/);
+});
+
+test("ordinary TutorExplanation remains a separate readable explanation block", () => {
+  const explanationBranch = renderer.match(/return \(\s*<article className=\{`learning-block \$\{block\.type\.toLowerCase\(\)\}`\}[\s\S]*?\n        \);/);
+  assert.ok(explanationBranch, "ordinary explanation uses the existing generic explanation renderer");
+  assert.match(explanationBranch[0], /block\.type === "TutorExplanation" \? "AI 教师" : "学习提示"/);
+  assert.match(explanationBranch[0], /\{blockText\(block\)\}/);
+  assert.doesNotMatch(explanationBranch[0], /学习问题|questionPrompt/);
 });
 
 test("unknown block rendering exposes text and inert reference count without actions or links", () => {

@@ -8,6 +8,12 @@ function blockText(block: LearningBlock): string {
   return block.text ?? block.prompt ?? "此学习内容暂无可显示文本。";
 }
 
+function questionPrompt(block: LearningBlock): string {
+  if (typeof block.prompt === "string" && block.prompt.trim()) return block.prompt;
+  if (typeof block.text === "string" && block.text.trim()) return block.text;
+  return "当前问题暂无可显示的题目内容。";
+}
+
 function assetFallback(block: LearningBlock): string {
   return typeof block.fallback_text === "string" && block.fallback_text.trim()
     ? block.fallback_text
@@ -48,7 +54,7 @@ function TeachingAssetBlock({ block }: { block: LearningBlock }) {
 export default function LearningBlockStream({ blocks }: { blocks: LearningBlock[] }) {
   return (
     <div className="learning-block-stream" data-block-count={blocks.length}>
-      {blocks.map((block) => {
+      {blocks.map((block, index) => {
         if (block.type === "TaskCompletion") {
           return (
             <article className="learning-block task-completion" key={block.id}>
@@ -62,6 +68,15 @@ export default function LearningBlockStream({ blocks }: { blocks: LearningBlock[
             <p className="learning-block transition" key={block.id}>
               下一步：{block.next_action ?? "继续当前任务"}
             </p>
+          );
+        }
+        if (block.type === "Question") {
+          const headingId = `learning-question-heading-${index}`;
+          return (
+            <section aria-labelledby={headingId} className="learning-block question-block" key={block.id}>
+              <h3 id={headingId}>学习问题</h3>
+              <p>{questionPrompt(block)}</p>
+            </section>
           );
         }
         if (block.type === "Unknown") {
