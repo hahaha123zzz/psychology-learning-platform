@@ -351,3 +351,309 @@ def test_review_answer_shape_qualifies_only_supported_pinned_objective_types(cli
     assert "synthetic-review-4" not in mastery_points
     assert "synthetic-review-5" not in mastery_points
     assert "synthetic-review-6" not in mastery_points
+
+
+def test_review_draft_recovers_with_version_and_revoked_scope_hides_task(client) -> None:
+    course_id, student_id, _version_id, assessment_id = _prepare_published(client)
+    _login(client, "ms@uni.edu")
+
+    from app.db.base import new_ulid
+    from app.db.models import (
+        CourseMember,
+        LearningEvent,
+        LearningEvidence,
+        MasteryState,
+        ReviewTask,
+    )
+    from app.db.session import session_factory
+
+    assessment = client.get(f"/api/v1/assessments/{assessment_id}").json()["data"]
+    question_version_id = assessment["items"][0]["question_version_id"]
+    task_id = new_ulid()
+
+    async def _seed() -> None:
+        async with session_factory() as db:
+            db.add(
+                ReviewTask(
+                    id=task_id,
+                    user_id=student_id,
+                    course_id=course_id,
+                    question_version_id=question_version_id,
+                    source_attempt_id=None,
+                    reason="review_schedule",
+                    due_at=datetime.now(UTC) + timedelta(days=1),
+                    status="pending",
+                    qualification_status="pending",
+                )
+            )
+            await db.commit()
+
+    asyncio.run(_seed())
+    listing = client.get("/api/v1/review-tasks?due_only=false")
+    assert listing.status_code == 200
+    task = next(item for item in listing.json()["data"] if item["id"] == task_id)
+    assert task["response_draft"] is None
+    assert task["version"] == 1
+
+    draft_body = {"version": 1, "response": {"selected_keys": ["A"]}}
+    draft_url = f"/api/v1/review-tasks/{task_id}/draft"
+    saved = client.put(draft_url, json=draft_body)
+    assert saved.status_code == 200
+    assert saved.json()["data"] == {
+        "id": task_id,
+        "response_draft": draft_body["response"],
+        "version": 2,
+    }
+    replay = client.put(draft_url, json=draft_body)
+    assert replay.status_code == 200
+    assert replay.json()["data"] == saved.json()["data"]
+    assert replay.json()["meta"]["idempotent_replay"] is True
+
+    stale = client.put(
+        draft_url,
+        json={"version": 1, "response": {"selected_keys": ["B"]}},
+    )
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "RESOURCE_VERSION_CONFLICT"
+    assert stale.json()["error"]["details"] == {"expected_version": 1, "actual_version": 2}
+
+    recovered = client.get("/api/v1/review-tasks?due_only=false")
+    recovered_task = next(item for item in recovered.json()["data"] if item["id"] == task_id)
+    assert recovered_task["version"] == 2
+    assert recovered_task["response_draft"] == draft_body["response"]
+
+    async def _revoke_and_counts() -> tuple[int, int, int]:
+        async with session_factory() as db:
+            member = await db.scalar(
+                select(CourseMember).where(
+                    CourseMember.course_id == course_id,
+                    CourseMember.user_id == student_id,
+                )
+            )
+            assert member is not None
+            member.status = "removed"
+            await db.commit()
+            event_count = await db.scalar(
+                select(func.count())
+                .select_from(LearningEvent)
+                .where(LearningEvent.user_id == student_id, LearningEvent.source_ref == task_id)
+            )
+            evidence_count = await db.scalar(
+                select(func.count())
+                .select_from(LearningEvidence)
+                .where(
+                    LearningEvidence.user_id == student_id,
+                    LearningEvidence.attempt_id == task_id,
+                )
+            )
+            mastery_count = await db.scalar(
+                select(func.count())
+                .select_from(MasteryState)
+                .where(
+                    MasteryState.user_id == student_id,
+                    MasteryState.course_id == course_id,
+                )
+            )
+            return event_count or 0, evidence_count or 0, mastery_count or 0
+
+    assert asyncio.run(_revoke_and_counts()) == (0, 0, 0)
+    assert client.get("/api/v1/review-tasks?due_only=false").json()["data"] == []
+    assert client.put(
+        draft_url,
+        json={"version": 2, "response": {"selected_keys": ["C"]}},
+    ).status_code == 404
+    assert client.post(
+        f"/api/v1/review-tasks/{task_id}/verify",
+        json={"version": 2, "response": {"selected_keys": ["A"]}},
+    ).status_code == 404
+    assert client.post(
+        f"/api/v1/review-tasks/{task_id}/complete",
+        json={"version": 2, "reason": "unsupported_question_type"},
+    ).status_code == 404
+
+    async def _stored_task() -> tuple[str, int, dict | None, str]:
+        async with session_factory() as db:
+            stored = await db.scalar(select(ReviewTask).where(ReviewTask.id == task_id))
+            assert stored is not None
+            return (
+                stored.status,
+                stored.version,
+                stored.response_draft,
+                stored.qualification_status,
+            )
+
+    assert asyncio.run(_stored_task()) == (
+        "pending",
+        2,
+        draft_body["response"],
+        "pending",
+    )
+
+
+def test_review_subjective_close_is_versioned_due_and_has_no_evidence(client) -> None:
+    course_id, student_id, _version_id, assessment_id = _prepare_published(client)
+    _login(client, "ms@uni.edu")
+
+    from app.db.base import new_ulid
+    from app.db.models import (
+        LearningEvent,
+        LearningEvidence,
+        MasteryState,
+        QuestionVersion,
+        ReviewTask,
+    )
+    from app.db.session import session_factory
+
+    assessment = client.get(f"/api/v1/assessments/{assessment_id}").json()["data"]
+    objective_question_version_id = assessment["items"][0]["question_version_id"]
+    close_task_id = new_ulid()
+    objective_task_id = new_ulid()
+
+    async def _seed() -> None:
+        async with session_factory() as db:
+            source = await db.scalar(
+                select(QuestionVersion).where(QuestionVersion.id == objective_question_version_id)
+            )
+            assert source is not None
+            latest_version_no = await db.scalar(
+                select(func.max(QuestionVersion.version_no)).where(
+                    QuestionVersion.question_id == source.question_id
+                )
+            )
+            subjective_id = new_ulid()
+            db.add(
+                QuestionVersion(
+                    id=subjective_id,
+                    question_id=source.question_id,
+                    version_no=(latest_version_no or source.version_no) + 1,
+                    type="essay",
+                    stem="合成主观题",
+                    options=None,
+                    answer=None,
+                    rubric="合成评分标准",
+                    explanation=None,
+                    difficulty=2,
+                    knowledge_point_ids=["synthetic-subjective-review"],
+                    evidence_ids=[],
+                    created_by=student_id,
+                )
+            )
+            now = datetime.now(UTC)
+            db.add_all(
+                [
+                    ReviewTask(
+                        id=close_task_id,
+                        user_id=student_id,
+                        course_id=course_id,
+                        question_version_id=subjective_id,
+                        source_attempt_id=None,
+                        reason="review_schedule",
+                        due_at=now + timedelta(hours=1),
+                        status="pending",
+                        qualification_status="pending",
+                    ),
+                    ReviewTask(
+                        id=objective_task_id,
+                        user_id=student_id,
+                        course_id=course_id,
+                        question_version_id=objective_question_version_id,
+                        source_attempt_id=None,
+                        reason="review_schedule",
+                        due_at=now - timedelta(minutes=1),
+                        status="pending",
+                        qualification_status="pending",
+                    ),
+                ]
+            )
+            await db.commit()
+
+    asyncio.run(_seed())
+    complete_url = f"/api/v1/review-tasks/{close_task_id}/complete"
+    close_v1 = {"version": 1, "reason": "unsupported_question_type"}
+    too_early = client.post(complete_url, json=close_v1)
+    assert too_early.status_code == 409
+    assert too_early.json()["error"]["code"] == "REVIEW_TASK_NOT_DUE"
+
+    objective_close = client.post(
+        f"/api/v1/review-tasks/{objective_task_id}/complete",
+        json={"version": 1, "reason": "unsupported_question_type"},
+    )
+    assert objective_close.status_code == 409
+    assert objective_close.json()["error"]["code"] == "REVIEW_ANSWER_SUPPORTED"
+
+    saved_draft = client.put(
+        f"/api/v1/review-tasks/{close_task_id}/draft",
+        json={"version": 1, "response": {"text": "合成的未完成草稿"}},
+    )
+    assert saved_draft.status_code == 200
+    stale_close = client.post(complete_url, json=close_v1)
+    assert stale_close.status_code == 409
+    assert stale_close.json()["error"]["code"] == "RESOURCE_VERSION_CONFLICT"
+    assert stale_close.json()["error"]["details"] == {
+        "expected_version": 1,
+        "actual_version": 2,
+    }
+
+    from app.db.models import ReviewTask as ReviewTaskModel
+
+    async def _make_due() -> None:
+        async with session_factory() as db:
+            task = await db.scalar(
+                select(ReviewTaskModel).where(ReviewTaskModel.id == close_task_id)
+            )
+            assert task is not None
+            task.due_at = datetime.now(UTC) - timedelta(minutes=1)
+            await db.commit()
+
+    asyncio.run(_make_due())
+    body = {"version": 2, "reason": "unsupported_question_type"}
+    closed = client.post(complete_url, json=body)
+    assert closed.status_code == 200
+    assert closed.json()["data"] == {"id": close_task_id, "status": "done", "version": 3}
+    repeated = client.post(complete_url, json=body)
+    assert repeated.status_code == 200
+    assert repeated.json()["data"] == closed.json()["data"]
+    assert repeated.json()["meta"]["idempotent_replay"] is True
+
+    async def _assert_no_effects() -> tuple[int, int, int, tuple[str, int, dict | None]]:
+        async with session_factory() as db:
+            event_count = await db.scalar(
+                select(func.count())
+                .select_from(LearningEvent)
+                .where(
+                    LearningEvent.user_id == student_id,
+                    LearningEvent.source_ref.in_([close_task_id, objective_task_id]),
+                )
+            )
+            evidence_count = await db.scalar(
+                select(func.count())
+                .select_from(LearningEvidence)
+                .where(
+                    LearningEvidence.user_id == student_id,
+                    LearningEvidence.attempt_id.in_([close_task_id, objective_task_id]),
+                )
+            )
+            mastery_count = await db.scalar(
+                select(func.count())
+                .select_from(MasteryState)
+                .where(
+                    MasteryState.user_id == student_id,
+                    MasteryState.course_id == course_id,
+                )
+            )
+            objective_task = await db.scalar(
+                select(ReviewTaskModel).where(ReviewTaskModel.id == objective_task_id)
+            )
+            assert objective_task is not None
+            subjective_task = await db.scalar(
+                select(ReviewTaskModel).where(ReviewTaskModel.id == close_task_id)
+            )
+            assert subjective_task is not None
+            return (
+                event_count or 0,
+                evidence_count or 0,
+                mastery_count or 0,
+                (objective_task.status, objective_task.version, subjective_task.response_draft),
+            )
+
+    assert asyncio.run(_assert_no_effects()) == (0, 0, 0, ("pending", 1, None))

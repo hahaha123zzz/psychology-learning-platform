@@ -152,9 +152,12 @@ def test_review_task_created_on_wrong_answer(client) -> None:
     assert task_list[0]["reason"] == "wrong_answer"
     assert task_list[0]["question_version_id"] == qv_id
 
-    complete = client.post(f"/api/v1/review-tasks/{task_list[0]['id']}/complete")
-    assert complete.status_code == 200
-    assert complete.json()["data"]["status"] == "done"
+    complete = client.post(
+        f"/api/v1/review-tasks/{task_list[0]['id']}/complete",
+        json={"version": task_list[0]["version"], "reason": "unsupported_question_type"},
+    )
+    assert complete.status_code == 409
+    assert complete.json()["error"]["code"] == "REVIEW_ANSWER_SUPPORTED"
 
     remaining = client.get("/api/v1/review-tasks")
     assert remaining.json()["data"] == []

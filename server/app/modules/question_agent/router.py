@@ -14,11 +14,13 @@ from app.db.base import new_ulid
 from app.db.models import (
     ChatSession,
     ChatTurn,
+    CourseMember,
     Job,
     LearningEvent,
     Question,
     QuestionVersion,
     ReviewTask,
+    RoleAssignment,
     User,
 )
 from app.db.session import get_db_session
@@ -44,6 +46,143 @@ class GenerationJobCreate(BaseModel):
 class ReviewTaskVerify(BaseModel):
     version: int = Field(ge=1)
     response: dict = Field(min_length=1)
+
+
+class ReviewTaskDraftUpdate(BaseModel):
+    version: int = Field(ge=1)
+    response: dict | None
+
+
+class ReviewTaskComplete(BaseModel):
+    version: int = Field(ge=1)
+    reason: str = Field(pattern="^unsupported_question_type$")
+
+
+class ReviewTaskResponseMeta(BaseModel):
+    request_id: str | None
+    server_time: str
+    has_more: bool | None = None
+    idempotent_replay: bool | None = None
+
+
+class ReviewTaskQuestionView(BaseModel):
+    type: str
+    stem: str
+    options: list[dict]
+
+
+class ReviewTaskListItem(BaseModel):
+    id: str
+    course_id: str
+    question_version_id: str
+    reason: str
+    due_at: str
+    status: str
+    qualification_status: str
+    qualification_reason: str | None
+    response_draft: dict | None
+    version: int
+    question: ReviewTaskQuestionView
+
+
+class ReviewTaskListEnvelope(BaseModel):
+    data: list[ReviewTaskListItem]
+    meta: ReviewTaskResponseMeta
+
+
+class ReviewTaskDraftData(BaseModel):
+    id: str
+    response_draft: dict | None
+    version: int
+
+
+class ReviewTaskDraftEnvelope(BaseModel):
+    data: ReviewTaskDraftData
+    meta: ReviewTaskResponseMeta
+
+
+class ReviewTaskCompleteData(BaseModel):
+    id: str
+    status: str
+    version: int
+
+
+class ReviewTaskCompleteEnvelope(BaseModel):
+    data: ReviewTaskCompleteData
+    meta: ReviewTaskResponseMeta
+
+
+async def _active_student_course_ids(db: AsyncSession, *, user_id: str) -> set[str]:
+    member_course_ids = set(
+        (
+            await db.execute(
+                select(CourseMember.course_id).where(
+                    CourseMember.user_id == user_id,
+                    CourseMember.role == "student",
+                    CourseMember.status == "active",
+                )
+            )
+        ).scalars()
+    )
+    assigned_course_ids = set(
+        (
+            await db.execute(
+                select(RoleAssignment.scope_id).where(
+                    RoleAssignment.user_id == user_id,
+                    RoleAssignment.scope_type == "course",
+                    RoleAssignment.role == "student",
+                    RoleAssignment.status == "active",
+                )
+            )
+        ).scalars()
+    )
+    return member_course_ids | assigned_course_ids
+
+
+async def _require_review_student_scope(
+    db: AsyncSession, *, user_id: str, course_id: str
+) -> None:
+    membership_id = await db.scalar(
+        select(CourseMember.id)
+        .where(
+            CourseMember.course_id == course_id,
+            CourseMember.user_id == user_id,
+            CourseMember.role == "student",
+            CourseMember.status == "active",
+        )
+        .limit(1)
+    )
+    assignment_id = None
+    if membership_id is None:
+        assignment_id = await db.scalar(
+            select(RoleAssignment.id)
+            .where(
+                RoleAssignment.user_id == user_id,
+                RoleAssignment.scope_type == "course",
+                RoleAssignment.scope_id == course_id,
+                RoleAssignment.role == "student",
+                RoleAssignment.status == "active",
+            )
+            .limit(1)
+        )
+    if membership_id is None and assignment_id is None:
+        raise ApiError(
+            status_code=404,
+            code="REVIEW_TASK_NOT_FOUND",
+            message="复习任务不存在或无权访问",
+        )
+
+
+def _review_version_conflict(expected_version: int, actual_version: int) -> ApiError:
+    return ApiError(
+        status_code=409,
+        code="RESOURCE_VERSION_CONFLICT",
+        message="复习任务已变化，请刷新后重试",
+        details={
+            "expected_version": expected_version,
+            "actual_version": actual_version,
+        },
+    )
 
 
 @router.post(
@@ -382,18 +521,21 @@ async def merge_branch(
 
 # ---- 复习任务 ----
 
-@router.get("/review-tasks", response_model=None)
+@router.get("/review-tasks", response_model=ReviewTaskListEnvelope)
 async def list_review_tasks(
     request: Request,
     due_only: bool = Query(default=True),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
+    course_ids = await _active_student_course_ids(db, user_id=user.id)
+    if not course_ids:
+        return ok(request, [], has_more=False)
     await ensure_ai_support_available(db, user_id=user.id)
     query = (
         select(ReviewTask, QuestionVersion)
         .join(QuestionVersion, QuestionVersion.id == ReviewTask.question_version_id)
-        .where(ReviewTask.user_id == user.id)
+        .where(ReviewTask.user_id == user.id, ReviewTask.course_id.in_(course_ids))
     )
     if due_only:
         query = query.where(
@@ -415,6 +557,7 @@ async def list_review_tasks(
                 "status": t.status,
                 "qualification_status": t.qualification_status,
                 "qualification_reason": t.qualification_reason,
+                "response_draft": t.response_draft,
                 "version": t.version,
                 "question": {
                     "type": q.type,
@@ -428,29 +571,110 @@ async def list_review_tasks(
     )
 
 
-@router.post("/review-tasks/{task_id}/complete", response_model=None)
+@router.post("/review-tasks/{task_id}/complete", response_model=ReviewTaskCompleteEnvelope)
 async def complete_review_task(
     task_id: str,
+    body: ReviewTaskComplete,
     request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
+    task = await db.scalar(
+        select(ReviewTask)
+        .where(ReviewTask.id == task_id, ReviewTask.user_id == user.id)
+        .with_for_update()
+    )
+    if task is None:
+        raise ApiError(status_code=404, code="REVIEW_TASK_NOT_FOUND", message="复习任务不存在")
+    await _require_review_student_scope(db, user_id=user.id, course_id=task.course_id)
     await ensure_ai_support_available(db, user_id=user.id)
-    task = (
-        await db.execute(select(ReviewTask).where(ReviewTask.id == task_id).limit(1))
-    ).scalar_one_or_none()
-    if task is None or task.user_id != user.id:
+    question = await db.scalar(
+        select(QuestionVersion).where(QuestionVersion.id == task.question_version_id)
+    )
+    if question is None:
+        raise ApiError(status_code=404, code="REVIEW_QUESTION_NOT_FOUND", message="复习题目不可用")
+    if question.type in {"single", "multiple", "true_false"}:
         raise ApiError(
-            status_code=404, code="REVIEW_TASK_NOT_FOUND", message="复习任务不存在"
+            status_code=409,
+            code="REVIEW_ANSWER_SUPPORTED",
+            message="该题型需要提交答案后才能完成复习",
         )
+    if task.status == "done":
+        if (
+            task.version == body.version + 1
+            and task.qualification_status == "rejected"
+            and task.qualification_reason == body.reason
+        ):
+            return ok(
+                request,
+                {"id": task.id, "status": task.status, "version": task.version},
+                idempotent_replay=True,
+            )
+        raise ApiError(
+            status_code=409,
+            code="REVIEW_TASK_NOT_PENDING",
+            message="任务已完成或已忽略",
+        )
+    if task.version != body.version:
+        raise _review_version_conflict(body.version, task.version)
     if task.status != "pending":
         raise ApiError(
             status_code=409, code="REVIEW_TASK_NOT_PENDING", message="任务已完成或已忽略"
         )
+    if task.due_at > datetime.now(UTC):
+        raise ApiError(status_code=409, code="REVIEW_TASK_NOT_DUE", message="复习任务尚未到期")
     task.status = "done"
     task.completed_at = datetime.now(UTC)
+    task.qualification_status = "rejected"
+    task.qualification_reason = body.reason
+    task.response_draft = None
+    task.version += 1
     await db.commit()
-    return ok(request, {"id": task.id, "status": task.status})
+    return ok(request, {"id": task.id, "status": task.status, "version": task.version})
+
+
+@router.put("/review-tasks/{task_id}/draft", response_model=ReviewTaskDraftEnvelope)
+async def update_review_task_draft(
+    task_id: str,
+    body: ReviewTaskDraftUpdate,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    task = await db.scalar(
+        select(ReviewTask)
+        .where(ReviewTask.id == task_id, ReviewTask.user_id == user.id)
+        .with_for_update()
+    )
+    if task is None:
+        raise ApiError(status_code=404, code="REVIEW_TASK_NOT_FOUND", message="复习任务不存在")
+    await _require_review_student_scope(db, user_id=user.id, course_id=task.course_id)
+    await ensure_ai_support_available(db, user_id=user.id)
+    if (
+        task.status == "pending"
+        and task.version == body.version + 1
+        and task.response_draft == body.response
+    ):
+        return ok(
+            request,
+            {"id": task.id, "response_draft": task.response_draft, "version": task.version},
+            idempotent_replay=True,
+        )
+    if task.version != body.version:
+        raise _review_version_conflict(body.version, task.version)
+    if task.status != "pending":
+        raise ApiError(
+            status_code=409,
+            code="REVIEW_TASK_NOT_PENDING",
+            message="任务已完成或已忽略",
+        )
+    task.response_draft = body.response
+    task.version += 1
+    await db.commit()
+    return ok(
+        request,
+        {"id": task.id, "response_draft": task.response_draft, "version": task.version},
+    )
 
 
 @router.post("/review-tasks/{task_id}/verify", response_model=None)
@@ -461,7 +685,6 @@ async def verify_review_task(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    await ensure_ai_support_available(db, user_id=user.id)
     task = await db.scalar(
         select(ReviewTask)
         .where(ReviewTask.id == task_id, ReviewTask.user_id == user.id)
@@ -469,6 +692,8 @@ async def verify_review_task(
     )
     if task is None:
         raise ApiError(status_code=404, code="REVIEW_TASK_NOT_FOUND", message="复习任务不存在")
+    await _require_review_student_scope(db, user_id=user.id, course_id=task.course_id)
+    await ensure_ai_support_available(db, user_id=user.id)
     event_key = f"review:{task.id}:verify"
     event_payload = {
         "question_version_id": task.question_version_id,
@@ -508,11 +733,7 @@ async def verify_review_task(
             idempotent_replay=True,
         )
     if task.version != body.version:
-        raise ApiError(
-            status_code=409,
-            code="RESOURCE_VERSION_CONFLICT",
-            message="复习任务已变化，请刷新后重试",
-        )
+        raise _review_version_conflict(body.version, task.version)
     if task.status != "pending":
         raise ApiError(
             status_code=409,
@@ -544,6 +765,7 @@ async def verify_review_task(
     if not replay:
         task.status = "done"
         task.completed_at = datetime.now(UTC)
+        task.response_draft = None
         task.version += 1
     await db.commit()
     return ok(

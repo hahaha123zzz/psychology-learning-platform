@@ -7035,7 +7035,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewTaskListEnvelope"
+                }
               }
             }
           },
@@ -7070,12 +7072,76 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewTaskComplete"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewTaskCompleteEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/review-tasks/{task_id}/draft": {
+      "put": {
+        "tags": [
+          "question-agent"
+        ],
+        "summary": "Update Review Task Draft",
+        "operationId": "update_review_task_draft_api_v1_review_tasks__task_id__draft_put",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewTaskDraftUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewTaskDraftEnvelope"
+                }
               }
             }
           },
@@ -13737,6 +13803,310 @@
           "server_time"
         ],
         "title": "ResponseMeta"
+      },
+      "ReviewTaskComplete": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "reason": {
+            "type": "string",
+            "pattern": "^unsupported_question_type$",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "ReviewTaskComplete"
+      },
+      "ReviewTaskCompleteData": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "version"
+        ],
+        "title": "ReviewTaskCompleteData"
+      },
+      "ReviewTaskCompleteEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ReviewTaskCompleteData"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ReviewTaskResponseMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ReviewTaskCompleteEnvelope"
+      },
+      "ReviewTaskDraftData": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "response_draft": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Draft"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "response_draft",
+          "version"
+        ],
+        "title": "ReviewTaskDraftData"
+      },
+      "ReviewTaskDraftEnvelope": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ReviewTaskDraftData"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ReviewTaskResponseMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ReviewTaskDraftEnvelope"
+      },
+      "ReviewTaskDraftUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "response": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "response"
+        ],
+        "title": "ReviewTaskDraftUpdate"
+      },
+      "ReviewTaskListEnvelope": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewTaskListItem"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ReviewTaskResponseMeta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ReviewTaskListEnvelope"
+      },
+      "ReviewTaskListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "course_id": {
+            "type": "string",
+            "title": "Course Id"
+          },
+          "question_version_id": {
+            "type": "string",
+            "title": "Question Version Id"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "due_at": {
+            "type": "string",
+            "title": "Due At"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "qualification_status": {
+            "type": "string",
+            "title": "Qualification Status"
+          },
+          "qualification_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qualification Reason"
+          },
+          "response_draft": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Draft"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "question": {
+            "$ref": "#/components/schemas/ReviewTaskQuestionView"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "course_id",
+          "question_version_id",
+          "reason",
+          "due_at",
+          "status",
+          "qualification_status",
+          "qualification_reason",
+          "response_draft",
+          "version",
+          "question"
+        ],
+        "title": "ReviewTaskListItem"
+      },
+      "ReviewTaskQuestionView": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "stem": {
+            "type": "string",
+            "title": "Stem"
+          },
+          "options": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "stem",
+          "options"
+        ],
+        "title": "ReviewTaskQuestionView"
+      },
+      "ReviewTaskResponseMeta": {
+        "properties": {
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "server_time": {
+            "type": "string",
+            "title": "Server Time"
+          },
+          "has_more": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has More"
+          },
+          "idempotent_replay": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotent Replay"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "server_time"
+        ],
+        "title": "ReviewTaskResponseMeta"
       },
       "ReviewTaskVerify": {
         "properties": {
