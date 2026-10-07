@@ -816,12 +816,18 @@ async def create_turn(
             pointer_id=selected_pointer_ids[0],
         )
 
-    if selected_pointer is not None and selected_pointer.pointer.object_type == "table":
-        await tutor_service.authorize_table_pointer_index_job(
-            db,
-            selected=selected_pointer,
-            domain_release_id=selected_pointer.domain_release_id,
-        )
+    if selected_pointer is not None:
+        if selected_pointer.pointer.object_type == "table":
+            await tutor_service.authorize_table_pointer_index_job(
+                db,
+                selected=selected_pointer,
+                domain_release_id=selected_pointer.domain_release_id,
+            )
+        elif selected_pointer.pointer.object_type == "paragraph":
+            await tutor_service.authorize_paragraph_pointer_retrieval_unit(
+                db,
+                selected=selected_pointer,
+            )
 
     async def event_stream():
         turn_stream = tutor_service.run_turn_stream(

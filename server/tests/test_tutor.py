@@ -214,6 +214,121 @@ def _seed_pinned_table_chat(client, *, course_id: str, student_id: str, version_
     return asyncio.run(seed())
 
 
+def _seed_pinned_paragraph_chat(client, *, course_id: str, student_id: str, version_id: str):
+    """从合成发布快照构造一个带完整版本 pin 的段落选择指针。"""
+    import asyncio
+    import hashlib
+
+    from sqlalchemy import func, select
+
+    from app.db.models import (
+        CourseRelease,
+        CourseReleaseAssignment,
+        DomainRelease,
+        EvidencePointer,
+        Job,
+        KnowledgeObject,
+        MaterialVersion,
+        PublicationSnapshot,
+        RetrievalUnit,
+    )
+    from app.db.session import session_factory
+    from app.modules.knowledge import service as knowledge_service
+
+    assignment_id, pointer_id, other_pointer_id, figure_pointer_id = _seed_pinned_table_chat(
+        client, course_id=course_id, student_id=student_id, version_id=version_id
+    )
+    excerpt = (
+        "操作性定义是把抽象概念转化为可观察、可测量的操作步骤。"
+        "例如，研究记忆保持时可以规定材料呈现、延迟时间和测量方式。"
+    )
+    teacher_id = client.get("/api/v1/me").json()["data"]["id"]
+
+    async def pin_paragraph() -> None:
+        async with session_factory() as db:
+            pointer = await db.get(EvidencePointer, pointer_id)
+            assert pointer is not None
+            source = await db.get(KnowledgeObject, pointer.source_object_id)
+            unit = await db.get(RetrievalUnit, pointer.retrieval_unit_id)
+            version = await db.get(MaterialVersion, version_id)
+            assert source is not None and unit is not None and version is not None
+            snapshot = await db.scalar(
+                select(PublicationSnapshot).where(
+                    PublicationSnapshot.material_version_id == version_id
+                )
+            )
+            assignment = await db.get(CourseReleaseAssignment, assignment_id)
+            assert snapshot is not None and assignment is not None
+            release = await db.get(CourseRelease, assignment.course_release_id)
+            assert release is not None
+            job = await db.get(Job, snapshot.index_job_id)
+            assert job is not None
+            version_no = await db.scalar(
+                select(func.coalesce(func.max(DomainRelease.version_no), 0) + 1).where(
+                    DomainRelease.course_id == course_id
+                )
+            )
+            domain_release = DomainRelease(
+                course_id=course_id,
+                version_no=version_no,
+                manifest={
+                    "knowledge_points": [],
+                    "misconceptions": [],
+                    "evidence_bindings": [],
+                },
+                pack_sha256="b" * 64,
+                status="published",
+                created_by=teacher_id,
+                published_by=teacher_id,
+            )
+            db.add(domain_release)
+            await db.flush()
+            snapshot.domain_release_id = domain_release.id
+            unit.domain_release_id = domain_release.id
+            job.payload = {
+                **(job.payload if isinstance(job.payload, dict) else {}),
+                "domain_release_id": domain_release.id,
+            }
+            release.domain_release_id = domain_release.id
+            manifest = dict(release.manifest)
+            pins = [dict(item) for item in manifest["publication_snapshots"]]
+            pins[0]["domain_release_id"] = domain_release.id
+            manifest["publication_snapshots"] = pins
+            release.manifest = manifest
+
+            source.type = "paragraph"
+            source.raw_content = excerpt
+            source.normalized_content = excerpt
+            unit.unit_type = "text_child"
+            unit.build_strategy = knowledge_service.RETRIEVAL_UNIT_BUILD_STRATEGY
+            unit.text_content = excerpt
+            unit.content_hash = hashlib.sha256(excerpt.encode()).hexdigest()
+            pointer.object_type = "paragraph"
+            pointer.excerpt = excerpt
+            pointer.excerpt_sha256 = hashlib.sha256(excerpt.encode()).hexdigest()
+            pointer.publication_snapshot_id = snapshot.id
+            pointer.index_job_id = snapshot.index_job_id
+            pointer.domain_release_id = domain_release.id
+            await db.commit()
+
+    asyncio.run(pin_paragraph())
+    return assignment_id, pointer_id, other_pointer_id, figure_pointer_id, excerpt
+
+
+def test_paragraph_pointer_pin_requires_three_exact_values() -> None:
+    from app.modules.tutor.service import _paragraph_pointer_pin_matches_exact_release
+
+    expected = ("snapshot-id", "index-job-id", "domain-release-id")
+    assert _paragraph_pointer_pin_matches_exact_release(expected, expected)
+    assert not _paragraph_pointer_pin_matches_exact_release((None, None, None), expected)
+    assert not _paragraph_pointer_pin_matches_exact_release(
+        ("snapshot-id", "index-job-id", None), expected
+    )
+    assert not _paragraph_pointer_pin_matches_exact_release(
+        ("other-snapshot", "index-job-id", "domain-release-id"), expected
+    )
+
+
 def _parse_sse_events(line_bytes: bytes) -> list[tuple[str, dict]]:
     events = []
     for block in line_bytes.decode("utf-8").split("\n\n"):
@@ -3369,3 +3484,387 @@ def test_learning_task_pause_resume_is_versioned(client) -> None:
     assert resumed.status_code == 200
     assert resumed.json()["data"]["status"] == "active"
     assert resumed.json()["data"]["allowed_actions"] == ["RESPOND_TASK"]
+
+
+def test_selected_paragraph_turn_uses_pinned_local_context_and_binds_idempotency(
+    client, monkeypatch
+) -> None:
+    import asyncio
+
+    from app.db.models import ChatTurn
+    from app.db.session import session_factory
+    from app.modules.tutor import service as tutor_service
+
+    course_id, student_id, version_id = _prepare(client, publish=True)
+    _, pointer_id, other_pointer_id, figure_pointer_id, excerpt = (
+        _seed_pinned_paragraph_chat(
+            client, course_id=course_id, student_id=student_id, version_id=version_id
+        )
+    )
+    _login(client, "ms@uni.edu")
+    session_response = client.post(
+        "/api/v1/chat/sessions",
+        json={"course_id": course_id, "mode": "course_qa"},
+    )
+    assert session_response.status_code == 201, session_response.text
+    session_id = session_response.json()["data"]["id"]
+
+    def forbidden_provider(*args, **kwargs):
+        raise AssertionError("selected paragraph must stay on deterministic local path")
+
+    monkeypatch.setattr(tutor_service.knowledge_service, "hybrid_search", forbidden_provider)
+    monkeypatch.setattr(tutor_service, "generate_grounded_answer", forbidden_provider)
+    monkeypatch.setattr(tutor_service, "call_model", forbidden_provider)
+
+    endpoint = f"/api/v1/chat/sessions/{session_id}/turns"
+    body = {
+        "content": "什么是操作性定义？",
+        "client_turn_id": "paragraph-context-0001",
+        "selected_evidence_pointer_ids": [pointer_id],
+    }
+    first = client.post(endpoint, json=body)
+    assert first.status_code == 200, first.text
+    first_events = _parse_sse_events(first.content)
+    citation = next(data for name, data in first_events if name == "citation")
+    assert citation["evidence_pointer_id"] == pointer_id
+    assert citation["provenance"] is None or isinstance(citation["provenance"], dict)
+    answer = "".join(data["text"] for name, data in first_events if name == "delta")
+    assert excerpt.split("。", maxsplit=1)[0] in answer
+    done = next(data for name, data in first_events if name == "done")
+    assert done["saved"] is True
+    assert done["unsupported_count"] == 0
+
+    saved = client.get(f"/api/v1/chat/sessions/{session_id}")
+    assert saved.status_code == 200
+    student_turn, tutor_turn = saved.json()["data"]["turns"][-2:]
+    assert student_turn["citations"] == [{"evidence_pointer_id": pointer_id}]
+    assert tutor_turn["citations"][0]["evidence_pointer_id"] == pointer_id
+    assert tutor_turn["verification"]["generation_provider"] == "internal_extractive"
+    assert tutor_turn["verification"]["unsupported_count"] == 0
+    assert tutor_turn["verification"]["object_context"] == {
+        "type": "paragraph",
+        "evidence_pointer_id": pointer_id,
+        "material_version_id": version_id,
+        "publication_snapshot_id": tutor_turn["citations"][0]["publication_snapshot_id"],
+        "index_job_id": tutor_turn["citations"][0]["index_job_id"],
+    }
+
+    replay = client.post(endpoint, json=body)
+    assert replay.status_code == 200, replay.text
+    replay_events = _parse_sse_events(replay.content)
+    replay_done = next(data for name, data in replay_events if name == "done")
+    assert replay_done["replayed"] is True
+    assert "".join(data["text"] for name, data in replay_events if name == "delta") == answer
+
+    mismatch = client.post(
+        endpoint,
+        json={**body, "selected_evidence_pointer_ids": [other_pointer_id]},
+    )
+    assert mismatch.status_code == 409
+    assert mismatch.json()["error"]["code"] == "TURN_IDEMPOTENCY_CONFLICT"
+
+    figure = client.post(
+        endpoint,
+        json={
+            "content": "请解释这个图像",
+            "client_turn_id": "paragraph-context-figure-0001",
+            "selected_evidence_pointer_ids": [figure_pointer_id],
+        },
+    )
+    assert figure.status_code == 200, figure.text
+    figure_events = _parse_sse_events(figure.content)
+    figure_done = next(data for name, data in figure_events if name == "done")
+    assert figure_done["refusal"] is True
+    figure_saved = client.get(f"/api/v1/chat/sessions/{session_id}").json()["data"]["turns"][-1]
+    assert figure_saved["verification"]["object_context"]["type"] == "figure"
+
+    async def saved_turn_count() -> int:
+        async with session_factory() as db:
+            return await db.scalar(
+                select(func.count()).select_from(ChatTurn).where(
+                    ChatTurn.session_id == session_id
+                )
+            )
+
+    from sqlalchemy import func, select
+
+    assert asyncio.run(saved_turn_count()) == 4
+
+
+def test_selected_paragraph_turn_rejects_inexact_scope_source_and_build(client) -> None:
+    import asyncio
+    from copy import deepcopy
+
+    from sqlalchemy import func, select
+
+    from app.db.models import (
+        ChatTurn,
+        CourseRelease,
+        CourseReleaseAssignment,
+        EvidencePointer,
+        Job,
+        KnowledgeObject,
+        MaterialVersion,
+        PublicationSnapshot,
+        RetrievalUnit,
+    )
+    from app.db.session import session_factory
+
+    course_id, student_id, version_id = _prepare(client, publish=True)
+    assignment_id, pointer_id, other_pointer_id, _, _ = _seed_pinned_paragraph_chat(
+        client, course_id=course_id, student_id=student_id, version_id=version_id
+    )
+    foreign_course_id = client.post(
+        "/api/v1/courses",
+        json={"title": "合成隔离课程", "term": "2026春"},
+    ).json()["data"]["id"]
+    _login(client, "ms@uni.edu")
+    session_response = client.post(
+        "/api/v1/chat/sessions",
+        json={"course_id": course_id, "mode": "course_qa"},
+    )
+    assert session_response.status_code == 201, session_response.text
+    session_id = session_response.json()["data"]["id"]
+    endpoint = f"/api/v1/chat/sessions/{session_id}/turns"
+
+    async def snapshot_state() -> tuple[str, str, str, str]:
+        async with session_factory() as db:
+            pointer = await db.get(EvidencePointer, pointer_id)
+            assert pointer is not None
+            release = await db.scalar(
+                select(CourseRelease)
+                .join(CourseReleaseAssignment)
+                .where(CourseReleaseAssignment.id == assignment_id)
+            )
+            assert release is not None
+            assert pointer.retrieval_unit_id is not None and pointer.index_job_id is not None
+            return (
+                pointer.retrieval_unit_id,
+                pointer.source_object_id,
+                release.id,
+                pointer.index_job_id,
+            )
+
+    retrieval_unit_id, source_object_id, release_id, index_job_id = asyncio.run(snapshot_state())
+
+    async def create_other_material_version() -> str:
+        async with session_factory() as db:
+            current = await db.get(MaterialVersion, version_id)
+            assert current is not None
+            other = MaterialVersion(
+                material_id=current.material_id,
+                version_no=current.version_no + 1,
+                status="parsed",
+                created_by=current.created_by,
+            )
+            db.add(other)
+            await db.flush()
+            other_id = other.id
+            await db.commit()
+            return other_id
+
+    other_version_id = asyncio.run(create_other_material_version())
+
+    async def pointer_update(**fields) -> None:
+        async with session_factory() as db:
+            pointer = await db.get(EvidencePointer, pointer_id)
+            assert pointer is not None
+            for key, value in fields.items():
+                setattr(pointer, key, value)
+            await db.commit()
+
+    async def unit_update(**fields) -> None:
+        async with session_factory() as db:
+            unit = await db.get(RetrievalUnit, retrieval_unit_id)
+            assert unit is not None
+            for key, value in fields.items():
+                setattr(unit, key, value)
+            await db.commit()
+
+    async def source_type_update(value: str) -> None:
+        async with session_factory() as db:
+            source = await db.get(KnowledgeObject, source_object_id)
+            assert source is not None
+            source.type = value
+            await db.commit()
+
+    async def manifest_update(mutator) -> dict:
+        async with session_factory() as db:
+            release = await db.get(CourseRelease, release_id)
+            assert release is not None
+            original = deepcopy(release.manifest)
+            release.manifest = mutator(deepcopy(release.manifest))
+            await db.commit()
+            return original
+
+    def request(
+        pointer: str,
+        suffix: str,
+        *,
+        expected_status: int = 404,
+        expected_code: str = "EVIDENCE_NOT_FOUND",
+    ):
+        response = client.post(
+            endpoint,
+            json={
+                "content": "请解释这个段落",
+                "client_turn_id": f"paragraph-reject-{suffix}",
+                "selected_evidence_pointer_ids": [pointer],
+            },
+        )
+        assert response.status_code == expected_status, response.text
+        assert response.json()["error"]["code"] == expected_code
+
+    async def clear_pointer_pin() -> None:
+        await pointer_update(
+            publication_snapshot_id=None,
+            index_job_id=None,
+            domain_release_id=None,
+        )
+
+    asyncio.run(clear_pointer_pin())
+    request(pointer_id, "legacy-pointer-pin")
+    async def restore_pointer_pin() -> None:
+        async with session_factory() as db:
+            pointer = await db.get(EvidencePointer, pointer_id)
+            snapshot = await db.scalar(
+                select(PublicationSnapshot).where(
+                    PublicationSnapshot.material_version_id == version_id
+                )
+            )
+            assert pointer is not None and snapshot is not None
+            pointer.publication_snapshot_id = snapshot.id
+            pointer.index_job_id = snapshot.index_job_id
+            pointer.domain_release_id = snapshot.domain_release_id
+            await db.commit()
+
+    asyncio.run(restore_pointer_pin())
+
+    # Reader publication readability is rechecked for every selected paragraph.
+    async def set_index_job_status(status: str) -> None:
+        async with session_factory() as db:
+            job = await db.get(Job, index_job_id)
+            assert job is not None
+            job.status = status
+            await db.commit()
+
+    asyncio.run(set_index_job_status("failed"))
+    request(pointer_id, "reader-index-job-revoked")
+    asyncio.run(set_index_job_status("succeeded"))
+
+    original_manifest = asyncio.run(
+        manifest_update(lambda manifest: {**manifest, "publication_snapshots": []})
+    )
+    request(pointer_id, "missing-release-pin")
+    asyncio.run(manifest_update(lambda _manifest: original_manifest))
+
+    def partial_pin(manifest):
+        pin = dict(manifest["publication_snapshots"][0])
+        pin.pop("index_job_id")
+        return {**manifest, "publication_snapshots": [pin]}
+
+    partial_original = asyncio.run(manifest_update(partial_pin))
+    request(pointer_id, "partial-release-pin")
+    asyncio.run(manifest_update(lambda _manifest: partial_original))
+
+    def wrong_pin(manifest):
+        pins = list(manifest["publication_snapshots"])
+        pins[0] = {**pins[0], "publication_snapshot_id": "x" * 26}
+        return {**manifest, "publication_snapshots": pins}
+
+    wrong_pin_original = asyncio.run(manifest_update(wrong_pin))
+    request(pointer_id, "wrong-release-pin")
+    asyncio.run(manifest_update(lambda _manifest: wrong_pin_original))
+
+    asyncio.run(source_type_update("table"))
+    request(pointer_id, "wrong-source-type")
+    asyncio.run(source_type_update("paragraph"))
+
+    async def pointer_excerpt_update(value: str) -> None:
+        async with session_factory() as db:
+            pointer = await db.get(EvidencePointer, pointer_id)
+            assert pointer is not None
+            pointer.excerpt = value
+            await db.commit()
+
+    from app.db.models import EvidencePointer as _Pointer
+
+    async def original_excerpt() -> str:
+        async with session_factory() as db:
+            pointer = await db.get(_Pointer, pointer_id)
+            assert pointer is not None
+            return pointer.excerpt
+
+    saved_excerpt = asyncio.run(original_excerpt())
+    asyncio.run(pointer_excerpt_update(""))
+    request(pointer_id, "empty-pointer-excerpt")
+    asyncio.run(pointer_excerpt_update(saved_excerpt))
+
+    for label, fields in (
+        ("wrong-ru-type", {"unit_type": "table_cells"}),
+        ("wrong-ru-version", {"material_version_id": other_version_id}),
+        ("wrong-ru-status", {"status": "failed"}),
+        ("wrong-ru-build", {"build_version": "v1-unrelated-job"}),
+        ("wrong-ru-domain", {"domain_release_id": None}),
+    ):
+        async def mutate_unit(unit_fields: dict) -> dict:
+            async with session_factory() as db:
+                unit = await db.get(RetrievalUnit, retrieval_unit_id)
+                assert unit is not None
+                original = {field: getattr(unit, field) for field in unit_fields}
+                for field, value in unit_fields.items():
+                    setattr(unit, field, value)
+                await db.commit()
+                return original
+
+        original = asyncio.run(mutate_unit(fields))
+        request(pointer_id, label)
+        asyncio.run(unit_update(**original))
+
+    async def set_wrong_ru_source() -> None:
+        async with session_factory() as db:
+            pointer = await db.get(EvidencePointer, pointer_id)
+            other = await db.get(EvidencePointer, other_pointer_id)
+            unit = await db.get(RetrievalUnit, retrieval_unit_id)
+            assert pointer is not None and other is not None and unit is not None
+            unit.source_object_id = other.source_object_id
+            await db.commit()
+
+    asyncio.run(set_wrong_ru_source())
+    request(pointer_id, "wrong-ru-source")
+    async def restore_ru_source() -> None:
+        async with session_factory() as db:
+            unit = await db.get(RetrievalUnit, retrieval_unit_id)
+            assert unit is not None
+            unit.source_object_id = source_object_id
+            await db.commit()
+    asyncio.run(restore_ru_source())
+
+    asyncio.run(pointer_update(course_id=foreign_course_id))
+    request(pointer_id, "cross-course-pointer")
+    asyncio.run(pointer_update(course_id=course_id))
+
+    async def revoke_assignment() -> None:
+        async with session_factory() as db:
+            assignment = await db.get(CourseReleaseAssignment, assignment_id)
+            assert assignment is not None
+            assignment.status = "revoked"
+            await db.commit()
+
+    asyncio.run(revoke_assignment())
+    request(
+        pointer_id,
+        "revoked-scope",
+        expected_status=404,
+        expected_code="CHAT_SESSION_NOT_FOUND",
+    )
+
+    async def saved_turn_count() -> int:
+        async with session_factory() as db:
+            return await db.scalar(
+                select(func.count()).select_from(ChatTurn).where(
+                    ChatTurn.session_id == session_id
+                )
+            )
+
+    assert asyncio.run(saved_turn_count()) == 0

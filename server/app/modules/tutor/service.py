@@ -30,6 +30,7 @@ from app.db.models import (
     DomainRelease,
     EvidencePointer,
     Job,
+    KnowledgeObject,
     LearningSession,
     Material,
     MaterialVersion,
@@ -721,6 +722,17 @@ async def authorize_chat_session_release_scope(
     )
 
 
+def _paragraph_pointer_pin_matches_exact_release(
+    pointer_pin: tuple[Any, Any, Any], expected_pin: tuple[Any, Any, Any]
+) -> bool:
+    """New selected paragraphs require three persisted, exact snapshot pin values."""
+    return (
+        len(pointer_pin) == 3
+        and all(isinstance(value, str) and value for value in pointer_pin)
+        and pointer_pin == expected_pin
+    )
+
+
 async def authorize_selected_table_pointer(
     db: AsyncSession,
     *,
@@ -728,7 +740,7 @@ async def authorize_selected_table_pointer(
     user_id: str,
     pointer_id: str,
 ) -> AuthorizedEvidencePointer:
-    """只接受精确绑定到当前 chat release 的表格指针或无文本图像指针。"""
+    """只接受精确绑定到当前 chat release 的表格、段落或无文本图像指针。"""
     def unavailable() -> ApiError:
         return ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
 
@@ -819,7 +831,28 @@ async def authorize_selected_table_pointer(
         pointer.index_job_id,
         pointer.domain_release_id,
     )
-    if any(value is not None for value in pointer_publication_pin) and (
+    is_paragraph = pointer.object_type == "paragraph"
+    if is_paragraph:
+        # Paragraph selection is a new turn over an exact source snapshot; legacy
+        # all-null pointer pins must not be upgraded by inference from the manifest.
+        if not _paragraph_pointer_pin_matches_exact_release(
+            pointer_publication_pin,
+            (snapshot.id, snapshot.index_job_id, snapshot.domain_release_id),
+        ):
+            raise unavailable()
+        try:
+            await knowledge_service.require_student_pointer_read_access(db, pointer)
+        except ApiError as exc:
+            raise unavailable() from exc
+        source_object = await db.get(KnowledgeObject, pointer.source_object_id)
+        if (
+            source_object is None
+            or source_object.material_version_id != pointer.material_version_id
+            or source_object.type != "paragraph"
+            or not pointer.excerpt.strip()
+        ):
+            raise unavailable()
+    elif any(value is not None for value in pointer_publication_pin) and (
         any(not isinstance(value, str) or not value for value in pointer_publication_pin)
         or pointer.publication_snapshot_id != snapshot.id
         or pointer.index_job_id != snapshot.index_job_id
@@ -829,6 +862,14 @@ async def authorize_selected_table_pointer(
 
     # 图像在 V0.9 只有固定位置，没有可验证语义；允许安全拒答以保留 Reader 入口。
     if pointer.object_type == "figure" and not pointer.excerpt.strip():
+        return AuthorizedEvidencePointer(
+            pointer=pointer,
+            publication_snapshot_id=snapshot.id,
+            index_job_id=snapshot.index_job_id,
+            domain_release_id=binding.domain_release_id,
+            material_type=material.material_type,
+        )
+    if is_paragraph:
         return AuthorizedEvidencePointer(
             pointer=pointer,
             publication_snapshot_id=snapshot.id,
@@ -868,6 +909,32 @@ async def authorize_table_pointer_index_job(
         or retrieval_unit.material_version_id != pointer.material_version_id
         or retrieval_unit.source_object_id != pointer.source_object_id
         or retrieval_unit.domain_release_id != domain_release_id
+        or retrieval_unit.build_version != expected_build_version
+    ):
+        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
+
+
+async def authorize_paragraph_pointer_retrieval_unit(
+    db: AsyncSession,
+    *,
+    selected: AuthorizedEvidencePointer,
+) -> None:
+    """Require the exact ready text-child RU from the pinned publication build."""
+    pointer = selected.pointer
+    if pointer.retrieval_unit_id is None:
+        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
+    retrieval_unit = await db.get(RetrievalUnit, pointer.retrieval_unit_id)
+    expected_build_version = (
+        f"{knowledge_service.RETRIEVAL_UNIT_BUILD_VERSION}-{selected.index_job_id}"
+    )
+    if (
+        retrieval_unit is None
+        or retrieval_unit.unit_type != "text_child"
+        or retrieval_unit.status != "ready"
+        or retrieval_unit.material_version_id != pointer.material_version_id
+        or retrieval_unit.source_object_id != pointer.source_object_id
+        or retrieval_unit.domain_release_id != selected.domain_release_id
+        or retrieval_unit.build_strategy != knowledge_service.RETRIEVAL_UNIT_BUILD_STRATEGY
         or retrieval_unit.build_version != expected_build_version
     ):
         raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
@@ -1474,7 +1541,42 @@ async def run_turn_stream(
     if selected_evidence_context is not None:
         pointer = selected_evidence_context.pointer
         is_table = pointer.object_type == "table" and bool(pointer.excerpt.strip())
-        if is_table:
+        is_paragraph = pointer.object_type == "paragraph" and bool(pointer.excerpt.strip())
+        if is_paragraph:
+            # A selected passage is the only generation evidence for this branch.
+            # Keep it on the deterministic extractor path; never send the excerpt
+            # to the configured provider or run a second retrieval.
+            package = EvidencePackage(
+                package_id=new_ulid(),
+                course_id=session_row.course_id,
+                query=content,
+                retrieval_version=knowledge_service.RETRIEVAL_VERSION,
+                items=[
+                    {
+                        "evidence_id": pointer.id,
+                        "text": pointer.excerpt,
+                    }
+                ],
+                created_at=datetime.now(UTC).isoformat(),
+            )
+            extracted_answer = generate_answer(
+                content,
+                package,
+                response_length=response_length,
+                example_order=example_order,
+            )
+            answer = "根据所选课程资料段落：" + extracted_answer.removeprefix("根据教材：")
+            refusal = False
+            finish_reason = "stop"
+            provider = "internal_extractive"
+            object_context = {
+                "type": "paragraph",
+                "evidence_pointer_id": pointer.id,
+                "material_version_id": pointer.material_version_id,
+                "publication_snapshot_id": selected_evidence_context.publication_snapshot_id,
+                "index_job_id": selected_evidence_context.index_job_id,
+            }
+        elif is_table:
             answer = (
                 "可以按这个顺序读表：先确认表题、行列名和单位；再定位问题对应的单元格；"
                 "跨行列比较前先核对单位。\n\n"
@@ -1510,6 +1612,7 @@ async def run_turn_stream(
             }
 
         citation_label = _citation_label(1, pointer.material_title, pointer.physical_page)
+        unsupported_count = 0 if is_table or is_paragraph else 1
         yield _sse(
             "state",
             {"stage": "generating", "evidence_count": 1, "warnings": []},
@@ -1565,7 +1668,7 @@ async def run_turn_stream(
             verification={
                 "generation_provider": provider,
                 "object_context": object_context,
-                "unsupported_count": 0 if is_table else 1,
+                "unsupported_count": unsupported_count,
             },
             refusal=refusal,
             finish_reason=finish_reason,
@@ -1581,7 +1684,7 @@ async def run_turn_stream(
                 "finish_reason": finish_reason,
                 "saved": True,
                 "refusal": refusal,
-                "unsupported_count": 0 if is_table else 1,
+                "unsupported_count": unsupported_count,
             },
         )
         return
