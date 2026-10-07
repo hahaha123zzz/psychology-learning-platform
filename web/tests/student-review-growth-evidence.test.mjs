@@ -40,9 +40,9 @@ test("only qualified review evidence promises Growth data on the next Growth-pag
 });
 
 test("review states stay honest and plain completion makes no evidence claim", () => {
-  assert.match(component, /review\.question\?\.options\?\.length && review\.version !== undefined/);
+  assert.match(component, /reviewQuestionSupportsVerification\(review\)/);
   assert.match(component, /onClick=\{\(\) => void completeReview\(review\)\}/);
-  assert.match(component, /复习任务已标记完成；此操作未提交答案，也未形成学习证据/);
+  assert.match(component, /复习任务已关闭；此操作未提交答案，也未形成学习证据/);
   assert.match(component, /复习答案已提交，学习记录仍在处理中；确认完成前成长信息不会更新/);
   assert.match(component, /未通过学习证据资格确认；成长信息未更新/);
   assert.match(component, /复习学习记录已失效；成长信息未更新/);
