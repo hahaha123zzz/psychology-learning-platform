@@ -347,15 +347,34 @@ def test_student_material_list_uses_assigned_version_after_material_rotation(cli
 
 
 def test_student_material_list_legacy_fallback_only_for_never_assigned_course(client) -> None:
+    import asyncio
+
+    from app.db.models import MaterialVersion
+    from app.db.session import session_factory
     from tests.test_search import _prepare
 
     course_id, _student_id, version_id = _prepare(client, publish=True)
+
+    async def add_unassigned_version_provenance() -> None:
+        async with session_factory() as db:
+            version = await db.get(MaterialVersion, version_id)
+            assert version is not None
+            version.source_title = "Synthetic unassigned provenance"
+            version.provenance_status = "verified"
+            version.provenance_reviewed_by = version.created_by
+            from datetime import UTC, datetime
+
+            version.provenance_reviewed_at = datetime.now(UTC)
+            await db.commit()
+
+    asyncio.run(add_unassigned_version_provenance())
     _login(client, "ms@uni.edu")
     response = client.get(f"/api/v1/courses/{course_id}/materials")
     assert response.status_code == 200, response.text
     rows = response.json()["data"]
     assert [item["current_version"]["id"] for item in rows] == [version_id]
     assert [item["learning_version"]["id"] for item in rows] == [version_id]
+    assert "provenance" not in rows[0]["learning_version"]
 
 
 def test_student_material_list_allows_assigned_release_with_no_materials(client) -> None:

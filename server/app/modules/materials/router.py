@@ -768,10 +768,13 @@ async def list_materials(
                 "status": learning_version.status,
                 "size_bytes": learning_version.size_bytes,
                 "content_type": learning_version.content_type,
-                "provenance": _provenance_data(
-                    learning_version, include_review_detail=False
-                ),
             }
+            # No-assignment legacy discovery is for ordinary reading only. Provenance
+            # is visible to students only when this version came from an exact release pin.
+            if assigned_rows is not None:
+                item["learning_version"]["provenance"] = _provenance_data(
+                    learning_version, include_review_detail=False
+                )
         items.append(item)
     return ok(request, items, has_more=False)
 
