@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Icon } from "@iconify/react";
 import { api, ApiError, streamChatTurn } from "../lib/api";
-import { clearReaderSelection, clearReaderSelectionForCourse, persistReaderSelection, readReaderSelectionPointerId, subscribeReaderSelectionContext } from "../lib/reader-selection-context";
+import { clearReaderSelection as clearReaderSelectionContext, clearReaderSelectionForCourse, persistReaderSelection, readReaderSelectionPointerId, subscribeReaderSelectionContext } from "../lib/reader-selection-context";
 import StudentInterventionRunsPanel from "./StudentInterventionRunsPanel";
 import EvidencePointerDrawer from "./learning/EvidencePointerDrawer";
 import StudentProvenanceMetadata from "./learning/StudentProvenanceMetadata";
@@ -93,6 +93,10 @@ function StudentLearnContent({ courseId }: { courseId: string }) {
   useEffect(() => { clearReaderSelectionForCourse(courseId); }, [courseId]);
   function returnReaderSelection(pointerId: string) {
     if (pointerId.trim()) persistReaderSelection(courseId, pointerId);
+  }
+  function clearReaderSelection() {
+    clearReaderSelectionContext();
+    setSelectedTablePointer(null);
   }
   useEffect(() => { api<Material[]>(`/courses/${courseId}/materials`).then((items) => { setMaterials(items); if (!sessionRestoreRequested.current) setNotice(items.length ? "" : "当前课程还没有已发布资料。请联系课程内容管理员。"); }).catch((reason) => { if (!sessionRestoreRequested.current) setNotice(reasonText(reason)); }); }, [courseId]);
   useEffect(() => {
@@ -218,7 +222,7 @@ function StudentLearnContent({ courseId }: { courseId: string }) {
     event.preventDefault();
     const content = question.trim();
     if (!content || sending) return;
-    const selectedPointerId = selectedTablePointer?.evidence_pointer_id;
+    const selectedPointerId = selectedTablePointer?.evidence_pointer_id ?? (selectionContextPointerId || undefined);
     setNotice("");
     setSending(true);
     setTurns((items) => [...items, { role: "student", content, citations: [] }, { role: "tutor", content: "", citations: [], status: "正在连接学习助手…" }]);
