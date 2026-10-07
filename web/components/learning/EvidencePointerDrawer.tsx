@@ -6,6 +6,8 @@ import { api, ApiError } from "../../lib/api";
 import { Button } from "../ui/Button";
 import { ContextDrawer } from "../ui/ContextDrawer";
 import { materialTypeLabel } from "../../lib/material-type-label";
+import { readStudentProvenance } from "../../lib/student-provenance";
+import StudentProvenanceMetadata from "./StudentProvenanceMetadata";
 
 type EvidenceAnchor = {
   physical_page: number;
@@ -32,6 +34,7 @@ type EvidencePointerView = {
   anchors?: EvidenceAnchor[] | null;
   excerpt: string;
   excerpt_sha256: string;
+  provenance?: unknown;
 };
 
 type ReaderPage = {
@@ -303,6 +306,7 @@ export default function EvidencePointerDrawer({
           <article className="evidence-pointer-view">
             <h3>{view.material_title}</h3>
             <small aria-label="资料类别">{materialTypeLabel(view.material_type)}</small>
+            <StudentProvenanceMetadata provenance={readStudentProvenance(view.provenance)} />
             <p>
               {view.chapter_path || "未记录章节"}
               {view.physical_page ? ` · 物理页 ${view.physical_page}` : " · 原始解析未声明物理页"}
