@@ -20,6 +20,8 @@ test("material labels map server type only and unknown legacy values stay neutra
 });
 
 test("generic Learn and Reader copy stays neutral for every resource type", () => {
+  assert.doesNotMatch(learn, /教材/);
+  assert.doesNotMatch(reader, /教材/);
   for (const phrase of ["搜索教材", "课程教材", "教材来源快照", "查看教材引用", "回答以当前课程教材为依据", "教材依据", "教材内容", "围绕教材提问", "从已发布教材中检索"]) {
     assert.doesNotMatch(learn, new RegExp(phrase));
     assert.doesNotMatch(reader, new RegExp(phrase));
@@ -37,6 +39,7 @@ test("generic Learn and Reader copy stays neutral for every resource type", () =
   assert.match(reader, /title="资料来源"/);
   assert.match(reader, /暂时无法读取资料来源/);
   assert.match(reader, /materialTypeLabel\(view\.material_type\)/);
+  assert.match(labels, /textbook: "教材"/);
   assert.match(browser, /getByRole\("dialog", \{ name: "资料来源" \}\)/);
 });
 
