@@ -333,6 +333,9 @@ async def _replay_saved_turn(
         "saved": True,
         "refusal": tutor_turn.refusal,
         "replayed": True,
+        "claim_verification": tutor_service.claim_verification_summary(
+            verification.get("domain_claim")
+        ),
     }
     if verification:
         unsupported_count = verification.get("unsupported_count")

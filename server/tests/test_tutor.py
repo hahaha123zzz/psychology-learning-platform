@@ -472,6 +472,126 @@ def test_tutor_sse_replay_keeps_material_type_and_uses_neutral_legacy_fallback()
     ]
 
 
+def test_claim_verification_summary_is_allowlisted_and_replay_safe() -> None:
+    import asyncio
+    import json
+    from types import SimpleNamespace
+
+    from app.modules.tutor import service as tutor_service
+    from app.modules.tutor.router import _replay_saved_turn
+
+    statuses = ("supported", "partially-supported", "contradicted", "unknown")
+    allowed_reasons = (
+        "counterevidence_unverified",
+        "retrieval_scope_changed",
+        "insufficient_evidence",
+        "claim_partially_supported",
+        "claim_contradicted",
+        "learning_evidence_cannot_support_content_claim",
+        "claim_verification_timeout",
+        "claim_verification_failed",
+        "release_material_versions_unpinned",
+        "release_domain_snapshot_missing",
+        "domain_release_unavailable",
+        "release_material_snapshots_unpinned",
+        "release_material_snapshots_mismatch",
+        "publication_snapshot_unavailable",
+        "publication_index_job_mismatch",
+        "publication_retrieval_snapshot_missing",
+    )
+
+    for status in statuses:
+        for attempts in (0, 1):
+            assert tutor_service.claim_verification_summary(
+                {
+                    "status": status,
+                    "refusal_reason": None,
+                    "supplemental_retrieval_attempts": attempts,
+                    "scope": {"private": "must not escape"},
+                    "unsupported_subclaims": ["private detail"],
+                }
+            ) == {
+                "status": status,
+                "refusal_reason": None,
+                "supplemental_retrieval_attempts": attempts,
+            }
+
+    assert tutor_service.claim_verification_summary(
+        {
+            "status": "unknown",
+            "refusal_reason": allowed_reasons[-1],
+            "supplemental_retrieval_attempts": 1,
+        }
+    ) == {
+        "status": "unknown",
+        "refusal_reason": allowed_reasons[-1],
+        "supplemental_retrieval_attempts": 1,
+    }
+    for invalid in (
+        None,
+        {},
+        {"status": "not-a-state", "supplemental_retrieval_attempts": 0},
+        {"status": [], "supplemental_retrieval_attempts": 0},
+        {"status": "supported", "supplemental_retrieval_attempts": True},
+        {"status": "supported", "supplemental_retrieval_attempts": 2},
+        {"status": "supported", "supplemental_retrieval_attempts": -1},
+        {"status": "supported", "supplemental_retrieval_attempts": "0"},
+    ):
+        assert tutor_service.claim_verification_summary(invalid) is None
+    assert tutor_service.claim_verification_summary(
+        {
+            "status": "supported",
+            "refusal_reason": "student supplied arbitrary text",
+            "supplemental_retrieval_attempts": 0,
+        }
+    ) == {
+        "status": "supported",
+        "refusal_reason": None,
+        "supplemental_retrieval_attempts": 0,
+    }
+
+    turn = SimpleNamespace(
+        id="synthetic-turn",
+        finish_reason="stop",
+        content="Synthetic saved answer",
+        verification={
+            "domain_claim": {
+                "status": "partially-supported",
+                "refusal_reason": "claim_partially_supported",
+                "supplemental_retrieval_attempts": 1,
+                "scope": {"private": "must not escape"},
+            }
+        },
+        refusal=True,
+        citations=[],
+    )
+
+    async def replay_done(saved_turn) -> dict:
+        async for frame in _replay_saved_turn(saved_turn):
+            if frame.startswith("event: done\n"):
+                data_line = next(line for line in frame.splitlines() if line.startswith("data: "))
+                return json.loads(data_line.removeprefix("data: "))
+        raise AssertionError("replay did not emit done")
+
+    replayed = asyncio.run(replay_done(turn))
+    assert replayed["claim_verification"] == {
+        "status": "partially-supported",
+        "refusal_reason": "claim_partially_supported",
+        "supplemental_retrieval_attempts": 1,
+    }
+    assert "scope" not in replayed["claim_verification"]
+    assert tutor_service.claim_verification_summary(None) is None
+    legacy_turn = SimpleNamespace(
+        id="legacy-turn",
+        finish_reason="stop",
+        content="Legacy saved answer",
+        verification=None,
+        refusal=False,
+        citations=[],
+    )
+    assert asyncio.run(replay_done(legacy_turn))["claim_verification"] is None
+
+
 def test_citation_provenance_requires_exact_pointer_scope_and_version_without_database(
     monkeypatch,
 ) -> None:
@@ -1107,6 +1227,13 @@ def test_bound_chat_claim_reads_superseded_snapshot_and_rejects_withdrawal(clien
     tutor_turn = session_detail.json()["data"]["turns"][-1]
     claim = tutor_turn["verification"]["domain_claim"]
     assert claim["status"] == "supported"
+    expected_claim_summary = {
+        "status": claim["status"],
+        "refusal_reason": claim["refusal_reason"],
+        "supplemental_retrieval_attempts": claim["supplemental_retrieval_attempts"],
+    }
+    assert original_done["claim_verification"] == expected_claim_summary
+    assert replay_done["claim_verification"] == original_done["claim_verification"]
     assert claim["scope"]["course_release_assignment_id"] == old_assignment_id
     assert claim["scope"]["course_release_id"] == release1["id"]
     assert claim["scope"]["domain_release_id"] == old_domain_id

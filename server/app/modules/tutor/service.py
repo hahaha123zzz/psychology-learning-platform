@@ -75,6 +75,26 @@ CLAIM_SCOPE_REQUIRED_FIELDS = frozenset(
 CLAIM_STATES = frozenset(
     {"supported", "partially-supported", "contradicted", "unknown"}
 )
+CLAIM_REFUSAL_REASONS = frozenset(
+    {
+        "counterevidence_unverified",
+        "retrieval_scope_changed",
+        "insufficient_evidence",
+        "claim_partially_supported",
+        "claim_contradicted",
+        "learning_evidence_cannot_support_content_claim",
+        "claim_verification_timeout",
+        "claim_verification_failed",
+        "release_material_versions_unpinned",
+        "release_domain_snapshot_missing",
+        "domain_release_unavailable",
+        "release_material_snapshots_unpinned",
+        "release_material_snapshots_mismatch",
+        "publication_snapshot_unavailable",
+        "publication_index_job_mismatch",
+        "publication_retrieval_snapshot_missing",
+    }
+)
 
 BACKGROUND_TASKS: set[asyncio.Task] = set()
 
@@ -438,6 +458,32 @@ def _claim_verification_record(
         ),
         "supplemental_retrieval_attempts": min(max(attempts, 0), 1),
         "refusal_reason": refusal_reason,
+    }
+
+
+def claim_verification_summary(value: Any) -> dict[str, Any] | None:
+    """Return the small, allowlisted claim summary safe for SSE clients."""
+    if not isinstance(value, Mapping):
+        return None
+    status = value.get("status")
+    attempts = value.get("supplemental_retrieval_attempts")
+    if (
+        not isinstance(status, str)
+        or status not in CLAIM_STATES
+        or type(attempts) is not int
+        or attempts not in {0, 1}
+    ):
+        return None
+    refusal_reason = value.get("refusal_reason")
+    if refusal_reason is not None and (
+        not isinstance(refusal_reason, str)
+        or refusal_reason not in CLAIM_REFUSAL_REASONS
+    ):
+        refusal_reason = None
+    return {
+        "status": status,
+        "refusal_reason": refusal_reason,
+        "supplemental_retrieval_attempts": attempts,
     }
 
 
@@ -1534,6 +1580,7 @@ async def run_turn_stream(
                 "finish_reason": "safety",
                 "saved": True,
                 "refusal": True,
+                "claim_verification": None,
             },
         )
         return
@@ -1685,6 +1732,7 @@ async def run_turn_stream(
                 "saved": True,
                 "refusal": refusal,
                 "unsupported_count": unsupported_count,
+                "claim_verification": None,
             },
         )
         return
@@ -1839,6 +1887,9 @@ async def run_turn_stream(
             "saved": True,
             "refusal": refusal,
             "unsupported_count": verification["unsupported_count"],
+            "claim_verification": claim_verification_summary(
+                verification.get("domain_claim")
+            ),
         },
     )
 
