@@ -15,6 +15,7 @@ from app.db.models import (
     ChatSession,
     ChatTurn,
     Job,
+    LearningEvent,
     Question,
     QuestionVersion,
     ReviewTask,
@@ -468,6 +469,44 @@ async def verify_review_task(
     )
     if task is None:
         raise ApiError(status_code=404, code="REVIEW_TASK_NOT_FOUND", message="复习任务不存在")
+    event_key = f"review:{task.id}:verify"
+    event_payload = {
+        "question_version_id": task.question_version_id,
+        "response": body.response,
+    }
+    existing_event = await db.scalar(
+        select(LearningEvent).where(
+            LearningEvent.user_id == user.id,
+            LearningEvent.event_key == event_key,
+        )
+    )
+    if existing_event is not None:
+        replay_matches = (
+            task.status == "done"
+            and task.version == body.version + 1
+            and existing_event.course_id == task.course_id
+            and existing_event.event_type == "answer_submitted"
+            and existing_event.source_type == "review"
+            and existing_event.source_ref == task.id
+            and existing_event.payload == event_payload
+        )
+        if not replay_matches:
+            raise ApiError(
+                status_code=409,
+                code="LEARNING_EVENT_KEY_CONFLICT",
+                message="复习任务已使用不同内容提交",
+            )
+        return ok(
+            request,
+            {
+                "id": task.id,
+                "status": "done",
+                "qualification_status": "pending",
+                "event_id": existing_event.id,
+                "pending_qualification": True,
+            },
+            idempotent_replay=True,
+        )
     if task.version != body.version:
         raise ApiError(
             status_code=409,
@@ -495,11 +534,11 @@ async def verify_review_task(
         db,
         user_id=user.id,
         course_id=task.course_id,
-        event_key=f"review:{task.id}:verify",
+        event_key=event_key,
         event_type="answer_submitted",
         source_type="review",
         source_ref=task.id,
-        payload={"question_version_id": question.id, "response": body.response},
+        payload=event_payload,
         occurred_at=datetime.now(UTC),
     )
     if not replay:
