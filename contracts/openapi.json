@@ -2962,7 +2962,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CourseMaterialsResponse"
+                }
               }
             }
           },
@@ -3059,6 +3061,110 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/material-versions/{version_id}/provenance": {
+      "put": {
+        "tags": [
+          "materials"
+        ],
+        "summary": "Update Material Provenance",
+        "operationId": "update_material_provenance_api_v1_material_versions__version_id__provenance_put",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialProvenanceUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialProvenanceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/material-versions/{version_id}/provenance-review": {
+      "post": {
+        "tags": [
+          "materials"
+        ],
+        "summary": "Review Material Provenance",
+        "operationId": "review_material_provenance_api_v1_material_versions__version_id__provenance_review_post",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialProvenanceReview"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialProvenanceResponse"
+                }
               }
             }
           },
@@ -10363,6 +10469,93 @@
         ],
         "title": "CourseCreate"
       },
+      "CourseMaterialListRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "material_type": {
+            "type": "string",
+            "title": "Material Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "current_version": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaterialVersionListRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "learning_version": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaterialVersionListRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "material_type",
+          "status",
+          "created_at",
+          "current_version"
+        ],
+        "title": "CourseMaterialListRead"
+      },
+      "CourseMaterialsResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/CourseMaterialListRead"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "meta": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Meta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "CourseMaterialsResponse"
+      },
       "CourseUpdate": {
         "properties": {
           "version": {
@@ -11222,6 +11415,423 @@
           "password"
         ],
         "title": "LoginRequest"
+      },
+      "MaterialProvenanceRead": {
+        "properties": {
+          "source_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Title"
+          },
+          "publisher": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publisher"
+          },
+          "content_author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Author"
+          },
+          "edition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edition"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License"
+          },
+          "course_resource_role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "course_textbook",
+                  "supplementary_resource"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Resource Role",
+            "description": "课程内部用途分类；null 表示未分类，不依据标题或材料类型推断"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "unreviewed",
+              "verified",
+              "rejected"
+            ],
+            "title": "Status",
+            "description": "verified 仅表示课程内不同教师/发布者复核自报信息，不代表外部核验"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "submitted_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted By"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_title",
+          "publisher",
+          "content_author",
+          "edition",
+          "source_url",
+          "license",
+          "course_resource_role",
+          "status",
+          "version"
+        ],
+        "title": "MaterialProvenanceRead"
+      },
+      "MaterialProvenanceResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MaterialProvenanceResult"
+          },
+          "meta": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Meta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "MaterialProvenanceResponse"
+      },
+      "MaterialProvenanceResult": {
+        "properties": {
+          "material_version_id": {
+            "type": "string",
+            "title": "Material Version Id"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/MaterialProvenanceRead"
+          }
+        },
+        "type": "object",
+        "required": [
+          "material_version_id",
+          "provenance"
+        ],
+        "title": "MaterialProvenanceResult"
+      },
+      "MaterialProvenanceReview": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "status": {
+            "type": "string",
+            "pattern": "^(verified|rejected)$",
+            "title": "Status",
+            "description": "verified 仅表示不同的课程 teacher/course_publisher 已复核自报信息"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "status",
+          "note"
+        ],
+        "title": "MaterialProvenanceReview",
+        "description": "课程内对自报元数据的复核，不构成外部来源核验或教材权威性认证。"
+      },
+      "MaterialProvenanceUpdate": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version"
+          },
+          "source_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Title",
+            "description": "自报来源标题"
+          },
+          "publisher": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publisher",
+            "description": "自报出版方"
+          },
+          "content_author": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Author",
+            "description": "自报内容作者"
+          },
+          "edition": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edition",
+            "description": "自报版次"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000,
+                "pattern": "^https?://\\S+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License",
+            "description": "自报许可信息"
+          },
+          "course_resource_role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(course_textbook|supplementary_resource)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Resource Role",
+            "description": "课程内部用途指定，不代表外部认证或教材权威性"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "MaterialProvenanceUpdate",
+        "description": "提交者自报的版本来源信息；字段本身不代表来源已经核验。"
+      },
+      "MaterialVersionListRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "version_no": {
+            "type": "integer",
+            "title": "Version No"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaterialProvenanceRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quality_gate_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Gate Status"
+          },
+          "workflow_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow State"
+          },
+          "published_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Snapshot Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version_no",
+          "status",
+          "size_bytes",
+          "content_type"
+        ],
+        "title": "MaterialVersionListRead"
       },
       "MemberAdd": {
         "properties": {

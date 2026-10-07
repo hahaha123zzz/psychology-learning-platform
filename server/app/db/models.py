@@ -1476,6 +1476,34 @@ class MaterialVersion(Base, ULIDPrimaryKeyMixin):
     quality_gate_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending", server_default="pending"
     )
+    # 可选的版本级自报来源信息；审核只表示课程内复核，不代表外部核验。
+    source_title: Mapped[str | None] = mapped_column(String(300))
+    publisher: Mapped[str | None] = mapped_column(String(200))
+    content_author: Mapped[str | None] = mapped_column(String(200))
+    edition: Mapped[str | None] = mapped_column(String(100))
+    source_url: Mapped[str | None] = mapped_column(String(1000))
+    license: Mapped[str | None] = mapped_column(String(200))
+    course_resource_role: Mapped[str | None] = mapped_column(String(40))
+    provenance_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="unreviewed", server_default="unreviewed"
+    )
+    provenance_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    provenance_submitted_by: Mapped[str | None] = mapped_column(
+        String(26),
+        ForeignKey(
+            "users.id", name="fk_material_versions_provenance_submitted_by", ondelete="SET NULL"
+        ),
+    )
+    provenance_reviewed_by: Mapped[str | None] = mapped_column(
+        String(26),
+        ForeignKey(
+            "users.id", name="fk_material_versions_provenance_reviewed_by", ondelete="SET NULL"
+        ),
+    )
+    provenance_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    provenance_review_note: Mapped[str | None] = mapped_column(String(1000))
 
     __table_args__ = (
         UniqueConstraint("material_id", "version_no", name="uq_material_versions_no"),
@@ -1486,6 +1514,23 @@ class MaterialVersion(Base, ULIDPrimaryKeyMixin):
         CheckConstraint(
             "quality_gate_status IN ('pending','blocked','approved')",
             name="ck_material_versions_quality_gate",
+        ),
+        CheckConstraint(
+            "provenance_status IN ('unreviewed','verified','rejected')",
+            name="ck_material_versions_provenance_status",
+        ),
+        CheckConstraint(
+            "course_resource_role IS NULL OR course_resource_role IN "
+            "('course_textbook','supplementary_resource')",
+            name="ck_material_versions_course_resource_role",
+        ),
+        CheckConstraint("provenance_version >= 1", name="ck_material_versions_provenance_version"),
+        CheckConstraint(
+            "(provenance_status = 'unreviewed' AND provenance_reviewed_by IS NULL "
+            "AND provenance_reviewed_at IS NULL) OR "
+            "(provenance_status IN ('verified','rejected') AND provenance_reviewed_by IS NOT NULL "
+            "AND provenance_reviewed_at IS NOT NULL)",
+            name="ck_material_versions_provenance_review",
         ),
     )
 

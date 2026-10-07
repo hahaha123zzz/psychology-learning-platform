@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, Response, UploadFile
 from sqlalchemy import delete, exists, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +30,11 @@ from app.modules.materials import uploads as uploads_service
 from app.modules.materials import workflow as workflow_service
 from app.modules.materials.policy import ensure_legacy_material_authoring_api_enabled
 from app.modules.materials.schemas import (
+    CourseMaterialsResponse,
     KnowledgeObjectCorrection,
+    MaterialProvenanceResponse,
+    MaterialProvenanceReview,
+    MaterialProvenanceUpdate,
     MaterialUploadForm,
     MaterialUploadOut,
     ParseReviewIssueResolution,
@@ -39,6 +45,74 @@ from app.modules.materials.schemas import (
 router = APIRouter()
 
 MATERIALS_UPLOAD_ENDPOINT = "POST:/api/v1/courses/{course_id}/materials"
+PROVENANCE_FIELDS = (
+    "source_title",
+    "publisher",
+    "content_author",
+    "edition",
+    "source_url",
+    "license",
+    "course_resource_role",
+)
+
+
+def _provenance_data(version: MaterialVersion, *, include_review_detail: bool) -> dict:
+    data = {field: getattr(version, field) for field in PROVENANCE_FIELDS}
+    data["status"] = version.provenance_status
+    data["version"] = version.provenance_version
+    if include_review_detail:
+        data.update(
+            {
+                "submitted_by": version.provenance_submitted_by,
+                "reviewed_by": version.provenance_reviewed_by,
+                "reviewed_at": (
+                    version.provenance_reviewed_at.isoformat()
+                    if version.provenance_reviewed_at
+                    else None
+                ),
+                "review_note": version.provenance_review_note,
+            }
+        )
+    return data
+
+
+async def _get_provenance_version_for_update(
+    db: AsyncSession, version_id: str
+) -> tuple[MaterialVersion, Material]:
+    version = await db.scalar(
+        select(MaterialVersion).where(MaterialVersion.id == version_id).with_for_update()
+    )
+    if version is None:
+        raise ApiError(status_code=404, code="MATERIAL_VERSION_NOT_FOUND", message="资料版本不存在")
+    material = await db.get(Material, version.material_id)
+    if material is None:
+        raise ApiError(status_code=404, code="MATERIAL_VERSION_NOT_FOUND", message="资料版本不存在")
+    return version, material
+
+
+async def _ensure_provenance_unpublished(db: AsyncSession, version: MaterialVersion) -> None:
+    has_snapshot = await db.scalar(
+        select(exists().where(PublicationSnapshot.material_version_id == version.id))
+    )
+    if has_snapshot:
+        raise ApiError(
+            status_code=409,
+            code="MATERIAL_PROVENANCE_IMMUTABLE",
+            message="已发布版本的来源信息不可修改",
+        )
+
+
+def _check_provenance_version(version: MaterialVersion, expected_version: int) -> None:
+    if version.provenance_version != expected_version:
+        raise ApiError(
+            status_code=409,
+            code="RESOURCE_VERSION_CONFLICT",
+            message="来源信息版本已变化，请刷新后重试",
+            details={
+                "expected_version": expected_version,
+                "actual_version": version.provenance_version,
+            },
+        )
 
 
 async def _assigned_student_material_rows(
@@ -617,7 +691,7 @@ async def get_job_status(
     return ok(request, materials_service.job_out(job))
 
 
-@router.get("/courses/{course_id}/materials", response_model=None)
+@router.get("/courses/{course_id}/materials", response_model=CourseMaterialsResponse)
 async def list_materials(
     course_id: str,
     request: Request,
@@ -676,6 +750,9 @@ async def list_materials(
                 "content_type": version.content_type,
             }
             if is_staff:
+                item["current_version"]["provenance"] = _provenance_data(
+                    version, include_review_detail=True
+                )
                 item["current_version"]["quality_gate_status"] = version.quality_gate_status
                 workflow = await workflow_service.build_workflow(
                     db, material=material, version=version
@@ -691,9 +768,125 @@ async def list_materials(
                 "status": learning_version.status,
                 "size_bytes": learning_version.size_bytes,
                 "content_type": learning_version.content_type,
+                "provenance": _provenance_data(
+                    learning_version, include_review_detail=False
+                ),
             }
         items.append(item)
     return ok(request, items, has_more=False)
+
+
+@router.put(
+    "/material-versions/{version_id}/provenance",
+    response_model=MaterialProvenanceResponse,
+)
+async def update_material_provenance(
+    version_id: str,
+    body: MaterialProvenanceUpdate,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    version, material = await _get_provenance_version_for_update(db, version_id)
+    await require_course_role(material.course_id, user, db, roles={"teacher", "assistant"})
+    _check_provenance_version(version, body.version)
+    await _ensure_provenance_unpublished(db, version)
+
+    changed_fields = [
+        field for field in PROVENANCE_FIELDS if getattr(version, field) != getattr(body, field)
+    ]
+    for field in PROVENANCE_FIELDS:
+        setattr(version, field, getattr(body, field))
+    version.provenance_submitted_by = user.id
+    version.provenance_status = "unreviewed"
+    version.provenance_reviewed_by = None
+    version.provenance_reviewed_at = None
+    version.provenance_review_note = None
+    version.provenance_version += 1
+    await course_service.write_audit(
+        db,
+        actor_id=user.id,
+        action="material.provenance_submitted",
+        resource_type="material_version",
+        resource_id=version.id,
+        course_id=material.course_id,
+        detail={"changed_fields": changed_fields, "status": "unreviewed"},
+    )
+    await db.commit()
+    return ok(
+        request,
+        {
+            "material_version_id": version.id,
+            "provenance": _provenance_data(version, include_review_detail=True),
+        },
+    )
+
+
+@router.post(
+    "/material-versions/{version_id}/provenance-review",
+    response_model=MaterialProvenanceResponse,
+)
+async def review_material_provenance(
+    version_id: str,
+    body: MaterialProvenanceReview,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    version, material = await _get_provenance_version_for_update(db, version_id)
+    await require_course_role(
+        material.course_id, user, db, roles={"teacher", "course_publisher"}
+    )
+    _check_provenance_version(version, body.version)
+    await _ensure_provenance_unpublished(db, version)
+    submitter_id = version.provenance_submitted_by or version.created_by
+    if user.id == submitter_id:
+        raise ApiError(
+            status_code=409,
+            code="PROVENANCE_REVIEW_SELF_REVIEW",
+            message="来源信息必须由另一名课程教师或发布者复核",
+        )
+    if version.provenance_status != "unreviewed":
+        raise ApiError(
+            status_code=409,
+            code="PROVENANCE_REVIEW_ALREADY_RECORDED",
+            message="请先提交更新后的来源信息，再进行复核",
+        )
+    if body.status == "verified" and version.course_resource_role is None:
+        raise ApiError(
+            status_code=409,
+            code="PROVENANCE_RESOURCE_ROLE_REQUIRED",
+            message="未分类的课程资料不能标记为已复核",
+        )
+    if not any(getattr(version, field) for field in PROVENANCE_FIELDS):
+        raise ApiError(
+            status_code=409,
+            code="PROVENANCE_METADATA_REQUIRED",
+            message="没有可供复核的来源信息",
+        )
+
+    version.provenance_status = body.status
+    version.provenance_reviewed_by = user.id
+    version.provenance_reviewed_at = datetime.now(UTC)
+    version.provenance_review_note = body.note
+    version.provenance_version += 1
+    await course_service.write_audit(
+        db,
+        actor_id=user.id,
+        action="material.provenance_reviewed",
+        resource_type="material_version",
+        resource_id=version.id,
+        course_id=material.course_id,
+        detail={"status": body.status, "note": body.note},
+    )
+    await db.commit()
+    return ok(
+        request,
+        {
+            "material_version_id": version.id,
+            "provenance": _provenance_data(version, include_review_detail=True),
+        },
+    )
 
 
 @router.get("/material-versions/{version_id}/workflow", response_model=None)
