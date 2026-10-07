@@ -65,3 +65,22 @@
 2. 每个 DONE 同时写源 SHA、改动范围、测试、未运行的验证和原因；合并后对集成树重跑受影响测试。
 3. 若发现合同缺口，先由 CTRL 追加 DECISION，再让窗口实现；不可隐式改变 API、数据或状态语义。
 4. 直到所有可实施条目达到代码/迁移/契约/测试/浏览器/隔离数据所需证据，且所有外部输入和明确未来范围被准确记录后，才能关闭本目标；这不等同于宣称 V1 全系统、真实班级或生产验收通过。
+
+## 2026-10-06 16:40 +08:00 集成续记
+
+当前集成 HEAD：`cece51de434ff8b8a0cbb4ea5b19fc01e24e3bdc`（demo/student-integration）。本轮集成：
+
+- `0070459` EVID-013：Growth overview/tabs 只投影同学生/同课程、同知识点的最新有效 LearningEvidence metadata；仅当最新 evidence ID 与 MasteryState.last_evidence_id 精确匹配时返回五字段，否则 null。source 与集成 route tests 通过。
+- `4d491a3` UI-014：Reader SelectionContext 以 sessionStorage 仅保存 `{course_id,evidence_pointer_id}`；按课程恢复，切课/清除时清理；重开 Reader 重新走授权 GET。集成 mock browser 验收通过。
+- `cece51d` TUTOR-013：Branch assignment 轮换后 child Claim 仍验证父会话原 CourseRelease/PublicationSnapshot/IndexJob/DomainRelease pins；保留越权和撤权拒绝。
+- `234ae54` CTRL：三轮合成 seed 的 pin/idempotency 固定；纠正 Tutor route test 对 request state_version 的断言；补齐 Learn 从 Reader 重开所选来源入口。
+
+验证：DB14 全后端 `399 passed, 2 warnings`；Growth metadata route 定向 `1 passed`；Branch pin route 定向 `1 passed`；全仓 Ruff 通过；专属 Demo DB `alembic check` 无差异；OpenAPI 语义匹配 156 paths；Web Node `100/100`、TypeScript 通过、ESLint 0 errors/2 existing warnings、生产 build 24/24；UI-014 mock browser 刷新恢复/重新 GET/切课清理/零业务写入通过。服务端 pytest warnings 是上游 Starlette/httpx、anyio deprecation；定向 Growth run 另有 pytest cache 写权限 warning，不影响 exit 0。
+
+未关闭项继续按 §44、§49 逐项派发：Guided Tutor policy/Hint/Repair 多轮资格、成长元数据 UI 投影、Mini Lab/TeachingAsset 来源和版本失效语义；之后再复核 Student Model / Learning Memory 的来源、冲突、衰减、删除与正式测评隔离。真实教材/真实学生、真实班级、外部模型和生产验收仍不在本 Demo 授权范围。
+
+- `5f6b32c` UI-015（2026-10-06）：Growth 焦点与知识点列表只显示后端提供的最近有效证据 source/time/dimension/independence；`null`/缺字段显示原因未知，不推断；skills 继续明确为空。Node、TypeScript、ESLint source tests 通过；集成后完整构建/浏览器验证待本轮总回归。
+
+- `9ddaf76` TUTOR-014 + `f441819` CTRL 测试预期修正（2026-10-06）：Event payload 只在服务调用前捕获的 `response_state` 为 check/practice 时进入证据资格化；hint/repair/show-example fail-closed。逐回合资格 worker 测试通过。一个延迟 worker 测试第一次因版本变更而得到 session_version_mismatch、非其写死的 response_not_evidence_bearing；已修正为断言所有状态 rejected 且无 Evidence/Mastery 副作用，集成 route tests 最终 2 passed。
+- `6c1617f` EVID-014（2026-10-06）：MiniLab qualification 锁定服务端 session，并要求 server-derived measure 为 pending；已 qualified session 的不同 event_id 不能二次投影 LearningEvidence/Mastery。校验 owner/course/status/measure/invalidation/replay 与客户端 mastery 伪造边界。定向 DB tests 3 passed；不绑定 TeachingAssetVersion，因为当前 LAB_CATALOG 是独立 engineering_fixture。
+- `f441819` UI-015 浏览器补验：集成 production build 的 Growth 证据元数据 mock browser 通过（有效元数据、null fail-closed、无私密文本、不推导技能、零写入）；测试文件已纳入 Node suite。

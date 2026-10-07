@@ -20,7 +20,7 @@ test("Review verification payload matches the Practice question response shape",
   assert.match(helper, /question\.type === "single"[\s\S]*?selected_keys: \[answer\]/);
   assert.match(helper, /question\.type === "multiple"[\s\S]*?selected_keys: \[\.\.\.new Set\(answer\)\]/);
   assert.match(helper, /answer\.every\(\(key\) => optionKeys\.has\(key\)\)/);
-  assert.match(practice, /body: JSON\.stringify\(\{ version: task\.version, response \}\)/);
+  assert.match(practice, /body: JSON\.stringify\(\{ version: reviewVersions\.current\[task\.id\] \?\? task\.version, response \}\)/);
 });
 
 test("Review offers accessible controls only for supported objective question types", () => {
@@ -33,7 +33,7 @@ test("Review offers accessible controls only for supported objective question ty
   assert.match(controls, /question\.type === "true_false"[\s\S]*?<legend>判断题<\/legend>/);
   assert.match(controls, /checked=\{answer === option\.value\}/, "boolean false remains a selectable answer");
   assert.match(controls, /此复习题型不支持答案验证；只能关闭任务，不会提交答案或形成学习证据/);
-  assert.match(practice, /此复习题型不支持答案验证；关闭任务不会提交答案或形成学习证据/);
+  assert.match(practice, /此复习题型不支持答案验证；只能在可复习时间后无答案关闭，不会形成学习证据/);
   assert.match(practice, /关闭复习任务（不提交答案）/);
 });
 
@@ -41,8 +41,10 @@ test("Review exposes the due time, disables early verification, and guards the h
   assert.match(source, /function reviewIsDue\(review: Review\)/);
   assert.match(source, /Date\.parse\(review\.due_at\)/);
   assert.match(practice, /可复习时间：/);
-  assert.match(practice, /disabled=\{!response \|\| !due\}/);
+  assert.match(practice, /disabled=\{!response \|\| !due \|\| draftState === "saving"\}/);
   assert.match(practice, /aria-describedby=\{!due \? `review-due-\$\{review\.id\}` : undefined\}/);
   assert.match(practice, /尚未到可复习时间，届时可验证并完成/);
   assert.match(practice, /if \(!response \|\| !reviewIsDue\(task\)\) return/);
+  assert.match(practice, /关闭复习任务（不提交答案）/);
+  assert.match(practice, /尚未到可复习时间，届时可无答案关闭/);
 });

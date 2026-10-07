@@ -199,7 +199,7 @@ async function main() {
       await generatedRow.waitFor({ state: "detached", timeout: 20_000 });
     } else {
       assert.ok(await generatedVerifyButton.isDisabled(), "未到期的新任务不得发出必然失败的 verify 请求");
-      await generatedRow.getByRole("status").filter({ hasText: "尚未到复习时间" }).waitFor({ state: "visible" });
+      await generatedRow.getByRole("status").filter({ hasText: "尚未到可复习时间" }).waitFor({ state: "visible" });
       assert.ok(afterReviews.some((item) => item.id === generatedReview.id && item.status === "pending"),
         "未到期 Review 应保持 pending");
     }
@@ -238,7 +238,10 @@ async function main() {
       savedAnswers.set(questionVersionId, write.body.response);
     }
     assert.equal(savedAnswers.size, 5, "五种交互题最终都必须有服务端保存的答案");
-    if (!activeAttemptId) assert.equal(answerWrites.length, 5, "新 attempt 必须各自保存五种交互题答案一次");
+    const answeredQuestionIds = new Set(answerWrites.map((item) => item.pathname.split("/answers/")[1]));
+    assert.equal(answeredQuestionIds.size + (activeAttemptId ? (attemptStart.answers ?? []).filter((answer) => !answeredQuestionIds.has(answer.question_version_id)).length : 0), 5,
+      "五种交互题都必须有保存答案；多选允许逐次保存选项变化");
+    if (!activeAttemptId) assert.equal(answerWrites.length, 6, "新 attempt 对五题执行五次保存，多选题的两次勾选分别保存");
     const singleAnswer = savedAnswers.get(syntheticQuestion.question_version_id);
     assert.deepEqual(singleAnswer?.selected_keys, ["B"], "目标错答必须只选因变量");
     const multipleQuestion = practiceQuestions.find((item) => item.type === "multiple");
