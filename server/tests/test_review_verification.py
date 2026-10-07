@@ -146,3 +146,208 @@ def test_due_review_verification_generates_retention_evidence(client) -> None:
     assert changed_after_qualification.status_code == 409
     assert changed_after_qualification.json()["error"]["code"] == "LEARNING_EVENT_KEY_CONFLICT"
     assert asyncio.run(_side_effect_snapshot()) == after_qualification
+
+
+def test_review_answer_shape_qualifies_only_supported_pinned_objective_types(client) -> None:
+    course_id, student_id, _version_id, assessment_id = _prepare_published(client)
+    _login(client, "ms@uni.edu")
+
+    from app.db.base import new_ulid
+    from app.db.models import (
+        LearningEvent,
+        LearningEvidence,
+        MasteryState,
+        Question,
+        QuestionVersion,
+        ReviewTask,
+    )
+    from app.db.session import session_factory
+
+    assessment = client.get(f"/api/v1/assessments/{assessment_id}").json()["data"]
+    source_question_version_id = assessment["items"][0]["question_version_id"]
+
+    async def _seed_tasks() -> list[tuple[str, str, dict]]:
+        async with session_factory() as db:
+            source = await db.scalar(
+                select(QuestionVersion).where(QuestionVersion.id == source_question_version_id)
+            )
+            assert source is not None
+            cases = [
+                (
+                    "multiple",
+                    [{"key": "A"}, {"key": "B"}, {"key": "C"}],
+                    {"correct_keys": ["A", "C"]},
+                    {"selected_keys": ["A", "C"]},
+                ),
+                (
+                    "true_false",
+                    None,
+                    {"correct": True},
+                    {"selected_keys": True},
+                ),
+                (
+                    "multiple",
+                    [{"key": "A"}, {"key": "B"}],
+                    {"correct_keys": ["A"]},
+                    {"selected_keys": "A"},
+                ),
+                (
+                    "true_false",
+                    None,
+                    {"correct": False},
+                    {"selected_keys": [False]},
+                ),
+                (
+                    "essay",
+                    None,
+                    None,
+                    {"selected_keys": ["A"]},
+                ),
+            ]
+            latest_version_no = await db.scalar(
+                select(func.max(QuestionVersion.version_no)).where(
+                    QuestionVersion.question_id == source.question_id
+                )
+            )
+            first_version_no = (latest_version_no or source.version_no) + 1
+            seeded: list[tuple[str, str, dict]] = []
+            now = datetime.now(UTC)
+            for offset, (question_type, options, answer, response) in enumerate(
+                cases, start=first_version_no
+            ):
+                question_version_id = new_ulid()
+                task_id = new_ulid()
+                db.add(
+                    QuestionVersion(
+                        id=question_version_id,
+                        question_id=source.question_id,
+                        version_no=offset,
+                        type=question_type,
+                        stem=f"合成复习题 {offset}",
+                        options=options,
+                        answer=answer,
+                        rubric="合成评分规则" if question_type == "essay" else None,
+                        explanation=None,
+                        difficulty=2,
+                        knowledge_point_ids=[f"synthetic-review-{offset}"],
+                        evidence_ids=[],
+                        created_by=student_id,
+                    )
+                )
+                db.add(
+                    ReviewTask(
+                        id=task_id,
+                        user_id=student_id,
+                        course_id=course_id,
+                        question_version_id=question_version_id,
+                        source_attempt_id=None,
+                        reason="review_schedule",
+                        due_at=now - timedelta(minutes=1),
+                        status="pending",
+                        qualification_status="pending",
+                    )
+                )
+                seeded.append((task_id, question_version_id, response))
+            question = await db.scalar(select(Question).where(Question.id == source.question_id))
+            assert question is not None
+            # Move the mutable pointer past these task pins; each review must use its exact QV.
+            latest_id = new_ulid()
+            db.add(
+                QuestionVersion(
+                    id=latest_id,
+                    question_id=source.question_id,
+                    version_no=first_version_no + len(cases),
+                    type="single",
+                    stem="后续合成版本，不属于复习任务 pin",
+                    options=[{"key": "Z"}],
+                    answer={"correct_keys": ["Z"]},
+                    explanation=None,
+                    difficulty=2,
+                    knowledge_point_ids=["synthetic-latest-version"],
+                    evidence_ids=[],
+                    created_by=student_id,
+                )
+            )
+            question.current_version_id = latest_id
+            await db.commit()
+            return seeded
+
+    tasks = asyncio.run(_seed_tasks())
+    outcomes: list[tuple[str, str, str]] = []
+    for task_id, _question_version_id, response in tasks:
+        verified = client.post(
+            f"/api/v1/review-tasks/{task_id}/verify",
+            json={"version": 1, "response": response},
+        )
+        assert verified.status_code == 200, verified.text
+        event_id = verified.json()["data"]["event_id"]
+
+        from app.modules.learning_events.qualification import qualify_event
+
+        async def _qualify(event_id: str = event_id):
+            async with session_factory() as db:
+                qualification, replayed = await qualify_event(db, event_id=event_id)
+                await db.commit()
+                return qualification.id, qualification.status, qualification.reason, replayed
+
+        qualification_id, status, reason, replayed = asyncio.run(_qualify())
+        assert replayed is False
+        outcomes.append((qualification_id, status, reason))
+
+    assert [item[1] for item in outcomes] == [
+        "qualified",
+        "qualified",
+        "rejected",
+        "rejected",
+        "rejected",
+    ]
+    assert outcomes[0][2] == "authoritative_review_answer"
+    assert outcomes[1][2] == "authoritative_review_answer"
+    assert outcomes[2][2] == "review_response_shape_invalid"
+    assert outcomes[3][2] == "review_response_shape_invalid"
+    assert outcomes[4][2] == "review_question_not_objective"
+
+    async def _read_results() -> tuple[list[LearningEvidence], list[LearningEvent], list[str]]:
+        async with session_factory() as db:
+            events = list(
+                (
+                    await db.execute(
+                        select(LearningEvent)
+                        .where(LearningEvent.source_ref.in_([item[0] for item in tasks]))
+                        .order_by(LearningEvent.event_key)
+                    )
+                ).scalars()
+            )
+            evidence = list(
+                (
+                    await db.execute(
+                        select(LearningEvidence).where(
+                            LearningEvidence.source_type == "review",
+                            LearningEvidence.attempt_id.in_([item[0] for item in tasks]),
+                        )
+                    )
+                ).scalars()
+            )
+            mastery_points = list(
+                (
+                    await db.execute(
+                        select(MasteryState.knowledge_point).where(
+                            MasteryState.user_id == student_id,
+                            MasteryState.course_id == course_id,
+                        )
+                    )
+                ).scalars()
+            )
+            return evidence, events, mastery_points
+
+    evidence, events, mastery_points = asyncio.run(_read_results())
+    assert len(events) == 5
+    assert [event.qualification_status for event in events].count("qualified") == 2
+    assert len(evidence) == 2
+    assert {item.question_version_id for item in evidence} == {
+        tasks[0][1],
+        tasks[1][1],
+    }
+    assert "synthetic-review-4" not in mastery_points
+    assert "synthetic-review-5" not in mastery_points
+    assert "synthetic-review-6" not in mastery_points

@@ -394,13 +394,43 @@ async def _qualify_review_task(
         return [], "review_question_not_found"
     if question.type not in {"single", "multiple", "true_false"}:
         return [], "review_question_not_objective"
-    answer = question.answer or {}
+    if not isinstance(question.answer, dict):
+        return [], "review_answer_key_invalid"
+    answer = question.answer
+    if not isinstance(response, dict) or set(response) != {"selected_keys"}:
+        return [], "review_response_shape_invalid"
     given = response.get("selected_keys")
     if question.type == "true_false":
-        correct = isinstance(given, bool) and given == answer.get("correct")
+        expected = answer.get("correct")
+        if not isinstance(given, bool) or not isinstance(expected, bool):
+            return [], "review_response_shape_invalid"
+        correct = given is expected
     else:
-        correct_keys = {str(key) for key in (answer.get("correct_keys") or [])}
-        correct = isinstance(given, list) and {str(key) for key in given} == correct_keys
+        options = question.options
+        option_keys = [
+            option.get("key")
+            for option in options
+            if isinstance(option, dict) and isinstance(option.get("key"), str)
+        ] if isinstance(options, list) else []
+        raw_correct_keys = answer.get("correct_keys")
+        if (
+            not option_keys
+            or len(set(option_keys)) != len(option_keys)
+            or not isinstance(raw_correct_keys, list)
+            or not raw_correct_keys
+            or any(not isinstance(key, str) or not key for key in raw_correct_keys)
+            or len(set(raw_correct_keys)) != len(raw_correct_keys)
+            or not set(raw_correct_keys).issubset(option_keys)
+            or (question.type == "single" and len(raw_correct_keys) != 1)
+            or not isinstance(given, list)
+            or not given
+            or any(not isinstance(key, str) or not key for key in given)
+            or len(set(given)) != len(given)
+            or not set(given).issubset(option_keys)
+            or (question.type == "single" and len(given) != 1)
+        ):
+            return [], "review_response_shape_invalid"
+        correct = set(given) == set(raw_correct_keys)
     knowledge_points = [
         kp for kp in (question.knowledge_point_ids or []) if isinstance(kp, str)
     ][:5] or [question.stem[:30]]
