@@ -34,6 +34,7 @@ from app.modules.materials import service as materials_service
 from app.modules.materials.policy import ensure_legacy_material_authoring_api_enabled
 from app.modules.materials.reader import MaterialVersionIntegrityError, get_or_create_pdf_page
 from app.modules.materials.renderers.base import RendererUnavailableError
+from app.modules.materials.schemas import MaterialProvenancePointerRead
 
 router = APIRouter()
 
@@ -158,6 +159,7 @@ class EvidencePointerRead(BaseModel):
     excerpt: str
     excerpt_sha256: str
     restored: bool
+    provenance: MaterialProvenancePointerRead | None = None
 
 
 class ResponseMeta(BaseModel):
@@ -687,6 +689,12 @@ async def get_evidence_pointer(
         not in {"textbook", "slides", "handout", "exercise", "reference", "other"}
     ):
         raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
+    provenance = await knowledge_service.project_pointer_provenance(
+        db,
+        material_id=pointer.material_id,
+        material_version_id=pointer.material_version_id,
+        course_id=pointer.course_id,
+    )
     return ok(
         request,
         {
@@ -716,6 +724,7 @@ async def get_evidence_pointer(
             "excerpt": pointer.excerpt,
             "excerpt_sha256": pointer.excerpt_sha256,
             "restored": True,
+            "provenance": provenance,
         },
     )
 

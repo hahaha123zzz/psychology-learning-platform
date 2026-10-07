@@ -10225,6 +10225,16 @@
               }
             ],
             "title": "Label"
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaterialProvenancePointerRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": true,
@@ -10959,6 +10969,16 @@
           "restored": {
             "type": "boolean",
             "title": "Restored"
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaterialProvenancePointerRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -11481,6 +11501,118 @@
           "password"
         ],
         "title": "LoginRequest"
+      },
+      "MaterialProvenancePointerRead": {
+        "properties": {
+          "source_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Title"
+          },
+          "publisher": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publisher"
+          },
+          "content_author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Author"
+          },
+          "edition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edition"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License"
+          },
+          "course_resource_role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "course_textbook",
+                  "supplementary_resource"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Resource Role"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "unreviewed",
+              "verified",
+              "rejected"
+            ],
+            "title": "Status"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_title",
+          "publisher",
+          "content_author",
+          "edition",
+          "source_url",
+          "license",
+          "course_resource_role",
+          "status",
+          "version"
+        ],
+        "title": "MaterialProvenancePointerRead",
+        "description": "学生引用中的安全来源投影；不含提交者、审核者或审核备注。"
       },
       "MaterialProvenanceRead": {
         "properties": {

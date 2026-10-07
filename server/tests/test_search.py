@@ -1384,6 +1384,34 @@ def test_evidence_pointer_keeps_published_historical_version_after_roll_forward(
     )
     pointer_id = search.json()["data"]["items"][0]["evidence_pointer_id"]
 
+    async def set_version_provenance() -> None:
+        async with session_factory() as db:
+            previous = await db.get(MaterialVersion, version_id)
+            assert previous is not None
+            previous.source_title = "Synthetic pinned source"
+            previous.publisher = "Synthetic publisher"
+            previous.content_author = "Synthetic author"
+            previous.edition = "Synthetic edition"
+            previous.source_url = "https://example.invalid/synthetic"
+            previous.license = "Synthetic local license"
+            previous.course_resource_role = "course_textbook"
+            previous.provenance_status = "unreviewed"
+            previous.provenance_version = 3
+            previous.provenance_submitted_by = previous.created_by
+            previous.provenance_review_note = "synthetic private note"
+            await db.commit()
+
+    asyncio.run(set_version_provenance())
+    unreviewed = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
+    assert unreviewed.status_code == 200, unreviewed.text
+    unreviewed_provenance = unreviewed.json()["data"]["provenance"]
+    assert unreviewed_provenance["source_title"] == "Synthetic pinned source"
+    assert unreviewed_provenance["status"] == "unreviewed"
+    assert unreviewed_provenance["version"] == 3
+    assert "submitted_by" not in unreviewed_provenance
+    assert "reviewed_by" not in unreviewed_provenance
+    assert "review_note" not in unreviewed_provenance
+
     async def publish_new_current_version() -> None:
         async with session_factory() as db:
             previous = await db.get(MaterialVersion, version_id)
@@ -1396,6 +1424,11 @@ def test_evidence_pointer_keeps_published_historical_version_after_roll_forward(
                 version_no=previous.version_no + 1,
                 status="parsed",
                 created_by=previous.created_by,
+                source_title="Synthetic current version source",
+                publisher="Synthetic current publisher",
+                course_resource_role="supplementary_resource",
+                provenance_status="unreviewed",
+                provenance_version=1,
             )
             db.add(newer)
             await db.flush()
@@ -1406,6 +1439,32 @@ def test_evidence_pointer_keeps_published_historical_version_after_roll_forward(
     restored = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
     assert restored.status_code == 200
     assert restored.json()["data"]["material_version_id"] == version_id
+    provenance = restored.json()["data"]["provenance"]
+    assert provenance["source_title"] == "Synthetic pinned source"
+    assert provenance["publisher"] == "Synthetic publisher"
+    assert provenance["course_resource_role"] == "course_textbook"
+    assert provenance["status"] == "unreviewed"
+
+    async def reject_pinned_provenance() -> None:
+        async with session_factory() as db:
+            pinned = await db.get(MaterialVersion, version_id)
+            assert pinned is not None
+            pinned.provenance_status = "rejected"
+            pinned.provenance_reviewed_by = pinned.created_by
+            pinned.provenance_reviewed_at = datetime.now(UTC)
+            pinned.provenance_review_note = "synthetic rejection reason"
+            pinned.provenance_version = 4
+            await db.commit()
+
+    asyncio.run(reject_pinned_provenance())
+    rejected = client.get(f"/api/v1/evidence-pointers/{pointer_id}")
+    assert rejected.status_code == 200
+    rejected_provenance = rejected.json()["data"]["provenance"]
+    assert rejected_provenance["source_title"] == "Synthetic pinned source"
+    assert rejected_provenance["status"] == "rejected"
+    assert rejected_provenance["version"] == 4
+    assert "provenance_reviewed_by" not in rejected_provenance
+    assert "review_note" not in rejected_provenance
 
 
 def test_evidence_pointer_survives_reparse_object_cleanup(client) -> None:

@@ -41,6 +41,38 @@ PUBLICATION_POINTER_PIN_KEYS = frozenset(
     {"publication_snapshot_id", "index_job_id", "domain_release_id"}
 )
 
+
+async def project_pointer_provenance(
+    db: AsyncSession,
+    *,
+    material_id: str,
+    material_version_id: str,
+    course_id: str,
+) -> dict | None:
+    """Project only provenance attached to this exact pointer version and course."""
+    version = await db.scalar(
+        select(MaterialVersion)
+        .join(Material, Material.id == MaterialVersion.material_id)
+        .where(
+            MaterialVersion.id == material_version_id,
+            MaterialVersion.material_id == material_id,
+            Material.course_id == course_id,
+        )
+    )
+    if version is None:
+        return None
+    return {
+        "source_title": version.source_title,
+        "publisher": version.publisher,
+        "content_author": version.content_author,
+        "edition": version.edition,
+        "source_url": version.source_url,
+        "license": version.license,
+        "course_resource_role": version.course_resource_role,
+        "status": version.provenance_status,
+        "version": version.provenance_version,
+    }
+
 TSQ_TOKEN_RE = re.compile(r"[\u4e00-\u9fff]+|[a-zA-Z0-9]+")
 SEARCH_STOPWORDS = frozenset(
     {

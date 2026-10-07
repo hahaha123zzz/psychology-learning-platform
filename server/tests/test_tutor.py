@@ -256,6 +256,33 @@ def test_saved_citation_material_type_values_and_legacy_fallback_without_databas
     assert _serialize_citation({"material_type": "untrusted-category"})["material_type"] is None
     assert _serialize_citation({"material_type": ["slides"]})["material_type"] is None
     assert _serialize_citation("legacy-scalar") == "legacy-scalar"
+    safe = _serialize_citation(
+        {
+            "evidence_pointer_id": "synthetic-pointer",
+            "provenance": {"review_note": "must not leak"},
+            "provenance_reviewed_by": "reviewer-id",
+            "provenance_submitted_by": "submitter-id",
+            "review_note": "must not leak",
+        },
+        {
+            "source_title": "Synthetic source",
+            "publisher": None,
+            "content_author": None,
+            "edition": None,
+            "source_url": None,
+            "license": None,
+            "course_resource_role": None,
+            "status": "rejected",
+            "version": 2,
+        },
+    )
+    assert safe["provenance"]["source_title"] == "Synthetic source"
+    assert safe["provenance"]["status"] == "rejected"
+    assert safe["provenance"]["version"] == 2
+    assert not {"review_note", "provenance_reviewed_by", "provenance_submitted_by"} & safe.keys()
+    assert _serialize_citation(
+        {"evidence_pointer_id": "legacy-pointer", "provenance": {"source_title": "stale"}}
+    )["provenance"] is None
     legacy_turn = ChatTurnRead(
         id="legacy-turn",
         role="tutor",
@@ -315,6 +342,7 @@ def test_tutor_sse_replay_keeps_material_type_and_uses_neutral_legacy_fallback()
             "evidence_id": None,
             "evidence_pointer_id": "synthetic-pointer",
             "material_type": "slides",
+            "provenance": None,
             "label": "[1] Synthetic title",
         }
     ]
@@ -323,9 +351,81 @@ def test_tutor_sse_replay_keeps_material_type_and_uses_neutral_legacy_fallback()
             "evidence_id": None,
             "evidence_pointer_id": "legacy-pointer",
             "material_type": None,
+            "provenance": None,
             "label": "引用",
         }
     ]
+
+
+def test_citation_provenance_requires_exact_pointer_scope_and_version_without_database() -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    from app.modules.tutor.router import _citation_provenance
+
+    pointer = SimpleNamespace(
+        id="p" * 26,
+        course_id="c" * 26,
+        material_id="m" * 26,
+        material_version_id="v" * 26,
+    )
+
+    class FakeDB:
+        scalar_calls = 0
+
+        async def get(self, model, pointer_id):
+            assert pointer_id == pointer.id
+            return pointer
+
+        async def scalar(self, statement):
+            self.scalar_calls += 1
+            return SimpleNamespace(
+                source_title="Exact synthetic version",
+                publisher=None,
+                content_author=None,
+                edition=None,
+                source_url=None,
+                license=None,
+                course_resource_role=None,
+                provenance_status="verified",
+                provenance_version=2,
+            )
+
+    async def verify():
+        db = FakeDB()
+        mismatched_version = await _citation_provenance(
+            db,
+            pointer_id=pointer.id,
+            course_id=pointer.course_id,
+            material_id=pointer.material_id,
+            material_version_id="x" * 26,
+        )
+        assert mismatched_version is None
+        assert db.scalar_calls == 0
+        wrong_course = await _citation_provenance(
+            db,
+            pointer_id=pointer.id,
+            course_id="z" * 26,
+        )
+        assert wrong_course is None
+        assert db.scalar_calls == 0
+        exact = await _citation_provenance(
+            db,
+            pointer_id=pointer.id,
+            course_id=pointer.course_id,
+            material_id=pointer.material_id,
+            material_version_id=pointer.material_version_id,
+        )
+        assert exact["source_title"] == "Exact synthetic version"
+        assert exact["status"] == "verified"
+        assert exact["version"] == 2
+        assert db.scalar_calls == 1
+        legacy = await _citation_provenance(
+            db, pointer_id=None, course_id=pointer.course_id
+        )
+        assert legacy is None
+
+    asyncio.run(verify())
 
 
 def test_material_type_is_in_search_reader_and_saved_chat_openapi_without_database() -> None:
@@ -339,6 +439,24 @@ def test_material_type_is_in_search_reader_and_saved_chat_openapi_without_databa
     assert search_item["properties"]["material_type"]["enum"] == values
     assert pointer["properties"]["material_type"]["enum"] == values
     assert citation["properties"]["material_type"]["anyOf"][0]["enum"] == values
+    provenance = schema["components"]["schemas"]["MaterialProvenancePointerRead"]
+    expected = {
+        "source_title",
+        "publisher",
+        "content_author",
+        "edition",
+        "source_url",
+        "license",
+        "course_resource_role",
+        "status",
+        "version",
+    }
+    assert set(provenance["properties"]) == expected
+    assert "provenance" in pointer["properties"]
+    assert "provenance" in citation["properties"]
+    assert not {"submitted_by", "reviewed_by", "reviewed_at", "review_note"} & set(
+        provenance["properties"]
+    )
 
 
 def test_chat_session_creation_validates_mode_context(client) -> None:
@@ -1353,6 +1471,23 @@ def test_selected_table_turn_uses_pinned_local_context_and_binds_idempotency(
     assert session_response.status_code == 201, session_response.text
     session = session_response.json()["data"]
 
+    async def set_pointer_version_provenance() -> None:
+        from app.db.models import MaterialVersion
+
+        async with session_factory() as db:
+            version = await db.get(MaterialVersion, version_id)
+            assert version is not None
+            version.source_title = "Synthetic Table source"
+            version.publisher = "Synthetic Table publisher"
+            version.course_resource_role = "supplementary_resource"
+            version.provenance_status = "unreviewed"
+            version.provenance_version = 2
+            version.provenance_submitted_by = version.created_by
+            version.provenance_review_note = "synthetic private review note"
+            await db.commit()
+
+    asyncio.run(set_pointer_version_provenance())
+
     def forbidden_provider(*args, **kwargs):
         raise AssertionError("selected Table turn must stay on local extractive path")
 
@@ -1383,12 +1518,20 @@ def test_selected_table_turn_uses_pinned_local_context_and_binds_idempotency(
     assert event_names.index("state") < event_names.index("citation") < event_names.index("delta")
     first_citation = next(data for name, data in first_events if name == "citation")
     assert first_citation["evidence_pointer_id"] == pointer_id
+    assert first_citation["provenance"]["source_title"] == "Synthetic Table source"
+    assert first_citation["provenance"]["status"] == "unreviewed"
+    assert "submitted_by" not in first_citation["provenance"]
+    assert "review_note" not in first_citation["provenance"]
     first_done = next(data for name, data in first_events if name == "done")
     assert first_done["saved"] is True
     saved_turns = client.get(f"/api/v1/chat/sessions/{session['id']}").json()["data"]["turns"]
     saved_student_turn, saved_tutor_turn = saved_turns[-2:]
     object_context = saved_tutor_turn["verification"]["object_context"]
     saved_citation = saved_tutor_turn["citations"][0]
+    assert saved_citation["provenance"]["publisher"] == "Synthetic Table publisher"
+    assert saved_citation["provenance"]["course_resource_role"] == "supplementary_resource"
+    assert "provenance_submitted_by" not in saved_citation
+    assert "provenance_review_note" not in saved_citation
     assert saved_student_turn["citations"] == [{"evidence_pointer_id": pointer_id}]
     assert object_context["evidence_pointer_id"] == pointer_id
     assert object_context["material_version_id"] == version_id
@@ -1410,6 +1553,8 @@ def test_selected_table_turn_uses_pinned_local_context_and_binds_idempotency(
     assert next(data for name, data in replay_events if name == "citation")[
         "evidence_pointer_id"
     ] == pointer_id
+    replay_citation = next(data for name, data in replay_events if name == "citation")
+    assert replay_citation["provenance"]["source_title"] == "Synthetic Table source"
 
     conflict = client.post(
         endpoint,

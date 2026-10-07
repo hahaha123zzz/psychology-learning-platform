@@ -15,6 +15,7 @@ from app.db.models import (
     ChatTurn,
     CourseMember,
     CurrentLearningTask,
+    EvidencePointer,
     LearningEpisode,
     LearningEvent,
     LearningSession,
@@ -26,6 +27,8 @@ from app.db.models import (
 from app.db.session import get_db_session
 from app.modules.assessments.policy import ensure_ai_support_available
 from app.modules.auth.dependencies import get_current_user, require_course_role
+from app.modules.knowledge import service as knowledge_service
+from app.modules.materials.schemas import MaterialProvenancePointerRead
 from app.modules.tutor import service as tutor_service
 from app.modules.tutor.planner import plan_next_step
 from app.modules.tutor.policy import load_effective_policy
@@ -46,6 +49,7 @@ class ChatCitationRead(BaseModel):
     ] | None = None
     physical_page: int | None = None
     label: str | None = None
+    provenance: MaterialProvenancePointerRead | None = None
 
 
 class ChatTurnRead(BaseModel):
@@ -84,19 +88,84 @@ class ChatSessionEnvelope(BaseModel):
     meta: ChatSessionMeta
 
 
-def _serialize_citation(citation: Any) -> Any:
+def _serialize_citation(citation: Any, provenance: dict | None = None) -> Any:
     """Keep old saved citations readable without inventing a material category."""
     if not isinstance(citation, dict):
         return citation
     material_type = citation.get("material_type")
-    return {
-        **citation,
+    safe_citation = {
+        key: value
+        for key, value in citation.items()
+        if key not in {
+            "provenance",
+            "provenance_submitted_by",
+            "provenance_reviewed_by",
+            "provenance_reviewed_at",
+            "provenance_review_note",
+            "submitted_by",
+            "reviewed_by",
+            "reviewed_at",
+            "review_note",
+        }
+    }
+    safe_citation.update({
         "material_type": (
             material_type
             if isinstance(material_type, str) and material_type in _MATERIAL_TYPES
             else None
         ),
-    }
+        "provenance": provenance,
+    })
+    return safe_citation
+
+
+async def _citation_provenance(
+    db: AsyncSession,
+    *,
+    pointer_id: Any,
+    course_id: str,
+    material_id: Any = None,
+    material_version_id: Any = None,
+) -> dict | None:
+    if not isinstance(pointer_id, str) or len(pointer_id) != 26:
+        return None
+    pointer = await db.get(EvidencePointer, pointer_id)
+    if (
+        pointer is None
+        or pointer.course_id != course_id
+        or (isinstance(material_id, str) and pointer.material_id != material_id)
+        or (
+            isinstance(material_version_id, str)
+            and pointer.material_version_id != material_version_id
+        )
+    ):
+        return None
+    return await knowledge_service.project_pointer_provenance(
+        db,
+        material_id=pointer.material_id,
+        material_version_id=pointer.material_version_id,
+        course_id=pointer.course_id,
+    )
+
+
+async def _serialize_saved_citations(
+    db: AsyncSession, citations: Any, *, course_id: str
+) -> Any:
+    if not isinstance(citations, list):
+        return citations
+    projected = []
+    for citation in citations:
+        provenance = None
+        if isinstance(citation, dict):
+            provenance = await _citation_provenance(
+                db,
+                pointer_id=citation.get("evidence_pointer_id"),
+                course_id=course_id,
+                material_id=citation.get("material_id"),
+                material_version_id=citation.get("material_version_id"),
+            )
+        projected.append(_serialize_citation(citation, provenance))
+    return projected
 
 
 def _sse_frame(event: str, data: dict) -> str:
@@ -104,7 +173,9 @@ def _sse_frame(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {payload}\n\n"
 
 
-async def _replay_saved_turn(tutor_turn: ChatTurn):
+async def _replay_saved_turn(
+    tutor_turn: ChatTurn, provenance_by_pointer_id: dict[str, dict | None] | None = None
+):
     """只从已提交的 TutorTurn 重放完整回答，不重新调用模型或写回业务数据。"""
     citations = tutor_turn.citations or []
     verification = tutor_turn.verification if isinstance(tutor_turn.verification, dict) else {}
@@ -156,6 +227,9 @@ async def _replay_saved_turn(tutor_turn: ChatTurn):
                     "evidence_id": citation.get("evidence_id"),
                     "evidence_pointer_id": citation.get("evidence_pointer_id"),
                     "material_type": _serialize_citation(citation)["material_type"],
+                    "provenance": (provenance_by_pointer_id or {}).get(
+                        citation.get("evidence_pointer_id")
+                    ),
                     "label": citation.get("label") or "引用",
                 },
             )
@@ -523,6 +597,24 @@ async def get_chat_session(
             .order_by(ChatTurn.created_at.asc())
         )
     ).scalars()
+    serialized_turns = []
+    for turn in turns:
+        citations = turn.citations
+        if turn.role == "tutor" and isinstance(citations, list):
+            citations = await _serialize_saved_citations(
+                db, citations, course_id=session_row.course_id
+            )
+        serialized_turns.append(
+            {
+                "id": turn.id,
+                "role": turn.role,
+                "content": turn.content,
+                "citations": citations,
+                "verification": turn.verification,
+                "refusal": turn.refusal,
+                "created_at": turn.created_at.isoformat(),
+            }
+        )
     return ok(
         request,
         {
@@ -530,22 +622,7 @@ async def get_chat_session(
             "course_id": session_row.course_id,
             "mode": session_row.mode,
             "status": session_row.status,
-            "turns": [
-                {
-                    "id": t.id,
-                    "role": t.role,
-                    "content": t.content,
-                    "citations": (
-                        [_serialize_citation(citation) for citation in t.citations]
-                        if t.role == "tutor" and isinstance(t.citations, list)
-                        else t.citations
-                    ),
-                    "verification": t.verification,
-                    "refusal": t.refusal,
-                    "created_at": t.created_at.isoformat(),
-                }
-                for t in turns
-            ],
+            "turns": serialized_turns,
         },
     )
 
@@ -633,8 +710,20 @@ async def create_turn(
                 message="该回合尚无已保存的 Tutor 回答，请保留输入后稍后重试",
                 retryable=True,
             )
+        provenance_by_pointer_id = {}
+        if isinstance(saved_tutor_turn.citations, list):
+            for citation in saved_tutor_turn.citations:
+                if isinstance(citation, dict):
+                    pointer_id = citation.get("evidence_pointer_id")
+                    provenance_by_pointer_id[pointer_id] = await _citation_provenance(
+                        db,
+                        pointer_id=pointer_id,
+                        course_id=session_row.course_id,
+                        material_id=citation.get("material_id"),
+                        material_version_id=citation.get("material_version_id"),
+                    )
         return StreamingResponse(
-            _replay_saved_turn(saved_tutor_turn),
+            _replay_saved_turn(saved_tutor_turn, provenance_by_pointer_id),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
@@ -662,6 +751,12 @@ async def create_turn(
         )
         try:
             async for event in turn_stream:
+                if event["event"] == "citation":
+                    event["data"]["provenance"] = await _citation_provenance(
+                        db,
+                        pointer_id=event["data"].get("evidence_pointer_id"),
+                        course_id=session_row.course_id,
+                    )
                 yield _sse_frame(event["event"], event["data"])
         finally:
             await turn_stream.aclose()

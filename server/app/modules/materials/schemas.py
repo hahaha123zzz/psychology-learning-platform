@@ -67,6 +67,20 @@ class MaterialProvenanceRead(BaseModel):
     review_note: str | None = None
 
 
+class MaterialProvenancePointerRead(BaseModel):
+    """学生引用中的安全来源投影；不含提交者、审核者或审核备注。"""
+
+    source_title: str | None
+    publisher: str | None
+    content_author: str | None
+    edition: str | None
+    source_url: str | None
+    license: str | None
+    course_resource_role: Literal["course_textbook", "supplementary_resource"] | None
+    status: Literal["unreviewed", "verified", "rejected"]
+    version: int
+
+
 class MaterialVersionListRead(BaseModel):
     id: str
     version_no: int
