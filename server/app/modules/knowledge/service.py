@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.embedding import get_embedding_client
+from app.core.errors import ApiError
 from app.db.base import new_ulid
 from app.db.models import (
     DomainRelease,
@@ -72,6 +73,99 @@ async def project_pointer_provenance(
         "status": version.provenance_status,
         "version": version.provenance_version,
     }
+
+
+async def validate_pointer_publication_pin(
+    db: AsyncSession, pointer: EvidencePointer
+) -> dict[str, str] | None:
+    """Revalidate the exact persisted publication pin; all-null legacy pins remain explicit."""
+    pin_values = (
+        pointer.publication_snapshot_id,
+        pointer.index_job_id,
+        pointer.domain_release_id,
+    )
+    if all(value is None for value in pin_values):
+        return None
+    if any(not isinstance(value, str) or not value for value in pin_values):
+        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
+
+    snapshot = await db.get(PublicationSnapshot, pointer.publication_snapshot_id)
+    index_job = await db.get(Job, pointer.index_job_id)
+    domain_release = await db.get(DomainRelease, pointer.domain_release_id)
+    payload = index_job.payload if index_job and isinstance(index_job.payload, dict) else {}
+    if (
+        snapshot is None
+        or snapshot.material_id != pointer.material_id
+        or snapshot.material_version_id != pointer.material_version_id
+        or snapshot.index_job_id != pointer.index_job_id
+        or snapshot.domain_release_id != pointer.domain_release_id
+        or index_job is None
+        or index_job.kind != "material_embed"
+        or index_job.status != "succeeded"
+        or payload.get("material_version_id") != pointer.material_version_id
+        or payload.get("domain_release_id") != pointer.domain_release_id
+        or domain_release is None
+        or domain_release.course_id != pointer.course_id
+        or domain_release.status not in {"published", "deprecated"}
+    ):
+        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
+    return {
+        "publication_snapshot_id": pointer.publication_snapshot_id,
+        "index_job_id": pointer.index_job_id,
+        "domain_release_id": pointer.domain_release_id,
+    }
+
+
+async def require_student_pointer_read_access(
+    db: AsyncSession, pointer: EvidencePointer
+) -> Material:
+    """Use Reader's exact pin, publication, material and legacy checks for student reads."""
+    publication_pin = await validate_pointer_publication_pin(db, pointer)
+    if publication_pin is not None:
+        material_state = (
+            await db.execute(
+                select(Material.course_id, Material.status, Material.visibility)
+                .join(MaterialVersion, MaterialVersion.material_id == Material.id)
+                .where(
+                    Material.id == pointer.material_id,
+                    MaterialVersion.id == pointer.material_version_id,
+                )
+                .limit(1)
+            )
+        ).first()
+    else:
+        material_state = (
+            await db.execute(
+                select(Material.course_id, Material.status, Material.visibility)
+                .join(MaterialVersion, MaterialVersion.material_id == Material.id)
+                .join(
+                    PublicationSnapshot,
+                    PublicationSnapshot.material_version_id == MaterialVersion.id,
+                )
+                .where(
+                    Material.id == pointer.material_id,
+                    MaterialVersion.id == pointer.material_version_id,
+                    PublicationSnapshot.material_id == pointer.material_id,
+                )
+                .limit(1)
+            )
+        ).first()
+    if (
+        material_state is None
+        or material_state[0] != pointer.course_id
+        or material_state[1] != "active"
+        or material_state[2] != "published"
+    ):
+        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
+    material = await db.get(Material, pointer.material_id)
+    if (
+        material is None
+        or material.course_id != pointer.course_id
+        or material.material_type
+        not in {"textbook", "slides", "handout", "exercise", "reference", "other"}
+    ):
+        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
+    return material
 
 TSQ_TOKEN_RE = re.compile(r"[\u4e00-\u9fff]+|[a-zA-Z0-9]+")
 SEARCH_STOPWORDS = frozenset(

@@ -19,6 +19,7 @@ from app.db.models import (
     LearningEpisode,
     LearningEvent,
     LearningSession,
+    PublicationSnapshot,
     ReviewTask,
     TeachingSession,
     User,
@@ -123,7 +124,8 @@ async def _citation_provenance(
     db: AsyncSession,
     *,
     pointer_id: Any,
-    course_id: str,
+    session_row: ChatSession,
+    user_id: str,
     material_id: Any = None,
     material_version_id: Any = None,
 ) -> dict | None:
@@ -132,13 +134,92 @@ async def _citation_provenance(
     pointer = await db.get(EvidencePointer, pointer_id)
     if (
         pointer is None
-        or pointer.course_id != course_id
+        or pointer.course_id != session_row.course_id
         or (isinstance(material_id, str) and pointer.material_id != material_id)
         or (
             isinstance(material_version_id, str)
             and pointer.material_version_id != material_version_id
         )
     ):
+        return None
+    try:
+        binding = await tutor_service.authorize_chat_session_release_scope(
+            db, session_row=session_row, user_id=user_id
+        )
+        has_release_binding = (
+            session_row.course_release_assignment_id is not None
+            or session_row.course_release_id is not None
+        )
+        if has_release_binding:
+            if binding is None:
+                return None
+            manifest = binding.manifest
+            materials = manifest.get("materials")
+            versions = manifest.get("material_version_ids")
+            pins = manifest.get("publication_snapshots")
+            if (
+                not isinstance(materials, list)
+                or not isinstance(versions, list)
+                or not isinstance(pins, list)
+                or len(materials) != len(versions)
+                or len(materials) != len(pins)
+            ):
+                return None
+            matches = [
+                index
+                for index, pair in enumerate(zip(materials, versions, strict=True))
+                if pair == (pointer.material_id, pointer.material_version_id)
+            ]
+            if len(matches) != 1:
+                return None
+            release_pin = pins[matches[0]]
+            if (
+                not isinstance(release_pin, dict)
+                or release_pin.get("material_id") != pointer.material_id
+                or release_pin.get("material_version_id") != pointer.material_version_id
+                or any(
+                    not isinstance(release_pin.get(key), str) or not release_pin[key]
+                    for key in (
+                        "publication_snapshot_id",
+                        "index_job_id",
+                        "embedding_version",
+                    )
+                )
+                or (
+                    release_pin.get("domain_release_id") is not None
+                    and (
+                        not isinstance(release_pin.get("domain_release_id"), str)
+                        or not release_pin["domain_release_id"]
+                    )
+                )
+                or binding.domain_release_id != release_pin.get("domain_release_id")
+            ):
+                return None
+            pointer_pin = (
+                pointer.publication_snapshot_id,
+                pointer.index_job_id,
+                pointer.domain_release_id,
+            )
+            expected_pin = (
+                release_pin["publication_snapshot_id"],
+                release_pin["index_job_id"],
+                release_pin["domain_release_id"],
+            )
+            if all(value is None for value in pointer_pin):
+                snapshot = await db.get(PublicationSnapshot, release_pin["publication_snapshot_id"])
+                if (
+                    snapshot is None
+                    or snapshot.material_id != pointer.material_id
+                    or snapshot.material_version_id != pointer.material_version_id
+                    or snapshot.index_job_id != release_pin["index_job_id"]
+                    or snapshot.embedding_version != release_pin["embedding_version"]
+                    or snapshot.domain_release_id != release_pin["domain_release_id"]
+                ):
+                    return None
+            elif pointer_pin != expected_pin:
+                return None
+        await knowledge_service.require_student_pointer_read_access(db, pointer)
+    except ApiError:
         return None
     return await knowledge_service.project_pointer_provenance(
         db,
@@ -149,7 +230,11 @@ async def _citation_provenance(
 
 
 async def _serialize_saved_citations(
-    db: AsyncSession, citations: Any, *, course_id: str
+    db: AsyncSession,
+    citations: Any,
+    *,
+    session_row: ChatSession,
+    user_id: str,
 ) -> Any:
     if not isinstance(citations, list):
         return citations
@@ -160,7 +245,8 @@ async def _serialize_saved_citations(
             provenance = await _citation_provenance(
                 db,
                 pointer_id=citation.get("evidence_pointer_id"),
-                course_id=course_id,
+                session_row=session_row,
+                user_id=user_id,
                 material_id=citation.get("material_id"),
                 material_version_id=citation.get("material_version_id"),
             )
@@ -602,7 +688,7 @@ async def get_chat_session(
         citations = turn.citations
         if turn.role == "tutor" and isinstance(citations, list):
             citations = await _serialize_saved_citations(
-                db, citations, course_id=session_row.course_id
+                db, citations, session_row=session_row, user_id=user.id
             )
         serialized_turns.append(
             {
@@ -669,14 +755,6 @@ async def create_turn(
     selected_pointer_ids = body.selected_evidence_pointer_ids or []
     if any(len(pointer_id) != 26 for pointer_id in selected_pointer_ids):
         raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
-    selected_pointer = None
-    if selected_pointer_ids:
-        selected_pointer = await tutor_service.authorize_selected_table_pointer(
-            db,
-            session_row=session_row,
-            user_id=user.id,
-            pointer_id=selected_pointer_ids[0],
-        )
     duplicate = (
         await db.execute(
             select(ChatTurn).where(
@@ -718,7 +796,8 @@ async def create_turn(
                     provenance_by_pointer_id[pointer_id] = await _citation_provenance(
                         db,
                         pointer_id=pointer_id,
-                        course_id=session_row.course_id,
+                        session_row=session_row,
+                        user_id=user.id,
                         material_id=citation.get("material_id"),
                         material_version_id=citation.get("material_version_id"),
                     )
@@ -726,6 +805,15 @@ async def create_turn(
             _replay_saved_turn(saved_tutor_turn, provenance_by_pointer_id),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    selected_pointer = None
+    if selected_pointer_ids:
+        selected_pointer = await tutor_service.authorize_selected_table_pointer(
+            db,
+            session_row=session_row,
+            user_id=user.id,
+            pointer_id=selected_pointer_ids[0],
         )
 
     if selected_pointer is not None and selected_pointer.pointer.object_type == "table":
@@ -755,7 +843,8 @@ async def create_turn(
                     event["data"]["provenance"] = await _citation_provenance(
                         db,
                         pointer_id=event["data"].get("evidence_pointer_id"),
-                        course_id=session_row.course_id,
+                        session_row=session_row,
+                        user_id=user.id,
                     )
                 yield _sse_frame(event["event"], event["data"])
         finally:

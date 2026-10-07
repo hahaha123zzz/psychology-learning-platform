@@ -357,10 +357,15 @@ def test_tutor_sse_replay_keeps_material_type_and_uses_neutral_legacy_fallback()
     ]
 
 
-def test_citation_provenance_requires_exact_pointer_scope_and_version_without_database() -> None:
+def test_citation_provenance_requires_exact_pointer_scope_and_version_without_database(
+    monkeypatch,
+) -> None:
     import asyncio
     from types import SimpleNamespace
 
+    from app.core.errors import ApiError
+    from app.modules.knowledge import service as knowledge_service
+    from app.modules.tutor import service as tutor_service
     from app.modules.tutor.router import _citation_provenance
 
     pointer = SimpleNamespace(
@@ -368,14 +373,35 @@ def test_citation_provenance_requires_exact_pointer_scope_and_version_without_da
         course_id="c" * 26,
         material_id="m" * 26,
         material_version_id="v" * 26,
+        publication_snapshot_id=None,
+        index_job_id=None,
+        domain_release_id=None,
+    )
+    session_row = SimpleNamespace(
+        course_id=pointer.course_id,
+        course_release_assignment_id=None,
+        course_release_id=None,
     )
 
     class FakeDB:
         scalar_calls = 0
 
-        async def get(self, model, pointer_id):
-            assert pointer_id == pointer.id
-            return pointer
+        async def get(self, model, requested_id):
+            from app.db.models import EvidencePointer, PublicationSnapshot
+
+            if model is EvidencePointer:
+                assert requested_id == pointer.id
+                return pointer
+            if model is PublicationSnapshot:
+                assert requested_id == "s" * 26
+                return SimpleNamespace(
+                    material_id=pointer.material_id,
+                    material_version_id=pointer.material_version_id,
+                    index_job_id="i" * 26,
+                    embedding_version="synthetic-embedding",
+                    domain_release_id=None,
+                )
+            raise AssertionError(f"unexpected model: {model}")
 
         async def scalar(self, statement):
             self.scalar_calls += 1
@@ -391,12 +417,34 @@ def test_citation_provenance_requires_exact_pointer_scope_and_version_without_da
                 provenance_version=2,
             )
 
+    read_count = 0
+    project_count = 0
+
+    async def readable_pointer(db, candidate):
+        nonlocal read_count
+        assert candidate is pointer
+        read_count += 1
+
+    async def projected_provenance(db, **kwargs):
+        nonlocal project_count
+        project_count += 1
+        assert kwargs == {
+            "material_id": pointer.material_id,
+            "material_version_id": pointer.material_version_id,
+            "course_id": pointer.course_id,
+        }
+        return {"source_title": "Exact synthetic version", "status": "verified", "version": 2}
+
+    monkeypatch.setattr(knowledge_service, "require_student_pointer_read_access", readable_pointer)
+    monkeypatch.setattr(knowledge_service, "project_pointer_provenance", projected_provenance)
+
     async def verify():
         db = FakeDB()
         mismatched_version = await _citation_provenance(
             db,
             pointer_id=pointer.id,
-            course_id=pointer.course_id,
+            session_row=session_row,
+            user_id="u" * 26,
             material_id=pointer.material_id,
             material_version_id="x" * 26,
         )
@@ -405,23 +453,99 @@ def test_citation_provenance_requires_exact_pointer_scope_and_version_without_da
         wrong_course = await _citation_provenance(
             db,
             pointer_id=pointer.id,
-            course_id="z" * 26,
+            session_row=SimpleNamespace(
+                course_id="z" * 26,
+                course_release_assignment_id=None,
+                course_release_id=None,
+            ),
+            user_id="u" * 26,
         )
         assert wrong_course is None
         assert db.scalar_calls == 0
         exact = await _citation_provenance(
             db,
             pointer_id=pointer.id,
-            course_id=pointer.course_id,
+            session_row=session_row,
+            user_id="u" * 26,
             material_id=pointer.material_id,
             material_version_id=pointer.material_version_id,
         )
         assert exact["source_title"] == "Exact synthetic version"
         assert exact["status"] == "verified"
         assert exact["version"] == 2
-        assert db.scalar_calls == 1
+        assert read_count == 1
+        assert project_count == 1
+
+        release_pin = {
+            "material_id": pointer.material_id,
+            "material_version_id": pointer.material_version_id,
+            "publication_snapshot_id": "s" * 26,
+            "index_job_id": "i" * 26,
+            "embedding_version": "synthetic-embedding",
+            "domain_release_id": None,
+        }
+        binding = SimpleNamespace(
+            domain_release_id=None,
+            manifest={
+                "materials": [pointer.material_id],
+                "material_version_ids": [pointer.material_version_id],
+                "publication_snapshots": [release_pin],
+            },
+        )
+        bound_session = SimpleNamespace(
+            course_id=pointer.course_id,
+            course_release_assignment_id="a" * 26,
+            course_release_id="r" * 26,
+        )
+
+        async def current_release_binding(db, *, session_row, user_id):
+            if session_row is not bound_session:
+                return None
+            assert session_row is bound_session
+            assert user_id == "u" * 26
+            return binding
+
+        monkeypatch.setattr(
+            tutor_service, "authorize_chat_session_release_scope", current_release_binding
+        )
+        null_domain_exact_pin = await _citation_provenance(
+            db,
+            pointer_id=pointer.id,
+            session_row=bound_session,
+            user_id="u" * 26,
+            material_id=pointer.material_id,
+            material_version_id=pointer.material_version_id,
+        )
+        assert null_domain_exact_pin["source_title"] == "Exact synthetic version"
+
+        binding.domain_release_id = "d" * 26
+        assert await _citation_provenance(
+            db,
+            pointer_id=pointer.id,
+            session_row=bound_session,
+            user_id="u" * 26,
+            material_id=pointer.material_id,
+            material_version_id=pointer.material_version_id,
+        ) is None
+
+        async def unreadable_pointer(db, candidate):
+            raise ApiError(404, "EVIDENCE_NOT_FOUND", "synthetic revocation")
+
+        monkeypatch.setattr(
+            knowledge_service, "require_student_pointer_read_access", unreadable_pointer
+        )
+        revoked = await _citation_provenance(
+            db,
+            pointer_id=pointer.id,
+            session_row=session_row,
+            user_id="u" * 26,
+            material_id=pointer.material_id,
+            material_version_id=pointer.material_version_id,
+        )
+        assert revoked is None
+        assert project_count == 2
         legacy = await _citation_provenance(
-            db, pointer_id=None, course_id=pointer.course_id
+            db, pointer_id=None, session_row=session_row, user_id="u" * 26
         )
         assert legacy is None
 
@@ -1455,7 +1579,7 @@ def test_selected_table_turn_uses_pinned_local_context_and_binds_idempotency(
 ) -> None:
     import asyncio
 
-    from app.db.models import CourseReleaseAssignment
+    from app.db.models import CourseRelease, CourseReleaseAssignment
     from app.db.session import session_factory
     from app.modules.tutor import service as tutor_service
 
@@ -1555,6 +1679,57 @@ def test_selected_table_turn_uses_pinned_local_context_and_binds_idempotency(
     ] == pointer_id
     replay_citation = next(data for name, data in replay_events if name == "citation")
     assert replay_citation["provenance"]["source_title"] == "Synthetic Table source"
+
+    async def change_release_pointer_pin() -> dict:
+        from copy import deepcopy
+
+        async with session_factory() as db:
+            assignment = await db.get(CourseReleaseAssignment, assignment_id)
+            assert assignment is not None
+            release = await db.get(CourseRelease, assignment.course_release_id)
+            assert release is not None
+            original = deepcopy(release.manifest)
+            pins = list(release.manifest["publication_snapshots"])
+            pins[0] = {**pins[0], "publication_snapshot_id": "x" * 26}
+            release.manifest = {**release.manifest, "publication_snapshots": pins}
+            await db.commit()
+            return original
+
+    original_manifest = asyncio.run(change_release_pointer_pin())
+    stale_release_detail = client.get(f"/api/v1/chat/sessions/{session['id']}")
+    assert stale_release_detail.status_code == 200, stale_release_detail.text
+    stale_saved_citation = stale_release_detail.json()["data"]["turns"][-1]["citations"][0]
+    assert stale_saved_citation["provenance"] is None
+    assert stale_release_detail.json()["data"]["turns"][-1]["content"]
+
+    new_turn_with_stale_pointer = client.post(
+        endpoint,
+        json={**body, "client_turn_id": "table-context-new-stale-pin"},
+    )
+    assert new_turn_with_stale_pointer.status_code == 404
+    assert new_turn_with_stale_pointer.json()["error"]["code"] == "EVIDENCE_NOT_FOUND"
+
+    stale_release_replay = client.post(endpoint, json=body)
+    assert stale_release_replay.status_code == 200, stale_release_replay.text
+    stale_replay_events = _parse_sse_events(stale_release_replay.content)
+    stale_replay_done = next(data for name, data in stale_replay_events if name == "done")
+    assert stale_replay_done["saved"] is True
+    assert any(data.get("text") for name, data in stale_replay_events if name == "delta")
+    stale_replay_citation = next(
+        data for name, data in stale_replay_events if name == "citation"
+    )
+    assert stale_replay_citation["provenance"] is None
+
+    async def restore_release_manifest() -> None:
+        async with session_factory() as db:
+            assignment = await db.get(CourseReleaseAssignment, assignment_id)
+            assert assignment is not None
+            release = await db.get(CourseRelease, assignment.course_release_id)
+            assert release is not None
+            release.manifest = original_manifest
+            await db.commit()
+
+    asyncio.run(restore_release_manifest())
 
     conflict = client.post(
         endpoint,

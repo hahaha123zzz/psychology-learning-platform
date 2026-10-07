@@ -57,42 +57,8 @@ def _pointer_anchors(pointer: EvidencePointer) -> list[dict]:
 async def _validate_pointer_publication_pin(
     db: AsyncSession, pointer: EvidencePointer
 ) -> dict[str, str] | None:
-    """精确复验 domain Pointer 的发布固定点；legacy 全空三元组保持兼容。"""
-    pin_values = (
-        pointer.publication_snapshot_id,
-        pointer.index_job_id,
-        pointer.domain_release_id,
-    )
-    if all(value is None for value in pin_values):
-        return None
-    if any(not isinstance(value, str) or not value for value in pin_values):
-        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
-
-    snapshot = await db.get(PublicationSnapshot, pointer.publication_snapshot_id)
-    index_job = await db.get(Job, pointer.index_job_id)
-    domain_release = await db.get(DomainRelease, pointer.domain_release_id)
-    payload = index_job.payload if index_job and isinstance(index_job.payload, dict) else {}
-    if (
-        snapshot is None
-        or snapshot.material_id != pointer.material_id
-        or snapshot.material_version_id != pointer.material_version_id
-        or snapshot.index_job_id != pointer.index_job_id
-        or snapshot.domain_release_id != pointer.domain_release_id
-        or index_job is None
-        or index_job.kind != "material_embed"
-        or index_job.status != "succeeded"
-        or payload.get("material_version_id") != pointer.material_version_id
-        or payload.get("domain_release_id") != pointer.domain_release_id
-        or domain_release is None
-        or domain_release.course_id != pointer.course_id
-        or domain_release.status not in {"published", "deprecated"}
-    ):
-        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
-    return {
-        "publication_snapshot_id": pointer.publication_snapshot_id,
-        "index_job_id": pointer.index_job_id,
-        "domain_release_id": pointer.domain_release_id,
-    }
+    """兼容内部调用名；Reader 与 Tutor 共用知识服务的 pin 复验。"""
+    return await knowledge_service.validate_pointer_publication_pin(db, pointer)
 
 
 EMBED_ENDPOINT = "POST:/api/v1/material-versions/embed"
@@ -635,60 +601,19 @@ async def get_evidence_pointer(
     role = await require_course_role(
         pointer.course_id, user, db, roles={"teacher", "assistant", "student"}
     )
-    publication_pin = await _validate_pointer_publication_pin(db, pointer)
     if role == "student":
         await ensure_ai_support_available(db, user_id=user.id)
-    if publication_pin is not None:
-        material_state = (
-            await db.execute(
-                select(Material.course_id, Material.status, Material.visibility)
-                .join(MaterialVersion, MaterialVersion.material_id == Material.id)
-                .where(
-                    Material.id == pointer.material_id,
-                    MaterialVersion.id == pointer.material_version_id,
-                )
-                .limit(1)
-            )
-        ).first()
+        material = await knowledge_service.require_student_pointer_read_access(db, pointer)
+    else:
+        await _validate_pointer_publication_pin(db, pointer)
+        material = await db.get(Material, pointer.material_id)
         if (
-            material_state is None
-            or material_state[0] != pointer.course_id
-            or material_state[1] != "active"
-            or material_state[2] != "published"
+            material is None
+            or material.course_id != pointer.course_id
+            or material.material_type
+            not in {"textbook", "slides", "handout", "exercise", "reference", "other"}
         ):
             raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
-    elif role == "student":
-        material_state = (
-            await db.execute(
-                select(Material.course_id, Material.status, Material.visibility)
-                .join(MaterialVersion, MaterialVersion.material_id == Material.id)
-                .join(
-                    PublicationSnapshot,
-                    PublicationSnapshot.material_version_id == MaterialVersion.id,
-                )
-                .where(
-                    Material.id == pointer.material_id,
-                    MaterialVersion.id == pointer.material_version_id,
-                    PublicationSnapshot.material_id == pointer.material_id,
-                )
-                .limit(1)
-            )
-        ).first()
-        if (
-            material_state is None
-            or material_state[0] != pointer.course_id
-            or material_state[1] != "active"
-            or material_state[2] != "published"
-        ):
-            raise ApiError(status_code=404, code="EVIDENCE_NOT_FOUND", message="证据不存在或已撤回")
-    material = await db.get(Material, pointer.material_id)
-    if (
-        material is None
-        or material.course_id != pointer.course_id
-        or material.material_type
-        not in {"textbook", "slides", "handout", "exercise", "reference", "other"}
-    ):
-        raise ApiError(404, "EVIDENCE_NOT_FOUND", "证据不存在或已撤回")
     provenance = await knowledge_service.project_pointer_provenance(
         db,
         material_id=pointer.material_id,
