@@ -12,6 +12,7 @@ import StudentProvenanceMetadata from "./learning/StudentProvenanceMetadata";
 import { studentMaterialVersion } from "../lib/student-material-version";
 import { materialTypeLabel } from "../lib/material-type-label";
 import { readStudentProvenance, type StudentProvenance } from "../lib/student-provenance";
+import { formatTutorClaimVerification, readTutorClaimVerification } from "../lib/tutor-claim-verification";
 
 type Material = { id: string; title: string; current_version: null | { id: string; version_no: number; status: string }; learning_version?: null | { id: string; version_no: number; status: string } };
 type SearchClosure = { object_id: string; object_type: string; physical_page: number | null; relation_type: string; evidence_pointer_id?: string | null };
@@ -284,8 +285,12 @@ function StudentLearnContent({ courseId }: { courseId: string }) {
             : item));
         }
         if (eventData.event === "done") {
+          const claimVerification = eventData.data.saved === true
+            ? readTutorClaimVerification(eventData.data.claim_verification)
+            : null;
+          const claimVerificationText = claimVerification ? ` · ${formatTutorClaimVerification(claimVerification)}` : "";
           setTurns((items) => items.map((item, index) => {
-            if (index !== items.length - 1) return item;
+            if (index !== items.length - 1 || item.role !== "tutor") return item;
             const hasExactTableCitation = item.citations.some((citation) => citation.pointerId === selectedPointerId);
             const savedTableExplanation = eventData.data.saved === true && item.pendingExplanation === "table" && hasExactTableCitation;
             return {
@@ -293,9 +298,9 @@ function StudentLearnContent({ courseId }: { courseId: string }) {
               explanation: savedTableExplanation ? "table" : undefined,
               pendingExplanation: undefined,
               status: eventData.data.saved === true
-                ? item.pendingExplanation === "table" && !hasExactTableCitation
-                  ? "回答已保存，但没有收到这张表格的精确引用。"
-                  : "回答已保存"
+                ? `${item.pendingExplanation === "table" && !hasExactTableCitation
+                    ? "回答已保存，但没有收到这张表格的精确引用。"
+                    : "回答已保存"}${claimVerificationText}`
                 : "回答尚未确认保存",
             };
           }));
