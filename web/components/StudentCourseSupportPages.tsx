@@ -19,7 +19,9 @@ type StartedAttempt = { attempt_id: string; answers: { question_version_id: stri
 type Result = { score: number | null; grading_status: string; items: { question_version_id: string; points_earned: number | null; explanation?: string }[] };
 type ReviewQuestion = { type: string; stem: string; options?: { key: string; text: string }[] };
 type ReviewAnswer = string | string[] | boolean;
-type Review = { id: string; course_id: string; reason: string; due_at: string; version?: number; question?: ReviewQuestion; qualification_status?: string };
+type ReviewDraftResponse = { selected_keys?: string[] | boolean };
+type Review = { id: string; course_id: string; reason: string; due_at: string; version: number; question?: ReviewQuestion; response_draft?: ReviewDraftResponse | null; qualification_status?: string };
+type ReviewDraftState = "saved" | "dirty" | "saving" | "error";
 type GrowthLastEvidence = { source_type?: string | null; created_at?: string | null; dimension?: string | null; independence_status?: string | null };
 type PracticeAnswer = string | string[] | boolean | undefined;
 function hasPracticeAnswer(answer: PracticeAnswer): boolean {
@@ -89,22 +91,50 @@ function reviewVerificationResponse(review: Review, answer: ReviewAnswer | undef
   return null;
 }
 
-function ReviewAnswerControl({ review, answer, onChange }: {
+function reviewDraftResponse(review: Review, answer: ReviewAnswer | undefined): ReviewDraftResponse | null {
+  const question = review.question;
+  if (!question) return null;
+  if (question.type === "true_false") {
+    return typeof answer === "boolean" ? { selected_keys: answer } : {};
+  }
+  const optionKeys = new Set((question.options ?? []).map((option) => option.key));
+  if (question.type === "single") {
+    if (typeof answer !== "string" || !answer) return { selected_keys: [] };
+    return optionKeys.has(answer) ? { selected_keys: [answer] } : null;
+  }
+  if (question.type === "multiple") {
+    const selected = Array.isArray(answer) ? answer : [];
+    return selected.every((key) => optionKeys.has(key)) ? { selected_keys: [...new Set(selected)] } : null;
+  }
+  return null;
+}
+
+function reviewAnswerFromDraft(review: Review): ReviewAnswer | undefined {
+  const selected = review.response_draft?.selected_keys;
+  if (review.question?.type === "true_false") return typeof selected === "boolean" ? selected : undefined;
+  if (!Array.isArray(selected)) return undefined;
+  if (review.question?.type === "single") return selected[0] ?? "";
+  if (review.question?.type === "multiple") return selected;
+  return undefined;
+}
+
+function ReviewAnswerControl({ review, answer, onChange, onBlur }: {
   review: Review;
   answer: ReviewAnswer | undefined;
   onChange: (answer: ReviewAnswer) => void;
+  onBlur: () => void;
 }) {
   const question = review.question;
   if (!question) return <p className="review-unsupported" role="status">此复习题型不支持答案验证；只能关闭任务，不会提交答案或形成学习证据。</p>;
   if (question.type === "single" && question.options?.length) {
-    return <fieldset className="review-answer-control"><legend>单项选择</legend><label>选择复习答案<select aria-label="选择复习答案" value={typeof answer === "string" ? answer : ""} onChange={(event) => onChange(event.target.value)}><option value="">选择答案</option>{question.options.map((option) => <option key={option.key} value={option.key}>{option.key}. {option.text}</option>)}</select></label></fieldset>;
+    return <fieldset className="review-answer-control"><legend>单项选择</legend><label>选择复习答案<select aria-label="选择复习答案" value={typeof answer === "string" ? answer : ""} onChange={(event) => onChange(event.target.value)} onBlur={onBlur}><option value="">选择答案</option>{question.options.map((option) => <option key={option.key} value={option.key}>{option.key}. {option.text}</option>)}</select></label></fieldset>;
   }
   if (question.type === "multiple" && question.options?.length) {
     const selected = Array.isArray(answer) ? answer : [];
-    return <fieldset className="review-answer-control"><legend>多项选择</legend>{question.options.map((option) => <label key={option.key}><input aria-label={`${option.key}. ${option.text}`} type="checkbox" checked={selected.includes(option.key)} onChange={(event) => onChange(event.target.checked ? [...new Set([...selected, option.key])] : selected.filter((key) => key !== option.key))} />{option.key}. {option.text}</label>)}</fieldset>;
+    return <fieldset className="review-answer-control"><legend>多项选择</legend>{question.options.map((option) => <label key={option.key}><input aria-label={`${option.key}. ${option.text}`} type="checkbox" checked={selected.includes(option.key)} onChange={(event) => onChange(event.target.checked ? [...new Set([...selected, option.key])] : selected.filter((key) => key !== option.key))} onBlur={onBlur} />{option.key}. {option.text}</label>)}</fieldset>;
   }
   if (question.type === "true_false") {
-    return <fieldset className="review-answer-control"><legend>判断题</legend>{[{ value: true, label: "是" }, { value: false, label: "否" }].map((option) => <label key={String(option.value)}><input type="radio" name={`review-${review.id}`} checked={answer === option.value} onChange={() => onChange(option.value)} />{option.label}</label>)}</fieldset>;
+    return <fieldset className="review-answer-control"><legend>判断题</legend>{[{ value: true, label: "是" }, { value: false, label: "否" }].map((option) => <label key={String(option.value)}><input type="radio" name={`review-${review.id}`} checked={answer === option.value} onChange={() => onChange(option.value)} onBlur={onBlur} />{option.label}</label>)}</fieldset>;
   }
   return <p className="review-unsupported" role="status">此复习题型不支持答案验证；只能关闭任务，不会提交答案或形成学习证据。</p>;
 }
@@ -112,10 +142,14 @@ function ReviewAnswerControl({ review, answer, onChange }: {
 export function StudentPracticePage() {
   const { courseId } = useParams<{ courseId: string }>();
   const essayTimers = useRef<Record<string, number>>({});
+  const reviewVersions = useRef<Record<string, number>>({});
+  const reviewDraftRequests = useRef<Record<string, Promise<boolean>>>({});
+  const reviewDraftAnswers = useRef<Record<string, ReviewAnswer>>({});
+  const savedReviewDrafts = useRef<Record<string, ReviewDraftResponse | null>>({});
   const answerVersions = useRef<Record<string, number>>({});
   const saveRequests = useRef<Record<string, Promise<boolean>>>({});
   const saveErrors = useRef<Record<string, boolean>>({});
-  const [assessments, setAssessments] = useState<Assessment[]>([]); const [reviews, setReviews] = useState<Review[]>([]); const [reviewAnswers, setReviewAnswers] = useState<Record<string, ReviewAnswer>>({}); const [detail, setDetail] = useState<AssessmentDetail | null>(null); const [attemptId, setAttemptId] = useState(""); const [answers, setAnswers] = useState<Record<string, string | string[] | boolean>>({}); const [flagged, setFlagged] = useState<Record<string, boolean>>({}); const [saveState, setSaveState] = useState<Record<string, "editing" | "saving" | "saved" | "error">>({}); const [result, setResult] = useState<Result | null>(null); const [notice, setNotice] = useState("正在读取练习…");
+  const [assessments, setAssessments] = useState<Assessment[]>([]); const [reviews, setReviews] = useState<Review[]>([]); const [reviewAnswers, setReviewAnswers] = useState<Record<string, ReviewAnswer>>({}); const [reviewDraftStates, setReviewDraftStates] = useState<Record<string, ReviewDraftState>>({}); const [detail, setDetail] = useState<AssessmentDetail | null>(null); const [attemptId, setAttemptId] = useState(""); const [answers, setAnswers] = useState<Record<string, string | string[] | boolean>>({}); const [flagged, setFlagged] = useState<Record<string, boolean>>({}); const [saveState, setSaveState] = useState<Record<string, "editing" | "saving" | "saved" | "error">>({}); const [result, setResult] = useState<Result | null>(null); const [notice, setNotice] = useState("正在读取练习…");
   const open = useCallback(async (assessment: Assessment) => { try { const [nextDetail, attempt] = await Promise.all([api<AssessmentDetail>(`/assessments/${assessment.id}`), api<StartedAttempt>(`/assessments/${assessment.id}/attempts`, { method: "POST" })]); const restoredAnswers: Record<string, string | string[] | boolean> = {}; const restoredVersions: Record<string, number> = {}; const restoredFlags: Record<string, boolean> = {}; for (const saved of attempt.answers) { const selected = saved.response?.selected_keys; const answer = saved.response?.text; const questionType = nextDetail.items.find((item) => item.question_version_id === saved.question_version_id)?.type; if (Array.isArray(selected)) restoredAnswers[saved.question_version_id] = questionType === "single" ? selected[0] ?? "" : selected; else if (typeof selected === "boolean") restoredAnswers[saved.question_version_id] = selected; else if (typeof answer === "string") restoredAnswers[saved.question_version_id] = answer; restoredVersions[saved.question_version_id] = saved.answer_version; restoredFlags[saved.question_version_id] = saved.flagged; } Object.values(essayTimers.current).forEach((timer) => window.clearTimeout(timer)); essayTimers.current = {}; answerVersions.current = restoredVersions; saveRequests.current = {}; saveErrors.current = {}; setDetail(nextDetail); setAttemptId(attempt.attempt_id); setAnswers(restoredAnswers); setFlagged(restoredFlags); setSaveState({}); setResult(null); setNotice(""); } catch (reason) { setNotice(message(reason)); } }, []);
   const load = useCallback(async () => {
     const [assessmentResult, reviewResult] = await Promise.allSettled([
@@ -131,9 +165,25 @@ export function StudentPracticePage() {
       errors.push(message(assessmentResult.reason));
     }
     if (reviewResult.status === "fulfilled") {
-      setReviews(reviewResult.value.filter((review) => review.course_id === courseId));
+      const currentReviews = reviewResult.value.filter((review) => review.course_id === courseId);
+      reviewVersions.current = Object.fromEntries(currentReviews.map((review) => [review.id, review.version]));
+      savedReviewDrafts.current = Object.fromEntries(currentReviews.map((review) => [review.id, review.response_draft ?? null]));
+      setReviews(currentReviews);
+      const currentAnswers = currentReviews.reduce<Record<string, ReviewAnswer>>((answers, review) => {
+        const answer = reviewAnswerFromDraft(review);
+        if (answer !== undefined) answers[review.id] = answer;
+        return answers;
+      }, {});
+      reviewDraftAnswers.current = currentAnswers;
+      setReviewAnswers(currentAnswers);
+      setReviewDraftStates(Object.fromEntries(currentReviews.map((review) => [review.id, "saved"])));
     } else {
+      reviewVersions.current = {};
+      savedReviewDrafts.current = {};
+      reviewDraftAnswers.current = {};
       setReviews([]);
+      setReviewAnswers({});
+      setReviewDraftStates({});
       errors.push(message(reviewResult.reason));
     }
     setNotice(errors.join("；"));
@@ -142,11 +192,108 @@ export function StudentPracticePage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, [load]);
   useEffect(() => () => { Object.values(essayTimers.current).forEach((timer) => window.clearTimeout(timer)); }, []);
-  async function completeReview(task: Review) { try { await api(`/review-tasks/${task.id}/complete`, { method: "POST" }); setReviews((items) => items.filter((item) => item.id !== task.id)); setNotice("复习任务已关闭；此操作未提交答案，也未形成学习证据。"); } catch (reason) { setNotice(message(reason)); } }
+  async function saveReviewDraft(task: Review): Promise<boolean> {
+    if (!reviewQuestionSupportsVerification(task)) return false;
+    const response = reviewDraftResponse(task, reviewDraftAnswers.current[task.id] ?? reviewAnswers[task.id]);
+    if (!response) return false;
+    if (savedReviewDrafts.current[task.id] && JSON.stringify(savedReviewDrafts.current[task.id]) === JSON.stringify(response)) return true;
+    const existing = reviewDraftRequests.current[task.id];
+    if (existing) {
+      const saved = await existing;
+      if (!saved) return false;
+      const latestResponse = reviewDraftResponse(task, reviewDraftAnswers.current[task.id] ?? reviewAnswers[task.id]);
+      if (!latestResponse || JSON.stringify(savedReviewDrafts.current[task.id] ?? {}) === JSON.stringify(latestResponse)) return true;
+      return saveReviewDraft(task);
+    }
+
+    setReviewDraftStates((items) => ({ ...items, [task.id]: "saving" }));
+    const pending = (async () => {
+      try {
+        const saved = await api<{ id: string; response_draft: ReviewDraftResponse; version: number }>(
+          `/review-tasks/${task.id}/draft`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ version: reviewVersions.current[task.id] ?? task.version, response }),
+          },
+        );
+        reviewVersions.current[task.id] = saved.version;
+        savedReviewDrafts.current[task.id] = saved.response_draft;
+        setReviews((items) => items.map((item) => item.id === task.id
+          ? { ...item, version: saved.version, response_draft: saved.response_draft }
+          : item));
+        const latestResponse = reviewDraftResponse(task, reviewDraftAnswers.current[task.id] ?? reviewAnswers[task.id]);
+        setReviewDraftStates((items) => ({ ...items, [task.id]: latestResponse && JSON.stringify(latestResponse) !== JSON.stringify(saved.response_draft) ? "dirty" : "saved" }));
+        setNotice("复习答案草稿已保存；尚未验证，也未形成学习证据。");
+        return Boolean(latestResponse && JSON.stringify(latestResponse) === JSON.stringify(saved.response_draft));
+      } catch (reason) {
+        setReviewDraftStates((items) => ({ ...items, [task.id]: "error" }));
+        setNotice(`复习答案草稿未保存：${message(reason)}`);
+        return false;
+      } finally {
+        delete reviewDraftRequests.current[task.id];
+      }
+    })();
+    reviewDraftRequests.current[task.id] = pending;
+    return pending;
+  }
+  async function reloadReviewDraft(task: Review) {
+    try {
+      const currentReviews = (await api<Review[]>("/review-tasks?due_only=false")).filter((item) => item.course_id === courseId);
+      const latest = currentReviews.find((item) => item.id === task.id);
+      if (!latest) {
+        reviewVersions.current = Object.fromEntries(currentReviews.map((item) => [item.id, item.version]));
+        savedReviewDrafts.current = Object.fromEntries(currentReviews.map((item) => [item.id, item.response_draft ?? null]));
+        delete reviewDraftAnswers.current[task.id];
+        setReviews(currentReviews);
+        setReviewAnswers((items) => { const next = { ...items }; delete next[task.id]; return next; });
+        setReviewDraftStates((items) => { const next = { ...items }; delete next[task.id]; return next; });
+        setNotice("该复习任务已不可用；已重新读取当前课程任务。");
+        return;
+      }
+      reviewVersions.current = Object.fromEntries(currentReviews.map((item) => [item.id, item.version]));
+      savedReviewDrafts.current = Object.fromEntries(currentReviews.map((item) => [item.id, item.response_draft ?? null]));
+      setReviews(currentReviews);
+      const answer = reviewAnswerFromDraft(latest);
+      if (answer === undefined) delete reviewDraftAnswers.current[latest.id]; else reviewDraftAnswers.current[latest.id] = answer;
+      setReviewAnswers((items) => { const next = { ...items }; if (answer === undefined) delete next[latest.id]; else next[latest.id] = answer; return next; });
+      setReviewDraftStates((items) => ({ ...items, [latest.id]: "saved" }));
+      setNotice("已从服务端恢复复习答案草稿。");
+    } catch (reason) {
+      reviewVersions.current = {};
+      savedReviewDrafts.current = {};
+      reviewDraftAnswers.current = {};
+      setReviews([]);
+      setReviewAnswers((items) => { const next = { ...items }; delete next[task.id]; return next; });
+      setReviewDraftStates((items) => { const next = { ...items }; delete next[task.id]; return next; });
+      setNotice(`无法重新读取复习任务：${message(reason)}`);
+    }
+  }
+  async function completeReview(task: Review) {
+    if (reviewQuestionSupportsVerification(task) || !reviewIsDue(task)) return;
+    setReviewDraftStates((items) => ({ ...items, [task.id]: "saving" }));
+    try {
+      await api<{ id: string; status: string; version: number }>(`/review-tasks/${task.id}/complete`, {
+        method: "POST",
+        body: JSON.stringify({ version: reviewVersions.current[task.id] ?? task.version, reason: "unsupported_question_type" }),
+      });
+      setReviews((items) => items.filter((item) => item.id !== task.id));
+      setReviewAnswers((items) => { const next = { ...items }; delete next[task.id]; return next; });
+      setReviewDraftStates((items) => { const next = { ...items }; delete next[task.id]; return next; });
+      delete reviewVersions.current[task.id];
+      delete savedReviewDrafts.current[task.id];
+      delete reviewDraftAnswers.current[task.id];
+      setNotice("复习任务已按无答案方式关闭；未提交答案或形成学习证据。");
+    } catch (reason) {
+      setReviewDraftStates((items) => ({ ...items, [task.id]: "error" }));
+      setNotice(`复习任务未关闭：${message(reason)}`);
+    }
+  }
   async function verifyReview(task: Review) {
     const selected = reviewAnswers[task.id];
     const response = reviewVerificationResponse(task, selected);
     if (!response || !reviewIsDue(task)) return;
+    const draftState = reviewDraftStates[task.id];
+    if ((draftState === "dirty" || draftState === "saving" || draftState === "error") && !await saveReviewDraft(task)) return;
 
     let result: { event_id: string; pending_qualification: boolean };
     try {
@@ -154,15 +301,20 @@ export function StudentPracticePage() {
         `/review-tasks/${task.id}/verify`,
         {
           method: "POST",
-          body: JSON.stringify({ version: task.version, response }),
+          body: JSON.stringify({ version: reviewVersions.current[task.id] ?? task.version, response }),
         },
       );
     } catch (reason) {
+      setReviewDraftStates((items) => ({ ...items, [task.id]: "error" }));
       setNotice(message(reason));
       return;
     }
 
     setReviews((items) => items.filter((item) => item.id !== task.id));
+    delete reviewVersions.current[task.id];
+    delete savedReviewDrafts.current[task.id];
+    delete reviewDraftAnswers.current[task.id];
+    setReviewDraftStates((items) => { const next = { ...items }; delete next[task.id]; return next; });
     setReviewAnswers((items) => {
       const next = { ...items };
       delete next[task.id];
@@ -229,7 +381,42 @@ export function StudentPracticePage() {
   }
   const savePending = Object.values(saveState).some((state) => state === "editing" || state === "saving");
   const saveFailed = Object.values(saveState).some((state) => state === "error");
-  return <div className="student-support-page"><div className="page-heading"><div><h1>练习与复习</h1><p>练习只显示 purpose=practice；正式测评在独立 Assessment 页面中进行。</p></div></div>{notice && <p className="status-banner" role="status" aria-live="polite">{notice}</p>}{!detail ? <div className="practice-grid"><section className="support-panel"><div className="panel-heading"><h2>待复习</h2><span>{reviews.length} 项</span></div>{reviews.length ? reviews.map((review) => { const due = reviewIsDue(review); const canVerify = reviewQuestionSupportsVerification(review); const response = reviewVerificationResponse(review, reviewAnswers[review.id]); return <article className="review-row" data-review-task-id={review.id} key={review.id}><span><strong>{review.reason}</strong><small>{review.question?.stem ?? "复习任务"} · 可复习时间：{new Date(review.due_at).toLocaleDateString("zh-CN")}</small></span><span className="review-actions">{canVerify ? <><ReviewAnswerControl review={review} answer={reviewAnswers[review.id]} onChange={(answer) => setReviewAnswers((items) => ({ ...items, [review.id]: answer }))} /><button className="secondary-button" aria-describedby={!due ? `review-due-${review.id}` : undefined} disabled={!response || !due} onClick={() => void verifyReview(review)}>验证并完成</button>{!due && <small id={`review-due-${review.id}`} role="status">尚未到可复习时间，届时可验证并完成。</small>}</> : <><p className="review-unsupported" role="status">此复习题型不支持答案验证；关闭任务不会提交答案或形成学习证据。</p><button className="secondary-button" onClick={() => void completeReview(review)}>关闭复习任务（不提交答案）</button></>}</span></article>; }) : <p className="empty-state">暂无待复习任务。</p>}</section><section className="support-panel"><div className="panel-heading"><h2>可参加的练习</h2><span>{assessments.length} 个</span></div><p>正式测评与练习分开；练习作答会保存进度并在提交后显示反馈。</p>{assessments.length ? assessments.map((assessment) => <article className="review-row" key={assessment.id}><span><strong>{assessment.title}</strong><small>{assessment.availability}</small></span><button className="primary-button" disabled={assessment.availability !== "open"} onClick={() => void open(assessment)}>{assessment.current_attempt_id ? "恢复练习" : assessment.availability === "open" ? "开始练习" : "暂不可参加"}</button></article>) : <p className="empty-state">当前课程没有可参加的练习。</p>}</section></div> : !result ? <section className="attempt-panel"><div className="attempt-header"><div><h2>{detail.title}</h2><p>作答将自动保存；提交后由服务端评分。</p></div><span>{Object.values(answers).filter(hasPracticeAnswer).length} / {detail.items.length} 已作答</span></div>{detail.items.map((item) => <article className="attempt-question" key={item.question_version_id}><strong>{item.order_no}. {item.stem}</strong>{item.type === "essay" || item.type === "short_answer" ? <label className="assessment-text-answer">文字作答<textarea aria-label={`第 ${item.order_no} 题文字作答`} maxLength={12000} rows={5} value={typeof answers[item.question_version_id] === "string" ? answers[item.question_version_id] as string : ""} onChange={(event) => queueEssaySave(item.question_version_id, event.target.value)} onBlur={() => flushEssaySave(item.question_version_id)} /></label> : item.type === "true_false" ? <fieldset><legend>请选择判断</legend>{[{ value: true, label: "是" }, { value: false, label: "否" }].map((option) => <label key={String(option.value)}><input type="radio" name={item.question_version_id} checked={answers[item.question_version_id] === option.value} onChange={() => saveBoolean(item.question_version_id, option.value)} />{option.label}</label>)}</fieldset> : item.type === "multiple" ? item.options?.map((option) => <label key={option.key}><input type="checkbox" checked={Array.isArray(answers[item.question_version_id]) && (answers[item.question_version_id] as string[]).includes(option.key)} onChange={(event) => saveMultiple(item.question_version_id, option.key, event.target.checked)} />{option.key}. {option.text}</label>) : item.options?.map((option) => <label key={option.key}><input type="radio" name={item.question_version_id} checked={answers[item.question_version_id] === option.key} onChange={() => void save(item.question_version_id, option.key)} />{option.key}. {option.text}</label>)}<label><input type="checkbox" checked={Boolean(flagged[item.question_version_id])} disabled={!hasPracticeAnswer(answers[item.question_version_id]) || savePending} onChange={() => void toggleFlag(item.question_version_id)} />标记此题，稍后检查</label><small role="status">{saveState[item.question_version_id] === "editing" ? "编辑中，尚未保存" : saveState[item.question_version_id] === "saving" ? "正在保存…" : saveState[item.question_version_id] === "error" ? "保存失败" : hasPracticeAnswer(answers[item.question_version_id]) ? "已保存" : "尚未作答"}</small></article>)}{saveFailed && <p role="alert">答案保存失败，请修改或重试后再提交。</p>}<div className="attempt-actions"><button className="secondary-button" onClick={() => setDetail(null)}>返回练习</button><button className="primary-button" disabled={savePending || saveFailed} onClick={() => void submit()}>提交练习</button></div></section> : <section className="attempt-panel result-panel"><Icon icon="solar:check-circle-bold" /><h2>练习完成</h2><strong>{result.score ?? "待教师评分"}</strong><p>评分状态：{result.grading_status}</p>{result.items.map((item) => <article className="result-row" key={item.question_version_id}><span>本题得分：{item.points_earned ?? "—"}</span><small>{item.explanation ?? "暂无可显示解析"}</small></article>)}<button className="secondary-button" onClick={() => { setDetail(null); setResult(null); void load(); }}>返回练习</button></section>}<StudentMiniLabPanel courseId={courseId} /></div>;
+  return <div className="student-support-page"><div className="page-heading"><div><h1>练习与复习</h1><p>练习只显示 purpose=practice；正式测评在独立 Assessment 页面中进行。</p></div></div>{notice && <p className="status-banner" role="status" aria-live="polite">{notice}</p>}{!detail ? <div className="practice-grid"><section className="support-panel"><div className="panel-heading"><h2>待复习</h2><span>{reviews.length} 项</span></div>{reviews.length ? reviews.map((review) => {
+  const due = reviewIsDue(review);
+  const canVerify = reviewQuestionSupportsVerification(review);
+  const response = reviewVerificationResponse(review, reviewAnswers[review.id]);
+  const draftState = reviewDraftStates[review.id] ?? "saved";
+  return <article className="review-row" data-review-task-id={review.id} key={review.id}>
+    <span><strong>{review.reason}</strong><small>{review.question?.stem ?? "复习任务"} · 可复习时间：{new Date(review.due_at).toLocaleDateString("zh-CN")}</small></span>
+    <span className="review-actions">
+      {canVerify ? <>
+        <ReviewAnswerControl
+          review={review}
+          answer={reviewAnswers[review.id]}
+          onChange={(answer) => {
+            reviewDraftAnswers.current[review.id] = answer;
+            setReviewAnswers((items) => ({ ...items, [review.id]: answer }));
+            setReviewDraftStates((items) => ({ ...items, [review.id]: "dirty" }));
+          }}
+          onBlur={() => { if (reviewDraftStates[review.id] === "dirty") void saveReviewDraft(review); }}
+        />
+        <small role={draftState === "error" ? "alert" : "status"}>
+          {draftState === "dirty" ? "有未保存的复习答案草稿。" : draftState === "saving" ? "正在保存答案草稿…" : draftState === "error" ? "复习操作未完成；可重试或从服务端恢复草稿。" : review.response_draft ? "答案草稿已保存；尚未验证，也未形成学习证据。" : "尚未保存答案草稿。"}
+        </small>
+        <button className="secondary-button" disabled={draftState === "saving"} onClick={() => void saveReviewDraft(review)}>保存答案草稿</button>
+        {draftState === "error" && <button className="secondary-button" onClick={() => void reloadReviewDraft(review)}>从服务端恢复草稿</button>}
+        <button className="secondary-button" aria-describedby={!due ? `review-due-${review.id}` : undefined} disabled={!response || !due || draftState === "saving"} onClick={() => void verifyReview(review)}>验证并完成</button>
+        {!due && <small id={`review-due-${review.id}`} role="status">尚未到可复习时间，届时可验证并完成。</small>}
+      </> : <>
+        <p className="review-unsupported" role="status">此复习题型不支持答案验证；只能在可复习时间后无答案关闭，不会形成学习证据。</p>
+        {draftState === "error" && <small role="alert">关闭未成功；请重试或从服务端恢复当前任务。</small>}
+        <button className="secondary-button" aria-describedby={!due ? `review-due-${review.id}` : undefined} disabled={!due || draftState === "saving"} onClick={() => void completeReview(review)}>关闭复习任务（不提交答案）</button>
+        {draftState === "error" && <button className="secondary-button" onClick={() => void reloadReviewDraft(review)}>重新读取当前复习任务</button>}
+        {!due && <small id={`review-due-${review.id}`} role="status">尚未到可复习时间，届时可无答案关闭。</small>}
+      </>}
+    </span>
+  </article>;
+}) : <p className="empty-state">暂无待复习任务。</p>}</section><section className="support-panel"><div className="panel-heading"><h2>可参加的练习</h2><span>{assessments.length} 个</span></div><p>正式测评与练习分开；练习作答会保存进度并在提交后显示反馈。</p>{assessments.length ? assessments.map((assessment) => <article className="review-row" key={assessment.id}><span><strong>{assessment.title}</strong><small>{assessment.availability}</small></span><button className="primary-button" disabled={assessment.availability !== "open"} onClick={() => void open(assessment)}>{assessment.current_attempt_id ? "恢复练习" : assessment.availability === "open" ? "开始练习" : "暂不可参加"}</button></article>) : <p className="empty-state">当前课程没有可参加的练习。</p>}</section></div> : !result ? <section className="attempt-panel"><div className="attempt-header"><div><h2>{detail.title}</h2><p>作答将自动保存；提交后由服务端评分。</p></div><span>{Object.values(answers).filter(hasPracticeAnswer).length} / {detail.items.length} 已作答</span></div>{detail.items.map((item) => <article className="attempt-question" key={item.question_version_id}><strong>{item.order_no}. {item.stem}</strong>{item.type === "essay" || item.type === "short_answer" ? <label className="assessment-text-answer">文字作答<textarea aria-label={`第 ${item.order_no} 题文字作答`} maxLength={12000} rows={5} value={typeof answers[item.question_version_id] === "string" ? answers[item.question_version_id] as string : ""} onChange={(event) => queueEssaySave(item.question_version_id, event.target.value)} onBlur={() => flushEssaySave(item.question_version_id)} /></label> : item.type === "true_false" ? <fieldset><legend>请选择判断</legend>{[{ value: true, label: "是" }, { value: false, label: "否" }].map((option) => <label key={String(option.value)}><input type="radio" name={item.question_version_id} checked={answers[item.question_version_id] === option.value} onChange={() => saveBoolean(item.question_version_id, option.value)} />{option.label}</label>)}</fieldset> : item.type === "multiple" ? item.options?.map((option) => <label key={option.key}><input type="checkbox" checked={Array.isArray(answers[item.question_version_id]) && (answers[item.question_version_id] as string[]).includes(option.key)} onChange={(event) => saveMultiple(item.question_version_id, option.key, event.target.checked)} />{option.key}. {option.text}</label>) : item.options?.map((option) => <label key={option.key}><input type="radio" name={item.question_version_id} checked={answers[item.question_version_id] === option.key} onChange={() => void save(item.question_version_id, option.key)} />{option.key}. {option.text}</label>)}<label><input type="checkbox" checked={Boolean(flagged[item.question_version_id])} disabled={!hasPracticeAnswer(answers[item.question_version_id]) || savePending} onChange={() => void toggleFlag(item.question_version_id)} />标记此题，稍后检查</label><small role="status">{saveState[item.question_version_id] === "editing" ? "编辑中，尚未保存" : saveState[item.question_version_id] === "saving" ? "正在保存…" : saveState[item.question_version_id] === "error" ? "保存失败" : hasPracticeAnswer(answers[item.question_version_id]) ? "已保存" : "尚未作答"}</small></article>)}{saveFailed && <p role="alert">答案保存失败，请修改或重试后再提交。</p>}<div className="attempt-actions"><button className="secondary-button" onClick={() => setDetail(null)}>返回练习</button><button className="primary-button" disabled={savePending || saveFailed} onClick={() => void submit()}>提交练习</button></div></section> : <section className="attempt-panel result-panel"><Icon icon="solar:check-circle-bold" /><h2>练习完成</h2><strong>{result.score ?? "待教师评分"}</strong><p>评分状态：{result.grading_status}</p>{result.items.map((item) => <article className="result-row" key={item.question_version_id}><span>本题得分：{item.points_earned ?? "—"}</span><small>{item.explanation ?? "暂无可显示解析"}</small></article>)}<button className="secondary-button" onClick={() => { setDetail(null); setResult(null); void load(); }}>返回练习</button></section>}<StudentMiniLabPanel courseId={courseId} /></div>;
 }
 
 export function StudentGrowthPage() {
