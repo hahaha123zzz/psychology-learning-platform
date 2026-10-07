@@ -87,6 +87,10 @@ function anchorsFor(view: EvidencePointerView): EvidenceAnchor[] {
   return isVerifiableAnchor(legacy) ? [legacy] : [];
 }
 
+function isTutorSelectablePointer(view: EvidencePointerView): boolean {
+  return (view.object_type === "paragraph" || view.object_type === "table") && view.excerpt.trim().length > 0;
+}
+
 export default function EvidencePointerDrawer({
   pointerId,
   label = "查看来源资料",
@@ -114,7 +118,7 @@ export default function EvidencePointerDrawer({
   const activeAnchorIndex = anchors.findIndex((anchor) => anchor.physical_page === selectedPhysicalPage);
 
   function closeReader() {
-    if (view?.evidence_pointer_id === pointerId) {
+    if (view?.evidence_pointer_id === pointerId && isTutorSelectablePointer(view)) {
       onReturnToLearn?.(view.evidence_pointer_id);
     }
     setOpen(false);
