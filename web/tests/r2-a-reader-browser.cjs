@@ -45,7 +45,7 @@ async function login(page, email) {
 }
 
 async function searchReaderResult(page, courseId, materialVersionId) {
-  await page.getByLabel("搜索教材").fill("independent variable validity");
+  await page.getByLabel("搜索课程资料").fill("independent variable validity");
   const searchResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return url.pathname.endsWith("/api/v1/knowledge/search") && response.request().method() === "POST";
@@ -58,7 +58,7 @@ async function searchReaderResult(page, courseId, materialVersionId) {
       candidate.evidence_pointer_id &&
       candidate.bbox,
   );
-  assert.ok(item, "实际搜索响应应返回 E2E 固定教材版本的页内锚点。");
+  assert.ok(item, "实际搜索响应应返回 E2E 固定资料版本的页内锚点。");
   const result = page.locator(".evidence-list article").filter({ hasText: item.text }).first();
   await result.waitFor({ state: "visible", timeout: 20_000 });
   return { item, result };
@@ -96,9 +96,9 @@ async function main() {
     let result = current.result;
     await result.getByRole("button", { name: "查看固定来源快照" }).click();
 
-    const drawer = studentPage.getByRole("dialog", { name: "教材来源快照" });
+    const drawer = studentPage.getByRole("dialog", { name: "资料来源" });
     await drawer.waitFor({ state: "visible" });
-    const pageImage = drawer.getByRole("img", { name: /教材物理页/ });
+    const pageImage = drawer.getByRole("img", { name: /资料物理页/ });
     await pageImage.waitFor({ state: "visible", timeout: 20_000 });
     const viewport = drawer.locator(".reader-image-viewport");
     const overlay = viewport.locator('span[aria-hidden="true"]');
@@ -141,7 +141,7 @@ async function main() {
     record("窄屏与关闭", "390px 视口内抽屉可见且可由可访问名称的关闭按钮关闭。");
 
     await studentPage.reload();
-    await studentPage.getByLabel("搜索教材").waitFor({ state: "visible" });
+    await studentPage.getByLabel("搜索课程资料").waitFor({ state: "visible" });
     current = await searchReaderResult(
       studentPage,
       evidence.course_id,
@@ -151,8 +151,8 @@ async function main() {
     openedPointerPath = `${pointerPrefix}${current.item.evidence_pointer_id}`;
     result = current.result;
     await result.getByRole("button", { name: "查看固定来源快照" }).click();
-    const refreshedDrawer = studentPage.getByRole("dialog", { name: "教材来源快照" });
-    await refreshedDrawer.getByRole("img", { name: /教材物理页/ }).waitFor({ timeout: 20_000 });
+    const refreshedDrawer = studentPage.getByRole("dialog", { name: "资料来源" });
+    await refreshedDrawer.getByRole("img", { name: /资料物理页/ }).waitFor({ timeout: 20_000 });
     await capture(studentPage, "04-reader-refresh-restored");
     record("刷新后重新定位", "页面刷新并再次检索后，从已发布版本重新读取页图和锚点。");
     await refreshedDrawer.getByRole("button", { name: "关闭上下文面板" }).click();

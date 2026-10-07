@@ -95,7 +95,7 @@ async function main() {
       throw error;
     }
 
-    const drawer = page.getByRole("dialog", { name: "教材来源快照" });
+    const drawer = page.getByRole("dialog", { name: "资料来源" });
     for (const width of viewportWidths) {
       await page.setViewportSize({ width, height: 800 });
       await page.goto(`${appOrigin}/student/courses/${courseId}/learn?session_id=${sessionId}`);

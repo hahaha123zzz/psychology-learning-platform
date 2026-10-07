@@ -96,12 +96,12 @@ async function main() {
     await page.goto(`${appOrigin}/student/courses/${courseId}/learn?session_id=${sessionId}`);
     await page.getByRole("button", { name: "打开引用", exact: true }).waitFor({ state: "visible", timeout: 15_000 });
 
-    await page.getByLabel("搜索教材").fill("synthetic query");
+    await page.getByLabel("搜索课程资料").fill("synthetic query");
     await page.getByRole("button", { name: "搜索", exact: true }).click();
     for (const [, label] of labels) await page.getByText(label, { exact: true }).first().waitFor({ state: "visible" });
     assert.equal(await page.getByText("权威教材", { exact: true }).count(), 0, "labels never infer publisher or authority from a title");
 
-    const drawer = page.getByRole("dialog", { name: "教材来源快照" });
+    const drawer = page.getByRole("dialog", { name: "资料来源" });
     await page.getByRole("button", { name: "查看固定来源快照", exact: true }).first().click();
     await drawer.waitFor({ state: "visible" });
     await drawer.getByText("Synthetic excerpt " + pointerId, { exact: true }).waitFor({ state: "visible" });

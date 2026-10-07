@@ -83,7 +83,7 @@ async function main() {
     const citation = page.getByRole("button", { name: "打开引用", exact: true });
     await citation.waitFor({ state: "visible", timeout: 15_000 });
     await citation.click();
-    const reader = page.getByRole("dialog", { name: "教材来源快照" });
+    const reader = page.getByRole("dialog", { name: "资料来源" });
     await reader.waitFor({ state: "visible" });
     await reader.getByText("Synthetic pointer excerpt", { exact: true }).waitFor({ state: "visible" });
     await page.keyboard.press("Escape");

@@ -73,23 +73,23 @@ async function main() {
 
     await page.goto(`${webOrigin}/student/courses/${course.id}/learn?session_id=${encodeURIComponent(sessionId)}`);
     await page.waitForFunction(() => {
-      const composer = document.querySelector('input[aria-label="围绕教材提问"]');
+      const composer = document.querySelector('input[aria-label="围绕课程资料提问"]');
       return composer instanceof HTMLInputElement && !composer.disabled;
     }, null, { timeout: 20_000 });
     assert.ok(sessionReads >= 2, "the preflight and Learn route must both GET the explicit session");
-    await page.getByLabel("搜索教材").fill("measure score recall");
+    await page.getByLabel("搜索课程资料").fill("measure score recall");
     await page.getByLabel("只看表格").check();
     await page.getByRole("button", { name: "搜索", exact: true }).click();
     const tableCard = page.locator(".evidence-list article").filter({ hasText: "表格对象" }).first();
     await tableCard.waitFor({ state: "visible", timeout: 20_000 });
     await tableCard.getByRole("button", { name: "查看表格固定来源", exact: true }).click();
-    const reader = page.getByRole("dialog", { name: "教材来源快照" });
+    const reader = page.getByRole("dialog", { name: "资料来源" });
     await reader.waitFor({ state: "visible", timeout: 20_000 });
     await reader.getByRole("button", { name: "向 Tutor 提问", exact: true }).click();
     await page.getByText("待解释的表格", { exact: true }).waitFor({ state: "visible" });
 
     const question = "请解释这张表格的主要信息。";
-    await page.getByLabel("围绕教材提问").fill(question);
+    await page.getByLabel("围绕课程资料提问").fill(question);
     await page.getByRole("button", { name: "发送问题" }).click();
     await page.waitForFunction((count) => document.querySelectorAll(".learn-turn.tutor").length === count + 1,
       restoredTutorTurnCount, { timeout: 20_000 });
@@ -125,7 +125,7 @@ async function main() {
     const citationButton = page.getByRole("button", { name: "打开引用", exact: true }).last();
     await citationButton.waitFor({ state: "visible", timeout: 20_000 });
     await citationButton.click();
-    const citationReader = page.getByRole("dialog", { name: "教材来源快照" });
+    const citationReader = page.getByRole("dialog", { name: "资料来源" });
     await citationReader.waitFor({ state: "visible", timeout: 20_000 });
     assert.equal(pointerReads.at(-1)?.evidence_pointer_id, selectedPointerId, "the citation must reopen the exact selected table pointer");
     const citationVersion = pointerReads.find((item) => item.evidence_pointer_id === selectedPointerId)?.material_version_id;

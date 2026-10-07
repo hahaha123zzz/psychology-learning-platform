@@ -122,7 +122,7 @@ async function main() {
           await currentPage.locator("#course-search").waitFor({ state: "visible" });
           await currentPage.getByRole("heading", { name: "学习助手", exact: true }).waitFor({ state: "visible" });
           await currentPage.waitForFunction(() => !Array.from(document.querySelectorAll(".status-banner"))
-            .some((banner) => banner.textContent?.includes("正在读取可学习教材")));
+            .some((banner) => banner.textContent?.includes("正在读取可学习资料")));
         },
       },
       {

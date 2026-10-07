@@ -74,14 +74,14 @@ async function main() {
 
     await page.goto(`${webOrigin}/student/courses/${course.id}/learn?session_id=${encodeURIComponent(sessionId)}`);
     await page.waitForFunction(() => {
-      const composer = document.querySelector('input[aria-label="围绕教材提问"]');
+      const composer = document.querySelector('input[aria-label="围绕课程资料提问"]');
       return composer instanceof HTMLInputElement && !composer.disabled;
     }, null, { timeout: 20_000 });
     assert.ok(sessionReads >= 2, "route restore must read the existing session again");
     const initialTableExplainCount = await page.locator(".table-explain-label").count();
     const initialTurnCount = await page.locator(".learn-turn").count();
 
-    await page.getByLabel("搜索教材").fill("measure score recall");
+    await page.getByLabel("搜索课程资料").fill("measure score recall");
     await page.getByLabel("只看表格").check();
     await page.getByRole("button", { name: "搜索", exact: true }).click();
     await page.locator(".evidence-list article").filter({ hasText: "表格对象" }).first().waitFor({ state: "visible", timeout: 20_000 });
@@ -116,7 +116,7 @@ async function main() {
     assert.equal(openedFigure.course_id, course.id);
     assert.equal(openedFigure.object_type, "figure");
     assert.equal(openedFigure.excerpt.trim(), "");
-    const reader = page.getByRole("dialog", { name: "教材来源快照" });
+    const reader = page.getByRole("dialog", { name: "资料来源" });
     await reader.waitFor({ state: "visible", timeout: 20_000 });
     await reader.getByText("该对象只保存了图像位置；系统未解析图像含义。", { exact: true }).waitFor({ state: "visible" });
     await reader.getByText("图像语义尚未解析；当前只能定位，不能据此解释图像内容。", { exact: true }).waitFor({ state: "visible" });

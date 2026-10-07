@@ -43,6 +43,6 @@ test("Figure Reader exposes only server pointer location metadata and no semanti
   assert.match(source, /\$\{view\.object_type\}/);
   assert.match(source, /view\.material_version_id/);
   assert.match(source, /view\.bbox/);
-  assert.match(source, /教材物理页 \$\{visiblePage\.physicalPage\}，红框标出引用位置/);
+  assert.match(source, /资料物理页 \$\{visiblePage\.physicalPage\}，红框标出引用位置/);
   assert.doesNotMatch(source, /图像内容是|图中显示|该图表说明/);
 });

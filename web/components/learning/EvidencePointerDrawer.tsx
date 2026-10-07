@@ -86,7 +86,7 @@ function anchorsFor(view: EvidencePointerView): EvidenceAnchor[] {
 
 export default function EvidencePointerDrawer({
   pointerId,
-  label = "查看教材引用",
+  label = "查看来源资料",
   onAskTutor,
   onReturnToLearn,
 }: {
@@ -141,7 +141,7 @@ export default function EvidencePointerDrawer({
         setSelectedPhysicalPage(primaryPage ?? availableAnchors[0]?.physical_page ?? null);
       } catch (reason: unknown) {
         if (cancelled) return;
-        setNotice(reason instanceof ApiError ? reason.message : "暂时无法读取教材来源快照。");
+        setNotice(reason instanceof ApiError ? reason.message : "暂时无法读取资料来源。");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -294,7 +294,7 @@ export default function EvidencePointerDrawer({
         labelledBy={`evidence-pointer-${pointerId}`}
         onClose={closeReader}
         open={open}
-        title="教材来源快照"
+        title="资料来源"
       >
         {loading && <p aria-live="polite" className="status-banner">正在重新校验权限并读取引用…</p>}
         {pageLoading && <p aria-live="polite" className="status-banner">正在读取物理页 {selectedPhysicalPage}…</p>}
@@ -395,7 +395,7 @@ export default function EvidencePointerDrawer({
                     >
                       <Image
                         src={visiblePage.url}
-                        alt={`教材物理页 ${visiblePage.physicalPage}，红框标出引用位置`}
+                        alt={`资料物理页 ${visiblePage.physicalPage}，红框标出引用位置`}
                         width={visiblePage.width}
                         height={visiblePage.height}
                         unoptimized
@@ -447,7 +447,7 @@ export default function EvidencePointerDrawer({
               </Button>
             )}
             <dl>
-              <div><dt>教材版本</dt><dd>{view.material_version_id}</dd></div>
+              <div><dt>资料版本</dt><dd>{view.material_version_id}</dd></div>
               <div><dt>引用校验</dt><dd>SHA-256 {view.excerpt_sha256}</dd></div>
               <div>
                 <dt>当前定位</dt>
@@ -462,7 +462,7 @@ export default function EvidencePointerDrawer({
               <p className="evidence-pointer-limitation">
                 {activeAnchor
                   ? "固定页图暂不可用；上方仍保留经重新鉴权的文字快照与定位坐标。"
-                  : "该来源没有可验证的物理页和 PDF 页内坐标；不伪造页图或高亮，以上文字快照仍绑定生成时教材版本。"}
+                  : "该来源没有可验证的物理页和 PDF 页内坐标；不伪造页图或高亮，以上文字快照仍绑定生成时资料版本。"}
               </p>
             )}
           </article>

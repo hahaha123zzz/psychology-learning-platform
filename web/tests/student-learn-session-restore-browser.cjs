@@ -58,7 +58,7 @@ async function main() {
     await page.goto(`${targetUrl}${learnPath}`);
     await page.getByRole("heading", { name: "学习助手", exact: true }).waitFor({ state: "visible" });
     await page.waitForFunction(() => !Array.from(document.querySelectorAll(".status-banner"))
-      .some((banner) => banner.textContent?.includes("正在读取可学习教材")));
+      .some((banner) => banner.textContent?.includes("正在读取可学习资料")));
     assert.ok(await page.locator(".learn-material-row").count() > 0, "Learn should load its real authorized material list");
     assert.deepEqual(sessionReads, [], "without explicit session_id, Learn must not read a saved chat session");
 
@@ -113,10 +113,10 @@ async function main() {
     assert.equal(await page.getByRole("button", { name: "打开引用", exact: true }).count(), savedMetadata.citationCount);
     assert.equal(new URL(page.url()).searchParams.get("view"), "history", "refresh must preserve unrelated query params");
     await page.getByRole("button", { name: "打开引用", exact: true }).nth(savedMetadata.pointerIndex).click();
-    const dialog = page.getByRole("dialog", { name: "教材来源快照" });
+    const dialog = page.getByRole("dialog", { name: "资料来源" });
     await dialog.waitFor({ state: "visible", timeout: 20_000 });
     await dialog.getByText(savedMetadata.materialVersionId, { exact: true }).waitFor({ state: "visible" });
-    await dialog.getByRole("img", { name: new RegExp(`教材物理页 ${savedMetadata.physicalPage}`) }).waitFor({ state: "visible", timeout: 20_000 });
+    await dialog.getByRole("img", { name: new RegExp(`资料物理页 ${savedMetadata.physicalPage}`) }).waitFor({ state: "visible", timeout: 20_000 });
     assert.ok(readerResponses.some((item) => item.path.endsWith(`/evidence-pointers/${savedMetadata.pointerId}`) && item.status === 200), "saved pointer GET should succeed");
     assert.ok(readerResponses.some((item) => item.path.includes("/page-image") && item.status === 200), "pinned physical page image GET should succeed");
     console.log(`PASS restore/Reader: ${savedMetadata.turnCount} turns/${savedMetadata.citationCount} citations survive refresh; pointer ${savedMetadata.pointerId} opens pinned version ${savedMetadata.materialVersionId}, page ${savedMetadata.physicalPage}`);
@@ -177,7 +177,7 @@ async function main() {
       });
     });
     await page.goto(`${targetUrl}${learnPath}?view=keep`);
-    await page.getByLabel("围绕教材提问").fill("合成问题");
+    await page.getByLabel("围绕课程资料提问").fill("合成问题");
     await page.getByRole("button", { name: "发送问题" }).click();
     await page.waitForFunction((id) => new URL(window.location.href).searchParams.get("session_id") === id, createdSessionId);
     await page.getByText("合成流式回答", { exact: true }).waitFor({ state: "visible", timeout: 20_000 });

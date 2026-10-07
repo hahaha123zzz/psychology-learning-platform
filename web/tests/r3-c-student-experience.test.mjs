@@ -50,7 +50,7 @@ test("learning and SSE inputs remain accessible and recoverable after network fa
   assert.match(session, /重试恢复学习/);
   assert.match(session, /disabled=\{recovering\}/);
   assert.match(learn, /你的问题仍保留在输入框/);
-  assert.match(learn, /aria-label="围绕教材提问"/);
+  assert.match(learn, /aria-label="围绕课程资料提问"/);
   assert.match(learn, /aria-live="polite" aria-relevant="additions text"/);
   assert.match(learn, /eventData\.event === "state"/);
   assert.match(learn, /eventData\.event === "done"/);

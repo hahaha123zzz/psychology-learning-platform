@@ -186,11 +186,11 @@ async function main() {
     await page.waitForFunction((count) => document.querySelectorAll(".learn-turn").length === count, existingTurnCount);
     assert.equal(await page.locator(".learn-turn").count(), existingTurnCount,
       "Learn must restore only the existing session before the single new Tutor turn");
-    await page.getByLabel("围绕教材提问").fill("variable example study time recall");
+    await page.getByLabel("围绕课程资料提问").fill("variable example study time recall");
     await page.getByRole("button", { name: "发送问题" }).click();
     await page.waitForFunction(() => {
       const turns = Array.from(document.querySelectorAll(".learn-turn.tutor"));
-      const composer = document.querySelector('input[aria-label="围绕教材提问"]');
+      const composer = document.querySelector('input[aria-label="围绕课程资料提问"]');
       return turns.length > 0
         && (turns.at(-1)?.querySelector("p")?.textContent ?? "").startsWith("根据教材：")
         && composer instanceof HTMLInputElement && !composer.disabled;

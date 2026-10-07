@@ -137,7 +137,7 @@ async function main() {
     await page.goto(`${webOrigin}/student/courses/${encodeURIComponent(courseId)}/learn?session_id=${encodeURIComponent(sessionId)}`);
     await page.getByRole("heading", { name: "学习助手", exact: true }).waitFor({ state: "visible" });
     await page.waitForFunction((expected) => document.querySelectorAll(".learn-turn").length === expected, expectedSavedTurnCount);
-    await page.getByLabel("搜索教材").fill(query);
+    await page.getByLabel("搜索课程资料").fill(query);
     await page.getByRole("button", { name: "搜索", exact: true }).click();
     const resultCards = page.locator(".evidence-list > article");
     await resultCards.first().waitFor({ state: "visible", timeout: 20_000 });
@@ -160,7 +160,7 @@ async function main() {
       await page.getByRole("button", { name: label, exact: true }).click();
       const response = await responsePromise;
       assert.equal(response.status(), 200);
-      const drawer = page.getByRole("dialog", { name: "教材来源快照" });
+      const drawer = page.getByRole("dialog", { name: "资料来源" });
       await drawer.waitFor({ state: "visible", timeout: 20_000 });
       await drawer.getByText(expectedExcerpt, { exact: true }).waitFor({ state: "visible" });
       const opened = pointerReads.at(-1);
@@ -184,14 +184,14 @@ async function main() {
     }
 
     await page.getByRole("button", { name: "定位相邻图像", exact: true }).click();
-    const figureDrawer = page.getByRole("dialog", { name: "教材来源快照" });
+    const figureDrawer = page.getByRole("dialog", { name: "资料来源" });
     await figureDrawer.waitFor({ state: "visible", timeout: 20_000 });
     await figureDrawer.getByText("图像语义尚未解析；当前只能定位，不能据此解释图像内容。", { exact: true }).waitFor({ state: "visible" });
     assert.equal(await figureDrawer.getByRole("button", { name: "向 Tutor 提问", exact: true }).count(), 0);
     await figureDrawer.getByRole("button", { name: "关闭上下文面板", exact: true }).click();
 
     noPinnedPointers = true;
-    await page.getByLabel("搜索教材").fill(`${query} no-pin synthetic fixture`);
+    await page.getByLabel("搜索课程资料").fill(`${query} no-pin synthetic fixture`);
     await page.getByRole("button", { name: "搜索", exact: true }).click();
     await page.getByText("合成表格结果", { exact: false }).waitFor({ state: "visible" });
     assert.equal(await resultCards.count(), 1);
